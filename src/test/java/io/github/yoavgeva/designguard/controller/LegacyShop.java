@@ -221,6 +221,12 @@ final class LegacyShop {
                         + "    public String zoo() {\n        return String.valueOf(zoo);\n    }\n}\n")
                 .add("Zoo", "package shop.legacy.zoo;\n\npublic class Zoo {\n    private Keeper keeper;\n\n"
                         + "    public String keeper() {\n        return String.valueOf(keeper);\n    }\n}\n")
+                .add("Feeding", "package shop.legacy.zoo;\n\npublic interface Feeding {\n    void feed(String animal);\n\n"
+                        + "    void clean(String cage);\n\n    int count();\n\n    String report();\n}\n")
+                .add("Feeder", "package shop.legacy.zoo;\n\npublic class Feeder {\n    public void feed(Feeding feeding) {\n"
+                        + "        feeding.feed(\"cat\");\n    }\n}\n")
+                .add("Auditor", "package shop.legacy.zoo;\n\npublic class Auditor {\n    public String audit(Feeding feeding) {\n"
+                        + "        return feeding.report();\n    }\n}\n")
                 .add("Animal", "package shop.legacy.zoo;\n\npublic interface Animal {\n}\n")
                 .add("Cat", "package shop.legacy.zoo;\n\npublic record Cat() implements Animal {\n}\n")
                 .add("Dog", "package shop.legacy.zoo;\n\npublic record Dog() implements Animal {\n}\n")

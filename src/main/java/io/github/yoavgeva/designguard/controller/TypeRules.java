@@ -7,6 +7,7 @@ import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.DataClassCheck;
 import io.github.yoavgeva.designguard.service.EnumLikeConstantsCheck;
+import io.github.yoavgeva.designguard.service.FatInterfaceCheck;
 import io.github.yoavgeva.designguard.service.RawIdentifiersCheck;
 import io.github.yoavgeva.designguard.service.RecordImmutabilityCheck;
 import io.github.yoavgeva.designguard.service.SealedHierarchyCheck;
@@ -89,6 +90,16 @@ public final class TypeRules {
     public BasicRule typedIdentifiers(String... domainPackages) {
         return new BasicRule(code, ClassFilter.ALL,
                 (codeBase, filter) -> new RawIdentifiersCheck(List.of(domainPackages)).check(codeBase.sources(), filter));
+    }
+
+    /**
+     * Fails on interfaces wider than any of their clients needs: at least four methods, at least two clients, and no
+     * client calling more than half of them. Split them into role interfaces (the interface segregation principle).
+     *
+     * @return the rule
+     */
+    public BasicRule interfacesAreFocused() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new FatInterfaceCheck().check(codeBase, filter));
     }
 
     /**

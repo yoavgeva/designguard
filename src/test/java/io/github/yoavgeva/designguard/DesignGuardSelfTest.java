@@ -35,6 +35,7 @@ class DesignGuardSelfTest {
                 Arguments.of("values are immutable", GUARD.types().valueTypesAreImmutable()),
                 Arguments.of("services are stateless", GUARD.types().servicesAreStateless()),
                 Arguments.of("enums over constants", GUARD.types().enumsOverConstants()),
+                Arguments.of("focused interfaces", GUARD.types().interfacesAreFocused()),
                 Arguments.of("typed identifiers in the model", GUARD.types().typedIdentifiers("..model..")),
                 Arguments.of("closed hierarchies are sealed", GUARD.types().closedHierarchiesAreSealed()),
                 Arguments.of("classes are final by default", GUARD.types().inheritance(InheritancePolicy.FINAL_BY_DEFAULT)),
