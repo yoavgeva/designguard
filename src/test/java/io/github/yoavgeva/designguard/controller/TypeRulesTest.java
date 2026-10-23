@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.yoavgeva.designguard.CompiledProject;
 import io.github.yoavgeva.designguard.model.InheritancePolicy;
@@ -130,6 +131,44 @@ class TypeRulesTest {
                 "OrderService is service-like, but its field 'total' holds a mutable AtomicLong");
         assertThat(guard.types().servicesAreStateless().evaluate().get(0).fix()).isEqualTo("keep state out of"
                 + " services: pass it in and return it as values, or keep it in a store the service calls");
+    }
+
+    @Test
+    void constantsThatEnumerateCasesAreEnums() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Flags", "package shop;\n\npublic interface Flags {\n    int FLAG_GIFT = 1;\n    int FLAG_EXPRESS = 2;\n"
+                        + "    int FLAG_FRAGILE = 4;\n}\n")
+                .add("Orders", """
+                        package shop;
+
+                        public final class Orders {
+                            public static final int STATUS_OPEN = 0;
+                            public static final int STATUS_PAID = 1;
+                            public static final int STATUS_SHIPPED = 2;
+                            public static final String CHANNEL_WEB = "web";
+                            public static final String CHANNEL_IN_STORE = "in-store";
+                            public static final int MAX_ITEMS = 50;
+                            public static final int MAX_RETRIES = 3;
+                            public static final int HTTP_OK = 200;
+                            public static final int HTTP_NOT_FOUND = 404;
+                            private static final String NAME_SHOP = "Corner Shop";
+                            private static final String NAME_OWNER = "Ada";
+
+                            private Orders() {
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.types().enumsOverConstants().evaluate())
+                .extracting(Violation::line, Violation::message, Violation::fix)
+                .containsExactly(
+                        tuple(4, "Flags declares FLAG_GIFT, FLAG_EXPRESS, FLAG_FRAGILE as int constants: make them an enum",
+                                "replace them with an enum, e.g. enum Flag { GIFT, EXPRESS, FRAGILE }"),
+                        tuple(4, "Orders declares STATUS_OPEN, STATUS_PAID, STATUS_SHIPPED as int constants: make them"
+                                + " an enum", "replace them with an enum, e.g. enum Status { OPEN, PAID, SHIPPED }"),
+                        tuple(7, "Orders declares CHANNEL_WEB, CHANNEL_IN_STORE as String constants: make them an enum",
+                                "replace them with an enum, e.g. enum Channel { WEB, IN_STORE }"));
     }
 
     @Test

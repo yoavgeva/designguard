@@ -6,6 +6,7 @@ import io.github.yoavgeva.designguard.model.JavaFeature;
 import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.DataClassCheck;
+import io.github.yoavgeva.designguard.service.EnumLikeConstantsCheck;
 import io.github.yoavgeva.designguard.service.RecordImmutabilityCheck;
 import io.github.yoavgeva.designguard.service.SealedHierarchyCheck;
 import io.github.yoavgeva.designguard.service.StatelessServicesCheck;
@@ -73,6 +74,17 @@ public final class TypeRules {
      */
     public BasicRule servicesAreStateless() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new StatelessServicesCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on groups of int, long or String constants that enumerate cases, like {@code STATUS_OPEN = 0} and
+     * {@code STATUS_PAID = 1}: an enum gives them a type the compiler checks.
+     *
+     * @return the rule
+     */
+    public BasicRule enumsOverConstants() {
+        return new BasicRule(code, ClassFilter.ALL,
+                (codeBase, filter) -> new EnumLikeConstantsCheck().check(codeBase.sources(), filter));
     }
 
     /**
