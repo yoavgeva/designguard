@@ -16,6 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 class JavaReleaseTest {
 
     private static final String SHOP = "shop";
+    /** The class file major version Java 99 will write: Java N writes N + 44. */
+    private static final int JAVA_99 = 143;
     private static final String CART_TYPE = "Cart";
     private static final String CART = """
             package shop;
@@ -70,6 +72,19 @@ class JavaReleaseTest {
         assertThatThrownBy(() -> configured.forJava(11).build().types().dataClassesAreRecords().evaluate())
                 .isInstanceOf(DesignGuardException.class)
                 .hasMessageContaining("targets Java 11");
+    }
+
+    @Test
+    void classFilesNewerThanDesignguardCanReadFailClearly() {
+        var guard = new CompiledProject(directory).stampMajorVersion(JAVA_99).add(CART_TYPE, CART).guard(SHOP);
+
+        assertThatThrownBy(() -> guard.dependencies().injectServices().evaluate())
+                .isInstanceOf(DesignGuardException.class)
+                .hasMessage("Found no compiled classes of packages [shop] in [" + directory.resolve("classes") + "]."
+                        + " Check the package names, and that the code is compiled before designguard runs. If it is,"
+                        + " its class files may target a newer Java than designguard can read: upgrade designguard, or"
+                        + " compile for an older Java.");
+        assertThat(guard.guardrails().noStubs().evaluate()).isEmpty();
     }
 
     @Test

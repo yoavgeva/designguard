@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.service;
 
-import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.domain.JavaModifier;
@@ -35,7 +34,7 @@ public final class UnusedPublicCodeCheck {
         WiringCode wiring = code.wiring();
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && !wiring.contains(type) && type.getAnnotations().isEmpty())
-                .flatMap(type -> isUnusedType(type)
+                .flatMap(type -> isUnusedType(classes, type)
                         ? Stream.of(classes.violation(RULE, type, 0, ProjectClasses.nameOf(type)
                                 + " is public, but nothing uses it",
                                 "delete it, or make it package-private until something needs it"))
@@ -44,11 +43,9 @@ public final class UnusedPublicCodeCheck {
                 .toList();
     }
 
-    private static boolean isUnusedType(JavaClass type) {
+    private static boolean isUnusedType(ProjectClasses classes, JavaClass type) {
         return type.isTopLevelClass() && type.getModifiers().contains(JavaModifier.PUBLIC)
-                && type.getDirectDependenciesToSelf().stream()
-                        .map(Dependency::getOriginClass)
-                        .allMatch(user -> Hierarchy.isSelfOrNested(type, user));
+                && classes.bytecode().usersOf(type).allMatch(user -> Hierarchy.isSelfOrNested(type, user));
     }
 
     private static Stream<Violation> unusedMethods(ProjectClasses classes, JavaClass type) {

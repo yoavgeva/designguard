@@ -8,17 +8,26 @@ import io.github.yoavgeva.designguard.model.Violation;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 
+/** Runs once for each Java version's class files: see {@link CompiledProject#releases()}. */
+@ParameterizedClass(name = "class files for Java {0}")
+@MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class TypeRulesTest {
 
     private static final String SHOP = "shop";
+
+    @Parameter
+    private int release;
 
     @TempDir
     private Path directory;
 
     @Test
     void valueTypesMustBeImmutable() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Money", "package shop;\n\npublic class Money {\n    private long cents;\n    private final String currency = \"EUR\";\n"
                         + "    public void add(long more) {\n        cents += more;\n    }\n}\n")
                 .add("Client", "package shop;\n\npublic class Client {\n    private java.net.http.HttpClient http;\n}\n")
@@ -38,7 +47,7 @@ class TypeRulesTest {
 
     @Test
     void closedHierarchiesMustBeSealed() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Shape", "package shop;\n\npublic interface Shape {\n    double area();\n    String name();\n}\n")
                 .add("Circle", "package shop;\n\npublic record Circle(double r) implements Shape {\n"
                         + "    public double area() {\n        return r * r;\n    }\n    public String name() {\n        return \"circle\";\n    }\n}\n")
@@ -88,7 +97,7 @@ class TypeRulesTest {
     }
 
     private DesignGuard inheritanceShop() {
-        return new CompiledProject(directory)
+        return new CompiledProject(directory).release(release)
                 .add("Base", "package shop;\n\npublic class Base {\n}\n")
                 .add("Middle", "package shop;\n\npublic class Middle extends Base {\n}\n")
                 .add("Leaf", "package shop;\n\npublic class Leaf extends Middle {\n}\n")

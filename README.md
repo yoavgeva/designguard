@@ -60,7 +60,7 @@ private static final DesignGuard GUARD = DesignGuard.forPackages("com.shop")
 ```
 
 - `withSourceRoots`, `withTestSourceRoots`, `withClassesFrom`: where the code is.
-- `wiringIn("..config..")`: wiring code may create and hold concrete services. Classes with `main`, and
+- `wiringIn("..config..")`: wiring code may create and hold concrete services. Classes with a `main` method, and
   `@Configuration`, `@SpringBootApplication` or `@Module` classes, always are wiring code.
 - `treatingAsImpure("com.stripe..")`: using these packages counts as I/O, like `java.net`.
 - `forJava(17)`: the Java version the code targets, if reading it from the class files isn't right (see below).
@@ -75,6 +75,14 @@ code targets from its class files, so its advice fits that version:
   Java 17.
 - Fixes only suggest what the code's Java has: an exhaustive `switch` over a sealed type from Java 21, over an enum
   from Java 14, and virtual threads from Java 21.
+- From Java 25, instance and parameterless `main` methods mark wiring code too.
+
+If designguard finds no compiled classes in the packages, rules that read classes fail instead of passing with
+nothing checked. That also happens when the classes target a newer Java than its ArchUnit version reads: ArchUnit
+1.5.1 reads up to Java 27.
+
+Dependency rules also see classes that ArchUnit doesn't import: those a `switch` only matches on, as in
+`case Circle c -> "circle"` or `case Suit.CLUBS`, which designguard reads from the class files with ASM.
 
 ## Rules
 
@@ -128,7 +136,8 @@ designguard doesn't repeat what these do well:
 ## Build
 
 Builds with Java 25 and Maven 3.9, pinned in `mise.toml`. The library compiles for Java 17 (`--release 17`), and CI
-runs the tests on Java 17, 21 and 25.
+runs the tests on Java 17, 21, 25 and 27. Each JVM compiles the test fixtures for every LTS it can target and for
+its own version, so rules that read classes are tested on each version's class files.
 
 ```shell
 mise install

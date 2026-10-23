@@ -8,17 +8,26 @@ import io.github.yoavgeva.designguard.model.Violation;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 
+/** Runs once for each Java version's class files: see {@link CompiledProject#releases()}. */
+@ParameterizedClass(name = "class files for Java {0}")
+@MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class ApiRulesTest {
 
     private static final String SHOP = "shop";
+
+    @Parameter
+    private int release;
 
     @TempDir
     private Path directory;
 
     @Test
     void packagesMustBeNullMarked() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("NullMarked", "package org.jspecify.annotations;\n\npublic @interface NullMarked {\n}\n")
                 .add("package-info", "@NullMarked\npackage shop.orders;\n\nimport org.jspecify.annotations.NullMarked;\n")
                 .add("Order", "package shop.orders;\n\npublic class Order {\n}\n")
@@ -36,7 +45,7 @@ class ApiRulesTest {
 
     @Test
     void optionalIsOnlyForReturnValues() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Order", """
                         package shop;
 
@@ -71,7 +80,7 @@ class ApiRulesTest {
 
     @Test
     void checkedExceptionsStayOutOfTheApi() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("OrderException", "package shop;\n\npublic class OrderException extends Exception {\n}\n")
                 .add("Orders", """
                         package shop;
@@ -105,7 +114,7 @@ class ApiRulesTest {
 
     @Test
     void publicClassesUsedOnlyInTheirPackageShouldBePackagePrivate() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("OrderMapper", "package shop.orders;\n\npublic class OrderMapper {\n"
                         + "    public String map(String value) {\n        return value;\n    }\n}\n")
                 .add("Orders", "package shop.orders;\n\npublic class Orders {\n"

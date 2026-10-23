@@ -1,23 +1,33 @@
 package io.github.yoavgeva.designguard.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.yoavgeva.designguard.CompiledProject;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 
+/** Runs once for each Java version's class files: see {@link CompiledProject#releases()}. */
+@ParameterizedClass(name = "class files for Java {0}")
+@MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class InjectServicesRuleTest {
 
     private static final String SHOP = "shop";
+
+    @Parameter
+    private int release;
 
     @TempDir
     private Path directory;
 
     @Test
     void flagsServicesCreatedOutsideWiringCode() {
-        var guard = ShopFixture.write(directory)
+        var guard = ShopFixture.write(directory).release(release)
                 .add("Checkout", """
                         package shop.orders;
 
@@ -43,7 +53,7 @@ class InjectServicesRuleTest {
 
     @Test
     void flagsStaticSingletonAccess() {
-        var guard = ShopFixture.write(directory)
+        var guard = ShopFixture.write(directory).release(release)
                 .add("Registry", """
                         package shop.orders;
 
@@ -77,7 +87,7 @@ class InjectServicesRuleTest {
 
     @Test
     void creatingPureObjectsAndCallingFactoriesIsFine() {
-        var guard = new CompiledProject(directory)
+        var guard = new CompiledProject(directory).release(release)
                 .add("Sources", """
                         package shop;
 
@@ -126,7 +136,7 @@ class InjectServicesRuleTest {
 
     @Test
     void callingTheSuperConstructorIsNotCreatingAService() {
-        var guard = new CompiledProject(directory)
+        var guard = new CompiledProject(directory).release(release)
                 .add("Gateway", """
                         package shop;
 
@@ -151,8 +161,42 @@ class InjectServicesRuleTest {
     }
 
     @Test
+    void creatingTheSuperclassInAConstructorIsCreatingAService() {
+        var guard = new CompiledProject(directory).release(release)
+                .add("Gateway", """
+                        package shop;
+
+                        public class Gateway {
+                            public long now() {
+                                return System.currentTimeMillis();
+                            }
+                        }
+                        """)
+                .add("CachingGateway", """
+                        package shop;
+
+                        public final class CachingGateway extends Gateway {
+                            private final Gateway fallback;
+
+                            public CachingGateway() {
+                                super();
+                                this.fallback = new Gateway();
+                            }
+
+                            public long fallbackNow() {
+                                return fallback.now();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().injectServices().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(tuple(8, "CachingGateway creates service-like Gateway with new"));
+    }
+
+    @Test
     void wiringPackagesMayCreateServices() {
-        var configured = ShopFixture.write(directory)
+        var configured = ShopFixture.write(directory).release(release)
                 .add("PaymentsConfig", """
                         package shop.config;
 

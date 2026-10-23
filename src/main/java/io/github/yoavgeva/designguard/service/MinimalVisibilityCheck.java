@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.service;
 
-import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -30,7 +29,7 @@ public final class MinimalVisibilityCheck {
         return classes.stream()
                 .filter(type -> type.isTopLevelClass() && type.getModifiers().contains(JavaModifier.PUBLIC))
                 .filter(type -> classes.selected(filter, type) && !wiring.contains(type))
-                .filter(MinimalVisibilityCheck::usedOnlyInItsPackage)
+                .filter(type -> usedOnlyInItsPackage(classes, type))
                 .map(type -> classes.violation(RULE, type, 0,
                         ProjectClasses.nameOf(type) + " is public, but only package " + type.getPackageName() + " uses it",
                         "make it package-private"))
@@ -38,9 +37,8 @@ public final class MinimalVisibilityCheck {
                 .toList();
     }
 
-    private static boolean usedOnlyInItsPackage(JavaClass type) {
-        Set<String> userPackages = type.getDirectDependenciesToSelf().stream()
-                .map(Dependency::getOriginClass)
+    private static boolean usedOnlyInItsPackage(ProjectClasses classes, JavaClass type) {
+        Set<String> userPackages = classes.bytecode().usersOf(type)
                 .filter(user -> !Hierarchy.isSelfOrNested(type, user))
                 .map(JavaClass::getPackageName)
                 .collect(Collectors.toSet());

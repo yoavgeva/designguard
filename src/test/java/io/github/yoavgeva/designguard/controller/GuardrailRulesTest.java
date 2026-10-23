@@ -8,17 +8,26 @@ import io.github.yoavgeva.designguard.model.Violation;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 
+/** Runs once for each Java version's class files: see {@link CompiledProject#releases()}. */
+@ParameterizedClass(name = "class files for Java {0}")
+@MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class GuardrailRulesTest {
 
     private static final String SHOP = "shop";
+
+    @Parameter
+    private int release;
 
     @TempDir
     private Path directory;
 
     @Test
     void serviceLikeClassesNeedATestClass() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("StripeClient", "package shop;\n\npublic class StripeClient {\n"
                         + "    private final java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();\n"
                         + "    public String charge() {\n        return http.toString();\n    }\n}\n")
@@ -38,7 +47,7 @@ class GuardrailRulesTest {
 
     @Test
     void unusedPublicCodeIsReported() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Line", "package shop;\n\npublic record Line(int quantity) {\n}\n")
                 .add("Orders", """
                         package shop;

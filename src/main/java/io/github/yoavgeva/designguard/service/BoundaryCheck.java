@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.service;
 
-import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.PackageMatcher;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -76,11 +75,10 @@ public final class BoundaryCheck {
         ProjectClasses classes = code.projectClasses();
         return classes.stream()
                 .filter(origin -> isGuarded(origin) && classes.selected(filter, origin))
-                .flatMap(origin -> origin.getDirectDependenciesFromSelf().stream()
-                        .filter(dependency -> forbidden.test(code, dependency.getTargetClass()))
-                        .collect(Collectors.groupingBy(dependency -> dependency.getTargetClass().getName(),
-                                Collectors.minBy(Comparator.comparingInt(
-                                        dependency -> dependency.getSourceCodeLocation().getLineNumber()))))
+                .flatMap(origin -> classes.bytecode().dependenciesFrom(origin)
+                        .filter(dependency -> forbidden.test(code, dependency.target()))
+                        .collect(Collectors.groupingBy(dependency -> dependency.target().getName(),
+                                Collectors.minBy(Comparator.comparingInt(ClassDependency::line))))
                         .values().stream()
                         .flatMap(Optional::stream)
                         .map(dependency -> violation(classes, origin, dependency)))
@@ -88,10 +86,9 @@ public final class BoundaryCheck {
                 .toList();
     }
 
-    private Violation violation(ProjectClasses classes, JavaClass origin, Dependency dependency) {
-        return classes.violation(rule, origin, dependency.getSourceCodeLocation().getLineNumber(),
-                ProjectClasses.nameOf(origin) + " uses " + what + " " + ProjectClasses.nameOf(dependency.getTargetClass()),
-                fix);
+    private Violation violation(ProjectClasses classes, JavaClass origin, ClassDependency dependency) {
+        return classes.violation(rule, origin, dependency.line(),
+                ProjectClasses.nameOf(origin) + " uses " + what + " " + ProjectClasses.nameOf(dependency.target()), fix);
     }
 
     private boolean isGuarded(JavaClass javaClass) {

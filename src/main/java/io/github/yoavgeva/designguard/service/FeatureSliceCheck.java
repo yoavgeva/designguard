@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.service;
 
-import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
@@ -57,8 +56,8 @@ public final class FeatureSliceCheck {
         List<String> prefixes = slicePrefixes.apply(code.settings().packages());
         List<Crossing> crossings = classes.stream()
                 .filter(origin -> classes.selected(filter, origin))
-                .flatMap(origin -> origin.getDirectDependenciesFromSelf().stream())
-                .filter(dependency -> classes.isProject(dependency.getTargetClass()))
+                .flatMap(classes.bytecode()::dependenciesFrom)
+                .filter(dependency -> classes.isProject(dependency.target()))
                 .flatMap(dependency -> crossing(prefixes, dependency).stream())
                 .toList();
         return Stream.concat(internals(classes, crossings), cycles(classes, crossings))
@@ -123,14 +122,14 @@ public final class FeatureSliceCheck {
         return String.join(", ", names.subList(0, names.size() - 1)) + " and " + names.get(names.size() - 1);
     }
 
-    private static Optional<Crossing> crossing(List<String> prefixes, Dependency dependency) {
-        Optional<Slice> origin = sliceOf(prefixes, dependency.getOriginClass());
-        Optional<Slice> target = sliceOf(prefixes, dependency.getTargetClass());
+    private static Optional<Crossing> crossing(List<String> prefixes, ClassDependency dependency) {
+        Optional<Slice> origin = sliceOf(prefixes, dependency.origin());
+        Optional<Slice> target = sliceOf(prefixes, dependency.target());
         if (origin.isEmpty() || target.isEmpty() || origin.get().equals(target.get())) {
             return Optional.empty();
         }
-        return Optional.of(new Crossing(dependency.getOriginClass(), origin.get(), dependency.getTargetClass(),
-                target.get(), dependency.getSourceCodeLocation().getLineNumber()));
+        return Optional.of(new Crossing(dependency.origin(), origin.get(), dependency.target(), target.get(),
+                dependency.line()));
     }
 
     private static Optional<Slice> sliceOf(List<String> prefixes, JavaClass javaClass) {

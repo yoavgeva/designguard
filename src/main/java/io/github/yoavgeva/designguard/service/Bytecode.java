@@ -1,0 +1,86 @@
+package io.github.yoavgeva.designguard.service;
+
+import com.tngtech.archunit.core.domain.Dependency;
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+/**
+ * What the project's compiled code uses and creates: ArchUnit's dependencies, plus what ArchUnit doesn't import from
+ * the class files, see {@link ClassFileFacts}.
+ */
+final class Bytecode {
+
+    private final JavaClasses classes;
+    private final JavaClasses matchedOutside;
+    private final Map<String, ClassFileFacts> facts;
+    private final Map<String, List<JavaClass>> switchUsers;
+
+    /**
+     * Combines ArchUnit's classes with their class files' facts.
+     *
+     * @param classes        the project classes
+     * @param matchedOutside classes outside the project that the project's switches match on
+     * @param facts          each project class's {@link ClassFileFacts}, by class name
+     */
+    Bytecode(JavaClasses classes, JavaClasses matchedOutside, Map<String, ClassFileFacts> facts) {
+        this.classes = classes;
+        this.matchedOutside = matchedOutside;
+        this.facts = Map.copyOf(facts);
+        this.switchUsers = classes.stream()
+                .flatMap(origin -> factsOf(origin).switchLabels().stream()
+                        .map(label -> Map.entry(label.className(), origin)))
+                .collect(Collectors.groupingBy(Map.Entry::getKey,
+                        Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+    }
+
+    /** What the class's code depends on: the dependencies ArchUnit imports, and the classes its switches match on. */
+    Stream<ClassDependency> dependenciesFrom(JavaClass origin) {
+        Stream<ClassDependency> imported = origin.getDirectDependenciesFromSelf().stream()
+                .map(dependency -> new ClassDependency(origin, dependency.getTargetClass(),
+                        dependency.getSourceCodeLocation().getLineNumber()));
+        return Stream.concat(imported, references(origin, factsOf(origin).switchLabels()));
+    }
+
+    /** The project classes whose code depends on the class, switches that match on it included. */
+    Stream<JavaClass> usersOf(JavaClass target) {
+        return Stream.concat(target.getDirectDependenciesToSelf().stream().map(Dependency::getOriginClass),
+                switchUsers.getOrDefault(target.getName(), List.of()).stream());
+    }
+
+    /** The project classes the class's code creates with {@code new}, at the line of each {@code new}. */
+    Stream<ClassDependency> creationsIn(JavaClass origin) {
+        return references(origin, factsOf(origin).creations())
+                .filter(creation -> classes.contain(creation.target().getName()));
+    }
+
+    /** The oldest Java version the top-level classes were compiled for; empty if none was read. */
+    OptionalInt oldestRelease() {
+        return classes.stream()
+                .filter(JavaClass::isTopLevelClass)
+                .mapToInt(type -> factsOf(type).release())
+                .filter(release -> release > 0)
+                .min();
+    }
+
+    private Stream<ClassDependency> references(JavaClass origin, List<ClassFileFacts.Reference> references) {
+        return references.stream().flatMap(reference -> classNamed(reference.className()).stream()
+                .map(target -> new ClassDependency(origin, target, reference.line())));
+    }
+
+    private Optional<JavaClass> classNamed(String name) {
+        if (classes.contain(name)) {
+            return Optional.of(classes.get(name));
+        }
+        return matchedOutside.contain(name) ? Optional.of(matchedOutside.get(name)) : Optional.empty();
+    }
+
+    private ClassFileFacts factsOf(JavaClass javaClass) {
+        return facts.getOrDefault(javaClass.getName(), ClassFileFacts.UNREAD);
+    }
+}
