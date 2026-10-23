@@ -119,6 +119,6 @@ class FlagArgumentCheckTest {
                 .map(line -> line.split(" ")[1])
                 .orElseThrow();
         new SourceTree(root).add(typeName, source);
-        return new FlagArgumentCheck().check(JavaSources.read(List.of(root)), ClassFilter.ALL);
+        return new FlagArgumentCheck().check(SourceReader.read(List.of(root)), ClassFilter.ALL);
     }
 }

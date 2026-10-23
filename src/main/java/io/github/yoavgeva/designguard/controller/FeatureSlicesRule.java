@@ -5,7 +5,6 @@ import io.github.yoavgeva.designguard.model.Violation;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.FeatureSliceCheck;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Package by feature: each package directly below a checked package is a feature slice. Its top-level package is
@@ -13,11 +12,11 @@ import java.util.Optional;
  */
 public final class FeatureSlicesRule extends DesignRule<FeatureSlicesRule> {
 
-    private final Optional<String> parentPackage;
+    private final FeatureSliceCheck check;
 
-    FeatureSlicesRule(CodeBase code, ClassFilter filter, Optional<String> parentPackage) {
+    FeatureSlicesRule(CodeBase code, ClassFilter filter, FeatureSliceCheck check) {
         super(code, filter);
-        this.parentPackage = parentPackage;
+        this.check = check;
     }
 
     /**
@@ -27,16 +26,16 @@ public final class FeatureSlicesRule extends DesignRule<FeatureSlicesRule> {
      * @return the reconfigured rule
      */
     public FeatureSlicesRule slicesBelow(String packageName) {
-        return new FeatureSlicesRule(code(), filter(), Optional.of(packageName));
+        return new FeatureSlicesRule(code(), filter(), new FeatureSliceCheck(packageName));
     }
 
     @Override
     List<Violation> violations(CodeBase code, ClassFilter filter) {
-        return new FeatureSliceCheck(parentPackage).check(code, filter);
+        return check.check(code, filter);
     }
 
     @Override
     FeatureSlicesRule withFilter(ClassFilter filter) {
-        return new FeatureSlicesRule(code(), filter, parentPackage);
+        return new FeatureSlicesRule(code(), filter, check);
     }
 }

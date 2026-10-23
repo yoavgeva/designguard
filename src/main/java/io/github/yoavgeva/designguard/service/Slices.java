@@ -2,36 +2,68 @@ package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.PackageMatcher;
 import java.util.List;
-import java.util.Optional;
 
-/**
- * Cuts the project into slices, such as features or layers. By default a slice is the first package below a checked
- * package ({@code com.shop.orders} for {@code com.shop}); a pattern with a capture group overrides that, e.g.
- * {@code com.shop.(*)..}.
- */
-final class Slices {
+/** Cuts the project into slices, such as features or layers. */
+sealed interface Slices {
 
-    private final List<String> rootPackages;
-    private final Optional<PackageMatcher> pattern;
-
-    Slices(List<String> rootPackages, Optional<String> pattern) {
-        this.rootPackages = List.copyOf(rootPackages);
-        this.pattern = pattern.map(PackageMatcher::of);
+    /**
+     * A slice is the first package below a root package: {@code com.shop.orders} for {@code com.shop}. Packages
+     * outside every root, and the roots themselves, belong to the unnamed slice {@code ""}.
+     */
+    static Slices belowEach(List<String> rootPackages) {
+        return new BelowRoots(rootPackages);
     }
 
-    String sliceOf(String packageName) {
-        return pattern.map(matcher -> matcher.match(packageName)
-                        .filter(result -> result.getNumberOfGroups() > 0)
-                        .map(result -> result.getGroup(1))
-                        .orElse(packageName))
-                .orElseGet(() -> defaultSlice(packageName));
+    /**
+     * A slice is the first capture group of a pattern, e.g. {@code com.shop.(*)..}. A package the pattern doesn't
+     * match is a slice of its own.
+     */
+    static Slices matching(String pattern) {
+        return new ByPattern(PackageMatcher.of(pattern));
     }
 
-    private String defaultSlice(String packageName) {
-        return rootPackages.stream()
-                .filter(root -> packageName.startsWith(root + "."))
-                .map(root -> packageName.substring(root.length() + 1).split("\\.")[0])
-                .findFirst()
-                .orElse("");
+    /**
+     * Names the slice a package belongs to.
+     *
+     * @param packageName a package name
+     * @return the slice's name
+     */
+    String sliceOf(String packageName);
+
+    /** Slices directly below root packages. */
+    final class BelowRoots implements Slices {
+
+        private final List<String> rootPackages;
+
+        BelowRoots(List<String> rootPackages) {
+            this.rootPackages = List.copyOf(rootPackages);
+        }
+
+        @Override
+        public String sliceOf(String packageName) {
+            return rootPackages.stream()
+                    .filter(root -> packageName.startsWith(root + "."))
+                    .map(root -> packageName.substring(root.length() + 1).split("\\.")[0])
+                    .findFirst()
+                    .orElse("");
+        }
+    }
+
+    /** Slices named by a pattern's capture group. */
+    final class ByPattern implements Slices {
+
+        private final PackageMatcher pattern;
+
+        ByPattern(PackageMatcher pattern) {
+            this.pattern = pattern;
+        }
+
+        @Override
+        public String sliceOf(String packageName) {
+            return pattern.match(packageName)
+                    .filter(result -> result.getNumberOfGroups() > 0)
+                    .map(result -> result.getGroup(1))
+                    .orElse(packageName);
+        }
     }
 }

@@ -2,8 +2,8 @@ package io.github.yoavgeva.designguard.controller;
 
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.service.CodeBase;
+import io.github.yoavgeva.designguard.service.FeatureSliceCheck;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Presets for the architectures Java teams use most. Each checks dependencies between groups of packages and
@@ -61,6 +61,6 @@ public final class ArchitectureRules {
      * @return the rule
      */
     public FeatureSlicesRule featureSlices() {
-        return new FeatureSlicesRule(code, ClassFilter.ALL, Optional.empty());
+        return new FeatureSlicesRule(code, ClassFilter.ALL, new FeatureSliceCheck());
     }
 }

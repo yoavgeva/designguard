@@ -74,7 +74,7 @@ class SuppressionCheckTest {
                 }
                 """);
 
-        assertThat(new SuppressionCheck(Set.of()).check(JavaSources.read(List.of(other)), ClassFilter.ALL)).isEmpty();
+        assertThat(new SuppressionCheck(Set.of()).check(SourceReader.read(List.of(other)), ClassFilter.ALL)).isEmpty();
     }
 
     @Test
@@ -86,6 +86,6 @@ class SuppressionCheckTest {
     }
 
     private List<Violation> violations(Set<String> allowed) {
-        return new SuppressionCheck(allowed).check(JavaSources.read(List.of(root)), ClassFilter.ALL);
+        return new SuppressionCheck(allowed).check(SourceReader.read(List.of(root)), ClassFilter.ALL);
     }
 }

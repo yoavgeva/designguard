@@ -147,6 +147,6 @@ class DataClassCheckTest {
 
     private List<Violation> violations(String typeName, String source) {
         new SourceTree(root).add(typeName, source);
-        return new DataClassCheck().check(JavaSources.read(List.of(root)), ClassFilter.ALL);
+        return new DataClassCheck().check(SourceReader.read(List.of(root)), ClassFilter.ALL);
     }
 }

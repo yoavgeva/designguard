@@ -6,9 +6,9 @@ import io.github.yoavgeva.designguard.service.BoundaryCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.FunctionalCoreChecks;
 import io.github.yoavgeva.designguard.service.InjectServicesCheck;
+import io.github.yoavgeva.designguard.service.InterfacePolicyCheck;
 import io.github.yoavgeva.designguard.service.StableDependenciesCheck;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Rules about how classes depend on each other. They read compiled classes, and share one classification of
@@ -29,7 +29,7 @@ public final class DependencyRules {
      * @return the rule
      */
     public InterfacePolicyRule interfacePolicy(InterfacePolicy policy) {
-        return new InterfacePolicyRule(code, ClassFilter.ALL, policy, Optional.empty());
+        return new InterfacePolicyRule(code, ClassFilter.ALL, policy, new InterfacePolicyCheck(policy));
     }
 
     /**

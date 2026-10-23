@@ -40,6 +40,6 @@ final class DispatchFixture {
      * @return the violations
      */
     static List<Violation> violations(Path root, TypeDispatchPolicy policy, int maxPlacesPerType) {
-        return new TypeDispatchCheck(policy, maxPlacesPerType).check(JavaSources.read(List.of(root)), ClassFilter.ALL);
+        return new TypeDispatchCheck(policy, maxPlacesPerType).check(SourceReader.read(List.of(root)), ClassFilter.ALL);
     }
 }

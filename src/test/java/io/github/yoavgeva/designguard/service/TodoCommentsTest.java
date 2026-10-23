@@ -53,6 +53,6 @@ class TodoCommentsTest {
 
     private List<Violation> violations(String typeName, String source) {
         new SourceTree(root).add(typeName, source);
-        return new StubCheck().check(JavaSources.read(List.of(root)), ClassFilter.ALL);
+        return new StubCheck().check(SourceReader.read(List.of(root)), ClassFilter.ALL);
     }
 }

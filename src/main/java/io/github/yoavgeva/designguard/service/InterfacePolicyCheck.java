@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -23,18 +24,31 @@ public final class InterfacePolicyCheck {
     private static final String RULE = "interface-policy";
 
     private final InterfacePolicy policy;
-    private final Optional<String> slicePattern;
+    private final Function<List<String>, Slices> slicing;
 
     /**
-     * Configures the check.
+     * Configures the check. For {@link InterfacePolicy#PORTS}, a slice is the first package below a checked package.
+     *
+     * @param policy when an interface is required
+     */
+    public InterfacePolicyCheck(InterfacePolicy policy) {
+        this(policy, Slices::belowEach);
+    }
+
+    /**
+     * Configures the check with the slices whose boundaries {@link InterfacePolicy#PORTS} guards.
      *
      * @param policy       when an interface is required
-     * @param slicePattern for {@link InterfacePolicy#PORTS}: an ArchUnit pattern with a capture group naming the
-     *                     slice, e.g. {@code com.shop.(*)..}; empty means "the first package below a checked package"
+     * @param slicePattern an ArchUnit pattern whose first capture group names the slice, e.g. {@code com.shop.(*)..}
      */
-    public InterfacePolicyCheck(InterfacePolicy policy, Optional<String> slicePattern) {
+    public InterfacePolicyCheck(InterfacePolicy policy, String slicePattern) {
+        Slices slices = Slices.matching(Objects.requireNonNull(slicePattern, "slicePattern"));
+        this(policy, checkedPackages -> slices);
+    }
+
+    private InterfacePolicyCheck(InterfacePolicy policy, Function<List<String>, Slices> slicing) {
         this.policy = Objects.requireNonNull(policy, "policy");
-        this.slicePattern = Objects.requireNonNull(slicePattern, "slicePattern");
+        this.slicing = slicing;
     }
 
     /**
@@ -46,7 +60,7 @@ public final class InterfacePolicyCheck {
      */
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         Context context = new Context(code.projectClasses(), code.serviceLike(),
-                new Slices(code.settings().packages(), slicePattern));
+                slicing.apply(code.settings().packages()));
         WiringCode wiring = code.wiring();
         return context.classes().stream()
                 .filter(dependent -> context.classes().selected(filter, dependent) && !wiring.contains(dependent))

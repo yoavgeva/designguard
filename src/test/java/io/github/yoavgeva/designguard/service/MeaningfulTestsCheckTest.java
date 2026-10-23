@@ -130,6 +130,6 @@ class MeaningfulTestsCheckTest {
 
     private List<Violation> violations(String source) {
         new SourceTree(root).add("CartTest", source);
-        return new MeaningfulTestsCheck().check(JavaSources.read(List.of(root)), ClassFilter.ALL);
+        return new MeaningfulTestsCheck().check(SourceReader.read(List.of(root)), ClassFilter.ALL);
     }
 }

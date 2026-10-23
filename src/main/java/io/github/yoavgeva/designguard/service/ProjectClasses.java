@@ -5,20 +5,25 @@ import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 /** The project's compiled classes, and how to point a violation at a class's source file. */
 final class ProjectClasses {
 
     private final JavaClasses classes;
-    private final List<Path> sourceRoots;
+    private final Map<String, String> sourceFiles;
 
-    ProjectClasses(JavaClasses classes, List<Path> sourceRoots) {
+    /**
+     * Wraps imported classes.
+     *
+     * @param classes     the classes
+     * @param sourceFiles where each {@link #relativeSourcePath(JavaClass) relative source path} was found
+     */
+    ProjectClasses(JavaClasses classes, Map<String, String> sourceFiles) {
         this.classes = classes;
-        this.sourceRoots = List.copyOf(sourceRoots);
+        this.sourceFiles = Map.copyOf(sourceFiles);
     }
 
     JavaClasses all() {
@@ -38,7 +43,8 @@ final class ProjectClasses {
     }
 
     Violation violation(String rule, JavaClass javaClass, int line, String message, String fix) {
-        return new Violation(rule, Violation.Severity.ERROR, sourcePath(javaClass), line, message, fix);
+        String relative = relativeSourcePath(javaClass);
+        return new Violation(rule, Violation.Severity.ERROR, sourceFiles.getOrDefault(relative, relative), line, message, fix);
     }
 
     static List<String> annotationNames(JavaClass javaClass) {
@@ -56,15 +62,10 @@ final class ProjectClasses {
         return local.replace('$', '.');
     }
 
-    private String sourcePath(JavaClass javaClass) {
+    /** The class's source file relative to a source root, e.g. {@code com/shop/Cart.java}. */
+    static String relativeSourcePath(JavaClass javaClass) {
         String fileName = javaClass.getSourceCodeLocation().getSourceFileName();
         String packagePath = javaClass.getPackageName().replace('.', '/');
-        String relative = packagePath.isEmpty() ? fileName : packagePath + "/" + fileName;
-        return sourceRoots.stream()
-                .map(root -> root.resolve(relative))
-                .filter(Files::exists)
-                .findFirst()
-                .map(Path::toString)
-                .orElse(relative);
+        return packagePath.isEmpty() ? fileName : packagePath + "/" + fileName;
     }
 }

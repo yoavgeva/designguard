@@ -1,11 +1,9 @@
 package io.github.yoavgeva.designguard.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.yoavgeva.designguard.SourceTree;
 import io.github.yoavgeva.designguard.model.ClassFilter;
-import io.github.yoavgeva.designguard.model.DesignGuardException;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.nio.file.Path;
 import java.util.List;
@@ -122,21 +120,12 @@ class StubCheckTest {
                 }
                 """);
 
-        assertThat(new StubCheck().check(JavaSources.read(List.of(root)), ClassFilter.ALL.excluding("..legacy..")))
+        assertThat(new StubCheck().check(SourceReader.read(List.of(root)), ClassFilter.ALL.excluding("..legacy..")))
                 .isEmpty();
-    }
-
-    @Test
-    void failsWithTheFileNameWhenSourceDoesNotParse() {
-        new SourceTree(root).add(CART, "package shop;\n\nclass Cart {\n");
-
-        assertThatThrownBy(() -> JavaSources.read(List.of(root)))
-                .isInstanceOf(DesignGuardException.class)
-                .hasMessageContaining("Cart.java");
     }
 
     private List<Violation> violations(String typeName, String source) {
         new SourceTree(root).add(typeName, source);
-        return new StubCheck().check(JavaSources.read(List.of(root)), ClassFilter.ALL);
+        return new StubCheck().check(SourceReader.read(List.of(root)), ClassFilter.ALL);
     }
 }

@@ -28,13 +28,20 @@ final class SourceReader {
     private SourceReader() {
     }
 
-    static List<ParsedFile> read(List<Path> roots) {
+    /**
+     * Parses every {@code .java} file under the given source roots.
+     *
+     * @param roots source roots such as {@code src/main/java}
+     * @return the parsed sources, ordered by path
+     * @throws DesignGuardException if a root is missing or a file does not parse
+     */
+    static JavaSources read(List<Path> roots) {
         roots.forEach(SourceReader::requireDirectory);
         JavaParser parser = parser(roots);
-        return roots.stream()
+        return JavaSources.of(roots.stream()
                 .flatMap(SourceReader::javaFiles)
                 .map(file -> parse(parser, file))
-                .toList();
+                .toList());
     }
 
     private static void requireDirectory(Path root) {

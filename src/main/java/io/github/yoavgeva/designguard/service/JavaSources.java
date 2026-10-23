@@ -3,8 +3,6 @@ package io.github.yoavgeva.designguard.service;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.Expression;
-import io.github.yoavgeva.designguard.model.DesignGuardException;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -22,15 +20,7 @@ public final class JavaSources {
         this.typeIndex = Map.copyOf(types);
     }
 
-    /**
-     * Parses every {@code .java} file under the given source roots.
-     *
-     * @param roots source roots such as {@code src/main/java}
-     * @return the parsed sources, ordered by path
-     * @throws DesignGuardException if a root is missing or a file does not parse
-     */
-    public static JavaSources read(List<Path> roots) {
-        List<ParsedFile> files = SourceReader.read(roots);
+    static JavaSources of(List<ParsedFile> files) {
         return new JavaSources(files, index(files.stream()));
     }
 

@@ -31,7 +31,7 @@ public final class StableDependenciesCheck {
      */
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         ProjectClasses classes = code.projectClasses();
-        Slices slices = new Slices(code.settings().packages(), Optional.empty());
+        Slices slices = Slices.belowEach(code.settings().packages());
         List<Crossing> crossings = classes.stream()
                 .flatMap(origin -> origin.getDirectDependenciesFromSelf().stream())
                 .filter(dependency -> classes.isProject(dependency.getTargetClass()))

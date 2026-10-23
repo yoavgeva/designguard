@@ -6,7 +6,6 @@ import io.github.yoavgeva.designguard.model.Violation;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.InterfacePolicyCheck;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Fails when a class holds or receives a concrete class where an interface is required: through a field, a
@@ -16,12 +15,12 @@ import java.util.Optional;
 public final class InterfacePolicyRule extends DesignRule<InterfacePolicyRule> {
 
     private final InterfacePolicy policy;
-    private final Optional<String> slicePattern;
+    private final InterfacePolicyCheck check;
 
-    InterfacePolicyRule(CodeBase code, ClassFilter filter, InterfacePolicy policy, Optional<String> slicePattern) {
+    InterfacePolicyRule(CodeBase code, ClassFilter filter, InterfacePolicy policy, InterfacePolicyCheck check) {
         super(code, filter);
         this.policy = policy;
-        this.slicePattern = slicePattern;
+        this.check = check;
     }
 
     /**
@@ -33,16 +32,16 @@ public final class InterfacePolicyRule extends DesignRule<InterfacePolicyRule> {
      * @return the reconfigured rule
      */
     public InterfacePolicyRule slicedBy(String pattern) {
-        return new InterfacePolicyRule(code(), filter(), policy, Optional.of(pattern));
+        return new InterfacePolicyRule(code(), filter(), policy, new InterfacePolicyCheck(policy, pattern));
     }
 
     @Override
     List<Violation> violations(CodeBase code, ClassFilter filter) {
-        return new InterfacePolicyCheck(policy, slicePattern).check(code, filter);
+        return check.check(code, filter);
     }
 
     @Override
     InterfacePolicyRule withFilter(ClassFilter filter) {
-        return new InterfacePolicyRule(code(), filter, policy, slicePattern);
+        return new InterfacePolicyRule(code(), filter, policy, check);
     }
 }

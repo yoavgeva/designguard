@@ -14,7 +14,10 @@ import java.util.Objects;
  *
  * @param <T> the concrete rule type, so configuration methods keep returning it
  */
-public abstract class DesignRule<T extends DesignRule<T>> {
+public abstract sealed class DesignRule<T extends DesignRule<T>>
+        permits BasicRule, FeatureSlicesRule, HexagonalArchitectureRule, InheritanceRule, InterfacePolicyRule,
+        LayeredArchitectureRule, MvcArchitectureRule, NoDisabledTestsRule, NoSuppressionsRule, OnionArchitectureRule,
+        TypeDispatchRule {
 
     private final CodeBase codeBase;
     private final ClassFilter classFilter;

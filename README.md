@@ -118,7 +118,8 @@ mise exec -- mvn verify
 - **Compiler:** any `-Xlint:all` warning
 - **ArchUnit** (`ArchitectureTest`): model/view/controller layering with a service layer, no cycles, immutable model,
   no stdout/stderr, no generic exceptions, no field injection, no deprecated APIs
-- **designguard on itself** (`DesignGuardSelfTest`): 17 of its own rules
+- **designguard on itself** (`DesignGuardSelfTest`): 22 of its own rules, including the `SERVICES` interface policy,
+  `@NullMarked` packages and sealed hierarchies
 - **PMD** (`config/pmd/ruleset.xml`): every Java category, every priority, with exclusions documented in the file
 - **CPD:** duplicated code of 100 tokens or more
 

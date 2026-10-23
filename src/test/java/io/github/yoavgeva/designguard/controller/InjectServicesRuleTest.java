@@ -125,6 +125,32 @@ class InjectServicesRuleTest {
     }
 
     @Test
+    void callingTheSuperConstructorIsNotCreatingAService() {
+        var guard = new CompiledProject(directory)
+                .add("Gateway", """
+                        package shop;
+
+                        public abstract class Gateway {
+                            public long now() {
+                                return System.currentTimeMillis();
+                            }
+                        }
+                        """)
+                .add("StripeGateway", """
+                        package shop;
+
+                        public final class StripeGateway extends Gateway {
+                            public StripeGateway() {
+                                super();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().injectServices().evaluate()).isEmpty();
+    }
+
+    @Test
     void wiringPackagesMayCreateServices() {
         var guard = ShopFixture.write(directory)
                 .add("PaymentsConfig", """

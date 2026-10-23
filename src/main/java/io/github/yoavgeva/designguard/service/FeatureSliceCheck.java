@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -26,16 +27,22 @@ public final class FeatureSliceCheck {
 
     private static final String RULE = "feature-slices";
 
-    private final Optional<String> slicePrefix;
+    /** The packages directly above the slices, given the checked packages. */
+    private final UnaryOperator<List<String>> slicePrefixes;
+
+    /** Configures the check with slices directly below each checked package. */
+    public FeatureSliceCheck() {
+        this.slicePrefixes = UnaryOperator.identity();
+    }
 
     /**
-     * Configures the check.
+     * Configures the check with slices directly below one package.
      *
-     * @param slicePrefix the package directly above the slices, e.g. {@code com.shop} for {@code com.shop.orders};
-     *                    empty means "each checked package"
+     * @param slicePrefix the package directly above the slices, e.g. {@code com.shop} for {@code com.shop.orders}
      */
-    public FeatureSliceCheck(Optional<String> slicePrefix) {
-        this.slicePrefix = slicePrefix;
+    public FeatureSliceCheck(String slicePrefix) {
+        List<String> prefixes = List.of(slicePrefix);
+        this.slicePrefixes = checkedPackages -> prefixes;
     }
 
     /**
@@ -47,7 +54,7 @@ public final class FeatureSliceCheck {
      */
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         ProjectClasses classes = code.projectClasses();
-        List<String> prefixes = slicePrefix.map(List::of).orElse(code.settings().packages());
+        List<String> prefixes = slicePrefixes.apply(code.settings().packages());
         List<Crossing> crossings = classes.stream()
                 .filter(origin -> classes.selected(filter, origin))
                 .flatMap(origin -> origin.getDirectDependenciesFromSelf().stream())

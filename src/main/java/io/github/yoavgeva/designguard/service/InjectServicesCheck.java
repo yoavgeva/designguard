@@ -1,6 +1,8 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaConstructor;
+import com.tngtech.archunit.core.domain.JavaConstructorCall;
 import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -41,7 +43,8 @@ public final class InjectServicesCheck {
     private static Stream<Violation> creations(ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass dependent) {
         return dependent.getConstructorCallsFromSelf().stream()
                 .filter(call -> classes.isProject(call.getTargetOwner()) && serviceLike.isEffectful(call.getTargetOwner())
-                        && !Hierarchy.isSelfOrNested(dependent, call.getTargetOwner()))
+                        && !Hierarchy.isSelfOrNested(dependent, call.getTargetOwner())
+                        && !isSuperConstructorCall(dependent, call))
                 .collect(Collectors.toMap(call -> call.getTargetOwner().getName(), call -> call,
                         (first, second) -> first.getLineNumber() <= second.getLineNumber() ? first : second,
                         LinkedHashMap::new))
@@ -68,6 +71,12 @@ public final class InjectServicesCheck {
                                     + target + "." + call.getName() + "()",
                             "take " + target + " as a constructor parameter instead");
                 });
+    }
+
+    /** {@code super(...)}: a constructor calling its direct superclass's constructor, which creates nothing. */
+    private static boolean isSuperConstructorCall(JavaClass dependent, JavaConstructorCall call) {
+        return call.getOrigin() instanceof JavaConstructor
+                && dependent.getRawSuperclass().filter(superclass -> superclass.equals(call.getTargetOwner())).isPresent();
     }
 
     private static boolean isForeignService(

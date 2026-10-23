@@ -99,6 +99,6 @@ class RecordImmutabilityCheckTest {
 
     private List<Violation> violations(String source) {
         new SourceTree(root).add(ORDER, source);
-        return new RecordImmutabilityCheck().check(JavaSources.read(List.of(root)), ClassFilter.ALL);
+        return new RecordImmutabilityCheck().check(SourceReader.read(List.of(root)), ClassFilter.ALL);
     }
 }

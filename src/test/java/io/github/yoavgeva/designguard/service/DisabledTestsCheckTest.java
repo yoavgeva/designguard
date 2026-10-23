@@ -76,6 +76,6 @@ class DisabledTestsCheckTest {
     }
 
     private List<Violation> violations(boolean allowWithReason) {
-        return new DisabledTestsCheck(allowWithReason).check(JavaSources.read(List.of(root)), ClassFilter.ALL);
+        return new DisabledTestsCheck(allowWithReason).check(SourceReader.read(List.of(root)), ClassFilter.ALL);
     }
 }
