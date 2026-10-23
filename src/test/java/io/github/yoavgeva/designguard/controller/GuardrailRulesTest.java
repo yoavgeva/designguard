@@ -85,4 +85,17 @@ class GuardrailRulesTest {
                         tuple("Unused is public, but nothing uses it",
                                 "delete it, or make it package-private until something needs it"));
     }
+
+    @Test
+    void classesUsedOnlyForTheirConstantsAreUsed() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Limits", "package shop;\n\npublic final class Limits {\n"
+                        + "    public static final int MAX_ITEMS = 10;\n\n    private Limits() {\n    }\n}\n")
+                .add("App", "package shop;\n\npublic final class App {\n"
+                        + "    public static void main(String[] args) {\n"
+                        + "        System.out.println(Limits.MAX_ITEMS);\n    }\n}\n")
+                .guard(SHOP);
+
+        assertThat(guard.guardrails().noUnusedPublicCode().evaluate()).isEmpty();
+    }
 }

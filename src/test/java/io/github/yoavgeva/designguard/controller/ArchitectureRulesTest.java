@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.yoavgeva.designguard.CompiledProject;
 import io.github.yoavgeva.designguard.model.Violation;
@@ -51,6 +52,27 @@ class ArchitectureRulesTest {
                                 + " which Persistence may not use",
                         "OrderController (layer Web) depends on OrderRepository (layer Persistence),"
                                 + " which Web may not use");
+    }
+
+    @Test
+    void layersSeeConstantsTheCompilerCopiesIntoTheCode() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Limits", "package shop.web;\n\npublic final class Limits {\n"
+                        + "    public static final int PAGE_SIZE = 50;\n\n    private Limits() {\n    }\n}\n")
+                .add("OrderRepository", """
+                        package shop.persistence;
+
+                        public class OrderRepository {
+                            public int pageSize() {
+                                return shop.web.Limits.PAGE_SIZE;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.architecture().layered().layer("Web", "..web..").layer("Persistence", "..persistence..")
+                .evaluate()).extracting(Violation::line, Violation::message).containsExactly(tuple(0,
+                        "OrderRepository (layer Persistence) depends on Limits (layer Web), which Persistence may not use"));
     }
 
     @Test
