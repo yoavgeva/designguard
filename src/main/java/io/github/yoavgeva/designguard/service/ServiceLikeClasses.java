@@ -18,6 +18,7 @@ import java.util.Set;
  */
 final class ServiceLikeClasses {
 
+    private final Overrides overrides = new Overrides();
     private final Effects effects;
     private final Set<String> effectfulNames;
     private final Memo<Set<String>> effectfulWhenRun;
@@ -26,7 +27,7 @@ final class ServiceLikeClasses {
     private final Set<String> serviceLikeNames;
 
     ServiceLikeClasses(ProjectClasses classes, List<String> extraImpurePackages) {
-        this.effects = new Effects(extraImpurePackages);
+        this.effects = new Effects(extraImpurePackages, overrides);
         List<JavaClass> candidates = classes.stream().filter(ServiceLikeClasses::canBeServiceLike).toList();
         this.effectfulNames = Set.copyOf(withAbstractions(candidates,
                 CallGraph.ownersOf(candidates, effects.effectfulCodeUnits(classes, candidates))));
@@ -60,7 +61,7 @@ final class ServiceLikeClasses {
      */
     boolean runsEffects(CodeUnitAccessTarget target) {
         Set<String> whenRun = effectfulWhenRun.get();
-        return effects.isImpure(target) || CallGraph.implementations(target).anyMatch(whenRun::contains);
+        return effects.isImpure(target) || overrides.of(target).stream().anyMatch(whenRun::contains);
     }
 
     /**

@@ -93,7 +93,7 @@ public final class FeatureSliceCheck {
             Crossing example = crossings.stream()
                     .filter(crossing -> crossing.originSlice().name().equals(component.first())
                             && component.contains(crossing.targetSlice().name()))
-                    .min(Comparator.comparingInt(Crossing::line))
+                    .min(Comparator.comparingInt(Crossing::line).thenComparing(crossing -> crossing.origin().getName()))
                     .orElseThrow();
             return classes.violation(RULE, example.origin(), example.line(),
                     "slices " + joined(component) + " depend on each other in a cycle",

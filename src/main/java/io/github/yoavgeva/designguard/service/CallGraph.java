@@ -4,6 +4,8 @@ import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -30,18 +32,41 @@ final class CallGraph {
     static Set<String> reaching(List<JavaCodeUnit> units, Function<JavaCodeUnit, Set<String>> calleesOf,
             Predicate<JavaCodeUnit> hasItself) {
         Map<String, Set<String>> callees = units.stream().collect(Collectors.toMap(JavaCodeUnit::getFullName,
-                calleesOf, (first, second) -> first));
-        Set<String> reached = units.stream().filter(hasItself).map(JavaCodeUnit::getFullName)
-                .collect(Collectors.toCollection(HashSet::new));
-        boolean changed = true;
-        while (changed) {
-            List<String> callers = callees.entrySet().stream()
-                    .filter(entry -> !reached.contains(entry.getKey()) && entry.getValue().stream().anyMatch(reached::contains))
-                    .map(Map.Entry::getKey)
-                    .toList();
-            changed = reached.addAll(callers);
+                calleesOf, CallGraph::union));
+        return spread(callees, units.stream().filter(hasItself).map(JavaCodeUnit::getFullName).collect(Collectors.toSet()));
+    }
+
+    /**
+     * The seeds, plus every caller of a name already reached, until none is added. Each call is followed once, from
+     * callee to caller, so the time grows with the number of calls, however deep the chains.
+     *
+     * @param callees each caller's callees, by full name
+     * @param seeds   the names that have the property themselves
+     * @return the names with the property
+     */
+    static Set<String> spread(Map<String, Set<String>> callees, Set<String> seeds) {
+        Map<String, List<String>> callers = callees.entrySet().stream()
+                .flatMap(entry -> entry.getValue().stream().map(callee -> Map.entry(callee, entry.getKey())))
+                .collect(Collectors.groupingBy(Map.Entry::getKey,
+                        Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+        Set<String> reached = new HashSet<>(seeds);
+        Deque<String> pending = new ArrayDeque<>(seeds);
+        while (!pending.isEmpty()) {
+            for (String caller : callers.getOrDefault(pending.pop(), List.of())) {
+                if (reached.add(caller)) {
+                    pending.push(caller);
+                }
+            }
         }
         return Set.copyOf(reached);
+    }
+
+    /**
+     * Both units' callees: units can share a full name, as a covariant override and the bridge method the compiler
+     * adds for it do, and a call by that name may run either.
+     */
+    private static Set<String> union(Set<String> first, Set<String> second) {
+        return Stream.concat(first.stream(), second.stream()).collect(Collectors.toSet());
     }
 
     /** The project code units the accesses may run, as {@code dispatch} resolves each target. */
@@ -52,16 +77,6 @@ final class CallGraph {
                 .filter(target -> classes.isProject(target.getOwner()))
                 .flatMap(dispatch)
                 .collect(Collectors.toSet());
-    }
-
-    /** The target itself, plus every override in a project subclass: a call may dispatch to any of them. */
-    static Stream<String> implementations(CodeUnitAccessTarget target) {
-        Stream<String> overrides = target.getOwner().getAllSubclasses().stream()
-                .flatMap(subclass -> subclass.getMethods().stream())
-                .filter(method -> method.getName().equals(target.getName())
-                        && method.getRawParameterTypes().equals(target.getRawParameterTypes()))
-                .map(JavaCodeUnit::getFullName);
-        return Stream.concat(Stream.of(target.getFullName()), overrides);
     }
 
     /** Every method, constructor and static initializer of the classes. */

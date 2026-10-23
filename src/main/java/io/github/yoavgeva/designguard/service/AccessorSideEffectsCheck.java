@@ -56,13 +56,13 @@ public final class AccessorSideEffectsCheck {
                 && !modifiers.contains(JavaModifier.STATIC) && !modifiers.contains(JavaModifier.SYNTHETIC);
     }
 
-    /** The first assignment to a field of the class that isn't lazy initialization. */
+    /** The first assignment, by line and then by field, to a field of the class that isn't lazy initialization. */
     private static Optional<JavaFieldAccess> firstChange(ProjectClasses classes, JavaClass type, JavaMethod method) {
         Bytecode.FieldChanges changes = classes.bytecode().fieldChangesIn(method);
         return method.getFieldAccesses().stream()
                 .filter(access -> access.getAccessType() == JavaFieldAccess.AccessType.SET
                         && access.getTargetOwner().equals(type) && changes.writtenOnThis().contains(access.getName())
                         && !changes.nullGuarded().contains(access.getName()))
-                .min(Comparator.comparingInt(JavaAccess::getLineNumber));
+                .min(Comparator.<JavaFieldAccess>comparingInt(JavaAccess::getLineNumber).thenComparing(JavaFieldAccess::getName));
     }
 }

@@ -253,6 +253,15 @@ implementation. Everything else is a **value**.
 | | `testsUseTheirSubject()` | `OrderServiceTest` never using `OrderService`, or only mocking it |
 | | `testsDontMockValues()` | mocks of records, enums, other values, and interfaces whose implementations are all values |
 
+## Speed and repeatability
+
+A guard reads the classes and sources once and shares them between its rules, so keep it in a `static final` field.
+All rules together take about 4 s on Guava (2,000 classes, 630 sources) and about 14 s on Hibernate ORM's core (6,900
+classes, 5,200 sources), using up to 4 GB of memory.
+
+Every rule reports the same violations, in the same order and with the same wording, each time it reads the same
+code, so frozen records and CI results don't flap between runs.
+
 ## Use it alongside
 
 designguard doesn't repeat what these do well:

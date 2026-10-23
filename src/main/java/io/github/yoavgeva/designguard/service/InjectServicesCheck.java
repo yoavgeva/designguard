@@ -2,10 +2,12 @@ package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
@@ -77,7 +79,7 @@ public final class InjectServicesCheck {
         return dependent.getConstructorCallsFromSelf().stream()
                 .filter(call -> call.getTargetOwner().equals(creation.target()) && call.getLineNumber() == creation.line())
                 .map(JavaAccess::getOrigin)
-                .findFirst()
+                .min(Comparator.comparing(JavaCodeUnit::getFullName))
                 .map(origin -> classes.selected(filter, origin))
                 .orElse(true);
     }
@@ -88,7 +90,8 @@ public final class InjectServicesCheck {
                 .filter(call -> classes.selected(filter, call.getOrigin()))
                 .filter(call -> isForeignService(classes, serviceLike, dependent, call.getTargetOwner()))
                 .filter(InjectServicesCheck::returnsItsOwnerStatically)
-                .collect(Collectors.toMap(JavaMethodCall::getName, call -> call, (first, second) -> first,
+                .collect(Collectors.toMap(call -> call.getTarget().getFullName(), call -> call,
+                        (first, second) -> first.getLineNumber() <= second.getLineNumber() ? first : second,
                         LinkedHashMap::new))
                 .values().stream()
                 .map(call -> {

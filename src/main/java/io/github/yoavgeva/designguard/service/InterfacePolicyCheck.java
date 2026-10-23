@@ -2,11 +2,14 @@ package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
+import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.domain.JavaMember;
+import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.InterfacePolicy;
 import io.github.yoavgeva.designguard.model.Violation;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -107,14 +110,17 @@ public final class InterfacePolicyCheck {
                 .identifiedAs(ProjectClasses.nameOf(dependent) + " depends on concrete " + targetName));
     }
 
+    /** Where the class uses other types: its fields, then its constructors, then its methods, each kind by name. */
     private static Stream<Usage> usages(JavaClass dependent) {
         Stream<Usage> fields = dependent.getFields().stream()
+                .sorted(Comparator.comparing(JavaField::getName))
                 .filter(field -> !field.getModifiers().contains(JavaModifier.SYNTHETIC))
                 .flatMap(field -> field.getAllInvolvedRawTypes().stream()
                         .map(type -> new Usage(type, "field " + field.getName(), 0, field)));
         Stream<Usage> constructors = dependent.getConstructors().stream()
                 .flatMap(constructor -> parameterUsages(constructor, "constructor"));
         Stream<Usage> methods = dependent.getMethods().stream()
+                .sorted(Comparator.comparing(JavaMethod::getName))
                 .filter(method -> !method.getModifiers().contains(JavaModifier.SYNTHETIC)
                         && !method.getModifiers().contains(JavaModifier.BRIDGE))
                 .flatMap(method -> parameterUsages(method, "method " + method.getName()));
