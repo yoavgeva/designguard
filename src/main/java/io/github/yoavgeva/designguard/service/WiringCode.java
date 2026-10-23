@@ -45,6 +45,6 @@ final class WiringCode {
         return "main".equals(method.getName())
                 && method.getModifiers().contains(JavaModifier.STATIC)
                 && method.getRawParameterTypes().size() == 1
-                && method.getRawParameterTypes().getFirst().isEquivalentTo(String[].class);
+                && method.getRawParameterTypes().get(0).isEquivalentTo(String[].class);
     }
 }

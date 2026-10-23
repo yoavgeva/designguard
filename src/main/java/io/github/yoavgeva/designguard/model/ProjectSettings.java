@@ -3,6 +3,7 @@ package io.github.yoavgeva.designguard.model;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Where a project's code lives and how designguard classifies it.
@@ -13,20 +14,26 @@ import java.util.stream.Stream;
  * @param classDirectories directories of compiled classes; empty means "import the packages from the classpath"
  * @param wiringPackages   ArchUnit package patterns of wiring code, which may create and hold anything
  * @param impurePackages   extra ArchUnit package patterns whose use makes a class service-like, e.g. SDK clients
+ * @param javaRelease      the Java version the code targets; null means "read it from the class files"
  */
 public record ProjectSettings(
         List<String> packages, List<Path> sourceRoots, List<Path> testSourceRoots, List<Path> classDirectories,
-        List<String> wiringPackages, List<String> impurePackages) {
+        List<String> wiringPackages, List<String> impurePackages, @Nullable Integer javaRelease) {
+
+    private static final int OLDEST_RELEASE = 8;
 
     /**
      * Copies all lists.
      *
      * @throws NullPointerException     if any list or element is null
-     * @throws IllegalArgumentException if no package is given
+     * @throws IllegalArgumentException if no package is given, or the Java version is below 8
      */
     public ProjectSettings {
         if (packages.isEmpty()) {
             throw new IllegalArgumentException("pass at least one package to check, e.g. new DesignGuard(\"com.shop\")");
+        }
+        if (javaRelease != null && javaRelease < OLDEST_RELEASE) {
+            throw new IllegalArgumentException("forJava needs Java " + OLDEST_RELEASE + " or later, was " + javaRelease);
         }
         packages = List.copyOf(packages);
         sourceRoots = List.copyOf(sourceRoots);
@@ -44,7 +51,7 @@ public record ProjectSettings(
      */
     public static ProjectSettings forPackages(List<String> packages) {
         return new ProjectSettings(packages, List.of(Path.of("src", "main", "java")),
-                List.of(Path.of("src", "test", "java")), List.of(), List.of(), List.of());
+                List.of(Path.of("src", "test", "java")), List.of(), List.of(), List.of(), null);
     }
 
     /**
@@ -54,7 +61,8 @@ public record ProjectSettings(
      * @return new settings
      */
     public ProjectSettings withSourceRoots(List<Path> roots) {
-        return new ProjectSettings(packages, roots, testSourceRoots, classDirectories, wiringPackages, impurePackages);
+        return new ProjectSettings(packages, roots, testSourceRoots, classDirectories, wiringPackages, impurePackages,
+                javaRelease);
     }
 
     /**
@@ -64,7 +72,8 @@ public record ProjectSettings(
      * @return new settings
      */
     public ProjectSettings withTestSourceRoots(List<Path> roots) {
-        return new ProjectSettings(packages, sourceRoots, roots, classDirectories, wiringPackages, impurePackages);
+        return new ProjectSettings(packages, sourceRoots, roots, classDirectories, wiringPackages, impurePackages,
+                javaRelease);
     }
 
     /**
@@ -74,7 +83,8 @@ public record ProjectSettings(
      * @return new settings
      */
     public ProjectSettings withClassDirectories(List<Path> directories) {
-        return new ProjectSettings(packages, sourceRoots, testSourceRoots, directories, wiringPackages, impurePackages);
+        return new ProjectSettings(packages, sourceRoots, testSourceRoots, directories, wiringPackages, impurePackages,
+                javaRelease);
     }
 
     /**
@@ -85,7 +95,7 @@ public record ProjectSettings(
      */
     public ProjectSettings withWiringPackages(List<String> patterns) {
         return new ProjectSettings(packages, sourceRoots, testSourceRoots, classDirectories,
-                concat(wiringPackages, patterns), impurePackages);
+                concat(wiringPackages, patterns), impurePackages, javaRelease);
     }
 
     /**
@@ -96,7 +106,18 @@ public record ProjectSettings(
      */
     public ProjectSettings withImpurePackages(List<String> patterns) {
         return new ProjectSettings(packages, sourceRoots, testSourceRoots, classDirectories, wiringPackages,
-                concat(impurePackages, patterns));
+                concat(impurePackages, patterns), javaRelease);
+    }
+
+    /**
+     * Sets the Java version the code targets, instead of reading it from the class files.
+     *
+     * @param release the Java version, e.g. 17
+     * @return new settings
+     */
+    public ProjectSettings withJavaRelease(int release) {
+        return new ProjectSettings(packages, sourceRoots, testSourceRoots, classDirectories, wiringPackages,
+                impurePackages, release);
     }
 
     private static List<String> concat(List<String> first, List<String> second) {

@@ -10,6 +10,9 @@ import java.util.List;
 /** The types the type-dispatch tests branch on: a sealed hierarchy, an open one, and an enum. */
 final class DispatchFixture {
 
+    /** The first Java version with every feature the check may suggest. */
+    private static final int JAVA_21 = 21;
+
     private DispatchFixture() {
     }
 
@@ -40,6 +43,7 @@ final class DispatchFixture {
      * @return the violations
      */
     static List<Violation> violations(Path root, TypeDispatchPolicy policy, int maxPlacesPerType) {
-        return new TypeDispatchCheck(policy, maxPlacesPerType).check(SourceReader.read(List.of(root)), ClassFilter.ALL);
+        return new TypeDispatchCheck(policy, maxPlacesPerType, JAVA_21)
+                .check(SourceReader.read(List.of(root)), ClassFilter.ALL);
     }
 }

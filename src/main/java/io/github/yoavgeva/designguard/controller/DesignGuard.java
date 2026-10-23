@@ -94,6 +94,18 @@ public final class DesignGuard {
     }
 
     /**
+     * Sets the Java version the checked code targets, instead of reading it from the class files. Rules that need a
+     * newer Java fail with an explanation, and fixes only suggest features that version has.
+     *
+     * @param release the Java version, e.g. 17
+     * @return a new guard
+     * @throws IllegalArgumentException if the version is below 8
+     */
+    public DesignGuard forJava(int release) {
+        return new DesignGuard(settings.withJavaRelease(release));
+    }
+
+    /**
      * Architecture presets: layered, MVC, hexagonal, onion, package by feature.
      *
      * @return the architecture rules

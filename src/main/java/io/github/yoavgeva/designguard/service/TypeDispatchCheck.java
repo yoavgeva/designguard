@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.service;
 
 import io.github.yoavgeva.designguard.model.ClassFilter;
+import io.github.yoavgeva.designguard.model.JavaFeature;
 import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
@@ -21,16 +22,19 @@ public final class TypeDispatchCheck {
 
     private final TypeDispatchPolicy policy;
     private final int maxPlacesPerType;
+    private final int javaRelease;
 
     /**
      * Configures the check.
      *
      * @param policy           whether branching on subtypes is allowed only over sealed types
      * @param maxPlacesPerType how many unchecked branches on one type are allowed
+     * @param javaRelease      the Java version the code targets, so fixes only suggest what it has
      */
-    public TypeDispatchCheck(TypeDispatchPolicy policy, int maxPlacesPerType) {
+    public TypeDispatchCheck(TypeDispatchPolicy policy, int maxPlacesPerType, int javaRelease) {
         this.policy = Objects.requireNonNull(policy, "policy");
         this.maxPlacesPerType = maxPlacesPerType;
+        this.javaRelease = javaRelease;
     }
 
     /**
@@ -70,12 +74,14 @@ public final class TypeDispatchCheck {
         }
         String name = site.type().simpleName();
         String construct = site.kind() == DispatchSite.Kind.TYPE_SWITCH ? "switch" : "instanceof chain";
+        boolean canSwitchOnTypes = JavaFeature.SWITCH_ON_TYPES.isAvailableIn(javaRelease);
         if (!site.type().isSealed()) {
+            String seal = canSwitchOnTypes ? "make " + name + " sealed and switch over it" : "make " + name + " sealed";
             return violation(site, construct + " on the subtypes of " + name
                             + ", which isn't sealed, so a new subtype won't be caught",
-                    "make " + name + " sealed and switch over it, or move the varying behaviour into " + name);
+                    seal + ", or move the varying behaviour into " + name);
         }
-        if (site.kind() == DispatchSite.Kind.INSTANCEOF_CHAIN) {
+        if (site.kind() == DispatchSite.Kind.INSTANCEOF_CHAIN && canSwitchOnTypes) {
             return violation(site, "instanceof chain on sealed " + name
                             + ": the compiler can't check that it covers every subtype",
                     "use a switch over " + name + " without a default branch");
@@ -94,11 +100,13 @@ public final class TypeDispatchCheck {
 
     private Violation tooManyPlaces(DeclaredType type, List<DispatchSite> sites) {
         String places = sites.stream().map(DispatchSite::location).sorted().collect(Collectors.joining(", "));
+        JavaFeature exhaustiveSwitch = type.isEnum() ? JavaFeature.SWITCH_EXPRESSIONS : JavaFeature.SWITCH_ON_TYPES;
+        String orSwitch = exhaustiveSwitch.isAvailableIn(javaRelease)
+                ? ", or switch over it exhaustively without a default branch" : "";
         return Scopes.violation(RULE, type.file(), type.declaration().getName(),
                 type.simpleName() + " is branched on in " + sites.size() + " places the compiler can't check (max "
                         + maxPlacesPerType + "): " + places,
-                "move the varying behaviour into " + type.simpleName()
-                        + ", or switch over it exhaustively without a default branch");
+                "move the varying behaviour into " + type.simpleName() + orSwitch);
     }
 
     private static Optional<Violation> violation(DispatchSite site, String message, String fix) {

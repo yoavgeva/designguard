@@ -14,9 +14,14 @@ concurrency:
 
 jobs:
   verify:
-    name: mvn verify
+    name: mvn verify (Java ${{ matrix.java }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # designguard runs on Java 17 and later: test on every LTS from there.
+        java: [17, 21, 25]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -29,5 +34,11 @@ jobs:
           key: maven-${{ runner.os }}-${{ hashFiles('pom.xml') }}
           restore-keys: maven-${{ runner.os }}-
 
-      # Enforcer, -Xlint:all, tests (ArchUnit and designguard on itself included), PMD and CPD.
-      - run: mvn -B -ntp verify
+      - name: Install the JVM to test on
+        run: |
+          mise install java@temurin-${{ matrix.java }}
+          echo "TEST_JVM=$(mise where java@temurin-${{ matrix.java }})/bin/java" >> "$GITHUB_ENV"
+
+      # Builds with Java 25 for Java 17 (--release 17), then runs the tests on the matrix JVM. Also runs the
+      # enforcer, -Xlint:all, ArchUnit, designguard on itself, PMD and CPD.
+      - run: mvn -B -ntp verify -Djvm="$TEST_JVM"

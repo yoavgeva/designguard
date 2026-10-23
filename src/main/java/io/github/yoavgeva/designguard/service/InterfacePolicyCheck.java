@@ -42,13 +42,16 @@ public final class InterfacePolicyCheck {
      * @param slicePattern an ArchUnit pattern whose first capture group names the slice, e.g. {@code com.shop.(*)..}
      */
     public InterfacePolicyCheck(InterfacePolicy policy, String slicePattern) {
-        Slices slices = Slices.matching(Objects.requireNonNull(slicePattern, "slicePattern"));
-        this(policy, checkedPackages -> slices);
+        this(policy, always(Slices.matching(Objects.requireNonNull(slicePattern, "slicePattern"))));
     }
 
     private InterfacePolicyCheck(InterfacePolicy policy, Function<List<String>, Slices> slicing) {
         this.policy = Objects.requireNonNull(policy, "policy");
         this.slicing = slicing;
+    }
+
+    private static Function<List<String>, Slices> always(Slices slices) {
+        return checkedPackages -> slices;
     }
 
     /**

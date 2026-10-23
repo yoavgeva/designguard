@@ -60,7 +60,7 @@ class ArchitectureRulesTest {
 
         assertThat(guard.architecture().mvc().evaluate()).extracting(Violation::message).containsExactly(
                 "CartView (layer View) depends on CartService (layer Service), which View may not use");
-        assertThat(guard.architecture().mvc().evaluate().getFirst().fix())
+        assertThat(guard.architecture().mvc().evaluate().get(0).fix())
                 .isEqualTo("go through a layer View may use: Model");
     }
 

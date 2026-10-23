@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaClass;
+import io.github.yoavgeva.designguard.model.JavaFeature;
 import java.util.List;
 import java.util.Set;
 
@@ -77,10 +78,13 @@ public final class FunctionalCoreChecks {
      * Forbids starting threads by hand: {@code new Thread(...)}, {@code Thread.startVirtualThread(...)} and
      * {@code Thread.Builder.start/unstarted}.
      *
+     * @param javaRelease the Java version the code targets: virtual threads are suggested from Java 21
      * @return the check
      */
-    public static ForbiddenCallsCheck rawThreads() {
-        String fix = "submit the work to an injected ExecutorService, e.g. one from Executors.newVirtualThreadPerTaskExecutor()";
+    public static ForbiddenCallsCheck rawThreads(int javaRelease) {
+        String executor = JavaFeature.VIRTUAL_THREADS.isAvailableIn(javaRelease)
+                ? "Executors.newVirtualThreadPerTaskExecutor()" : "Executors.newFixedThreadPool(n)";
+        String fix = "submit the work to an injected ExecutorService, e.g. one from " + executor;
         Set<String> builders = Set.of("java.lang.Thread$Builder", "java.lang.Thread$Builder$OfPlatform",
                 "java.lang.Thread$Builder$OfVirtual");
         return new ForbiddenCallsCheck("no-raw-threads", "starts a thread directly", List.of(

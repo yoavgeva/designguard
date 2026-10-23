@@ -120,7 +120,7 @@ public final class FeatureSliceCheck {
 
     private static String joined(Set<String> slices) {
         List<String> names = List.copyOf(slices);
-        return String.join(", ", names.subList(0, names.size() - 1)) + " and " + names.getLast();
+        return String.join(", ", names.subList(0, names.size() - 1)) + " and " + names.get(names.size() - 1);
     }
 
     private static Optional<Crossing> crossing(List<String> prefixes, Dependency dependency) {
