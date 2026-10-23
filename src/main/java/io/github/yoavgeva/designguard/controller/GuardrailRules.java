@@ -3,6 +3,7 @@ package io.github.yoavgeva.designguard.controller;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.MeaningfulTestsCheck;
+import io.github.yoavgeva.designguard.service.MockedValuesCheck;
 import io.github.yoavgeva.designguard.service.ServiceTestsCheck;
 import io.github.yoavgeva.designguard.service.StubCheck;
 import io.github.yoavgeva.designguard.service.UnusedPublicCodeCheck;
@@ -66,6 +67,16 @@ public final class GuardrailRules {
      */
     public BasicRule serviceLikeClassesHaveTests() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ServiceTestsCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails when a test mocks a value: a record, an enum, another class that isn't service-like, or an interface whose
+     * implementations all are values. Tests should create real values and mock only service-like types.
+     *
+     * @return the rule
+     */
+    public BasicRule testsDontMockValues() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new MockedValuesCheck().check(codeBase, filter));
     }
 
     /**
