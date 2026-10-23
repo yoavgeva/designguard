@@ -2,6 +2,7 @@ package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import java.util.HashSet;
 import java.util.List;
@@ -20,6 +21,7 @@ final class ServiceLikeClasses {
     private final Effects effects;
     private final Set<String> effectfulNames;
     private final Set<String> effectfulWhenRun;
+    private final Set<String> ownEffectsWhenRun;
     private final Set<String> effectfulOnTheirOwnNames;
     private final Set<String> serviceLikeNames;
 
@@ -29,6 +31,7 @@ final class ServiceLikeClasses {
         this.effectfulNames = Set.copyOf(withAbstractions(candidates,
                 CallGraph.ownersOf(candidates, effects.effectfulCodeUnits(classes, candidates))));
         this.effectfulWhenRun = effects.effectfulWhenRun(classes, candidates);
+        this.ownEffectsWhenRun = effects.ownEffectsWhenRun(classes, candidates);
         this.effectfulOnTheirOwnNames = Set.copyOf(effects.effectfulOnTheirOwn(classes, candidates));
         this.serviceLikeNames = Set.copyOf(serviceLike(candidates));
     }
@@ -57,6 +60,14 @@ final class ServiceLikeClasses {
      */
     boolean runsEffects(CodeUnitAccessTarget target) {
         return effects.isImpure(target) || CallGraph.implementations(target).anyMatch(effectfulWhenRun::contains);
+    }
+
+    /**
+     * Whether running the method touches the outside world through calls it makes itself, not through implementations
+     * it is given or lambdas it creates.
+     */
+    boolean hasOwnEffects(JavaCodeUnit unit) {
+        return ownEffectsWhenRun.contains(unit.getFullName());
     }
 
     static boolean canBeServiceLike(JavaClass javaClass) {

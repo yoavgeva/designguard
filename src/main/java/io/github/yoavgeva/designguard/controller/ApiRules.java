@@ -3,6 +3,7 @@ package io.github.yoavgeva.designguard.controller;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.CheckedExceptionCheck;
+import io.github.yoavgeva.designguard.service.EffectfulStaticsCheck;
 import io.github.yoavgeva.designguard.service.FlagArgumentCheck;
 import io.github.yoavgeva.designguard.service.MinimalVisibilityCheck;
 import io.github.yoavgeva.designguard.service.NullMarkedCheck;
@@ -56,6 +57,17 @@ public final class ApiRules {
      */
     public BasicRule noCheckedExceptions() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new CheckedExceptionCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on static methods outside wiring code that touch the outside world, such as I/O, the clock or the
+     * environment, when other classes call them: those callers can't replace the effect in tests. Callers that
+     * implement a project interface or abstract class are exempt, since their own callers can replace them.
+     *
+     * @return the rule
+     */
+    public BasicRule noEffectfulStaticMethods() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new EffectfulStaticsCheck().check(codeBase, filter));
     }
 
     /**

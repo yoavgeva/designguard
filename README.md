@@ -147,6 +147,7 @@ implementation. Everything else is a **value**.
 | | `packagesAreNullMarked()` | packages without JSpecify's `@NullMarked` |
 | | `optionalUsage()` | `Optional` fields and parameters, `return null` from an `Optional` method |
 | | `noCheckedExceptions()` | checked exception classes and declarations |
+| | `noEffectfulStaticMethods()` | static methods doing I/O, reading the clock or the environment, that other classes call and so can't replace in tests |
 | | `minimalVisibility()` | public types only their own package uses (applications) |
 | `guardrails()` | `noStubs()` | `TODO`/`FIXME`, `UnsupportedOperationException` placeholders, empty methods |
 | | `noSuppressions().allowing(...)` | `@SuppressWarnings`, `NOPMD`, `NOSONAR`, `noinspection`, `CHECKSTYLE:OFF` |

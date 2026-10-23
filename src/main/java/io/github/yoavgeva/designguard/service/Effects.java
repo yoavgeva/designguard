@@ -71,6 +71,18 @@ final class Effects {
     }
 
     /**
+     * Full names of the methods and constructors whose own calls touch the outside world when they run: calls they
+     * make themselves, followed only to the methods they name. Lambdas they create run later, and effects of
+     * implementations they are given, behind interfaces or abstract methods, aren't theirs.
+     */
+    Set<String> ownEffectsWhenRun(ProjectClasses classes, List<JavaClass> candidates) {
+        Bytecode bytecode = classes.bytecode();
+        return CallGraph.reaching(CallGraph.unitsOf(candidates),
+                unit -> CallGraph.projectCallees(classes, bytecode.callsMadeBy(unit), target -> Stream.of(target.getFullName())),
+                unit -> bytecode.callsMadeBy(unit).anyMatch(call -> isImpure(call.getTarget())));
+    }
+
+    /**
      * Names of the classes whose own code is effectful: a call counts only through the method it names, not through
      * overrides. Effects of an implementation the class is given, behind an interface or abstract method, don't count.
      */
