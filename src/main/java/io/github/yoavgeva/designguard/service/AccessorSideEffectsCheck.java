@@ -38,7 +38,7 @@ public final class AccessorSideEffectsCheck {
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && !wiring.contains(type))
                 .flatMap(type -> type.getMethods().stream()
-                        .filter(AccessorSideEffectsCheck::isAccessor)
+                        .filter(method -> isAccessor(method) && classes.selected(filter, method))
                         .flatMap(method -> firstChange(classes, type, method).stream()
                                 .map(change -> classes.violation(RULE, type, change.getLineNumber(),
                                         ProjectClasses.nameOf(type) + "." + method.getName() + "() changes the field '"

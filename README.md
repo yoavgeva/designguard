@@ -46,9 +46,10 @@ class DesignTest {
 }
 ```
 
-Every rule takes `that().resideInAPackage(...)`, `excluding(...)` and `ignoring(annotatedWith(...))` (from
-`AnnotationName`), with ArchUnit's
-package syntax (`..domain..`). `check()` throws an `AssertionError` listing every violation; `evaluate()` returns them.
+Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(annotatedWith(...))` (from
+`AnnotationName`) and `frozen(...)` (see below). `ignoring` skips annotated classes and the code in them, and annotated
+fields, methods and constructors. Package patterns use ArchUnit's package syntax (`..domain..`). `check()` throws an
+`AssertionError` listing every violation; `evaluate()` returns them.
 
 `new DesignGuard("com.shop")` reads sources from `src/main/java` and `src/test/java`, and classes from the classpath.
 To change anything, configure it with a builder:

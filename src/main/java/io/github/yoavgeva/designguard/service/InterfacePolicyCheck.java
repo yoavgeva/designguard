@@ -2,6 +2,7 @@ package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
+import com.tngtech.archunit.core.domain.JavaMember;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.InterfacePolicy;
@@ -67,13 +68,14 @@ public final class InterfacePolicyCheck {
         WiringCode wiring = code.wiring();
         return context.classes().stream()
                 .filter(dependent -> context.classes().selected(filter, dependent) && !wiring.contains(dependent))
-                .flatMap(dependent -> violations(context, dependent))
+                .flatMap(dependent -> violations(context, filter, dependent))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
 
-    private Stream<Violation> violations(Context context, JavaClass dependent) {
+    private Stream<Violation> violations(Context context, ClassFilter filter, JavaClass dependent) {
         Map<JavaClass, List<Usage>> usagesByTarget = usages(dependent)
+                .filter(usage -> context.classes().selected(filter, usage.origin()))
                 .filter(usage -> context.classes().isProject(usage.target()))
                 .filter(usage -> !Hierarchy.isSelfOrNested(dependent, usage.target()) && Hierarchy.isConcrete(usage.target()))
                 .collect(Collectors.groupingBy(Usage::target, LinkedHashMap::new, Collectors.toList()));
@@ -107,7 +109,7 @@ public final class InterfacePolicyCheck {
         Stream<Usage> fields = dependent.getFields().stream()
                 .filter(field -> !field.getModifiers().contains(JavaModifier.SYNTHETIC))
                 .flatMap(field -> field.getAllInvolvedRawTypes().stream()
-                        .map(type -> new Usage(type, "field " + field.getName(), 0)));
+                        .map(type -> new Usage(type, "field " + field.getName(), 0, field)));
         Stream<Usage> constructors = dependent.getConstructors().stream()
                 .flatMap(constructor -> parameterUsages(constructor, "constructor"));
         Stream<Usage> methods = dependent.getMethods().stream()
@@ -121,7 +123,7 @@ public final class InterfacePolicyCheck {
         int line = codeUnit.getSourceCodeLocation().getLineNumber();
         return codeUnit.getParameterTypes().stream()
                 .flatMap(type -> type.getAllInvolvedRawTypes().stream())
-                .map(type -> new Usage(type, member, line));
+                .map(type -> new Usage(type, member, line, codeUnit));
     }
 
     /** Everything the check needs about the project. */
@@ -129,6 +131,6 @@ public final class InterfacePolicyCheck {
     }
 
     /** One way a class uses another: through which member, at which line. */
-    private record Usage(JavaClass target, String member, int line) {
+    private record Usage(JavaClass target, String member, int line, JavaMember origin) {
     }
 }

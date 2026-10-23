@@ -32,7 +32,8 @@ public final class ValueImmutabilityCheck {
                 .flatMap(value -> value.getFields().stream()
                         .filter(field -> !field.getModifiers().contains(JavaModifier.STATIC)
                                 && !field.getModifiers().contains(JavaModifier.FINAL)
-                                && !field.getModifiers().contains(JavaModifier.SYNTHETIC))
+                                && !field.getModifiers().contains(JavaModifier.SYNTHETIC)
+                                && classes.selected(filter, field))
                         .map(field -> {
                             String name = ProjectClasses.nameOf(value);
                             return classes.violation(RULE, value, 0,
