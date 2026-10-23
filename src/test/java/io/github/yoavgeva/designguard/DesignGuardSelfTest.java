@@ -42,6 +42,7 @@ class DesignGuardSelfTest {
                 Arguments.of("optional only as a return type", GUARD.api().optionalUsage()),
                 Arguments.of("no effectful static methods", GUARD.api().noEffectfulStaticMethods()),
                 Arguments.of("typed APIs", GUARD.api().typedApis()),
+                Arguments.of("accessors change nothing", GUARD.api().accessorsChangeNothing()),
                 Arguments.of("no stubs", GUARD.guardrails().noStubs()),
                 Arguments.of("no suppressions", GUARD.guardrails().noSuppressions()),
                 Arguments.of("tests assert meaningfully", GUARD.guardrails().testsAssertMeaningfully()),

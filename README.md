@@ -151,6 +151,7 @@ implementation. Everything else is a **value**.
 | | `packagesAreNullMarked()` | packages without JSpecify's `@NullMarked` |
 | | `optionalUsage()` | `Optional` fields and parameters, `return null` from an `Optional` method |
 | | `noCheckedExceptions()` | checked exception classes and declarations |
+| | `accessorsChangeNothing()` | `get`/`is`/`has` methods that assign a field, apart from lazy initialization |
 | | `typedApis()` | public methods taking or returning `Object`, `Map<String, Object>` or JSON trees instead of records |
 | | `noEffectfulStaticMethods()` | static methods doing I/O, reading the clock or the environment, that other classes call and so can't replace in tests |
 | | `minimalVisibility()` | public types only their own package uses (applications) |

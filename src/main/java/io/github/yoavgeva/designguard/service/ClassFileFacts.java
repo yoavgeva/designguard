@@ -16,6 +16,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LineNumberNode;
 import org.objectweb.asm.tree.MethodInsnNode;
@@ -38,12 +39,14 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * @param namedClasses each class the constant pool names, at line 0: the class file doesn't say where
  * @param directCalls  for each method and constructor, by name and descriptor such as {@code <init>(I)V}, the
  *                     {@link #callKey(String, String, int) calls} it makes itself, not those in its lambdas
+ * @param nullChecks   for each method and constructor, by name and descriptor, the names of the fields it compares
+ *                     with {@code null}, as lazy initialization does
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
-        List<Reference> namedClasses, Map<String, Set<String>> directCalls) {
+        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> nullChecks) {
 
     /** For a class without a class file to read. */
-    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of());
+    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of());
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
@@ -57,6 +60,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         switchLabels = List.copyOf(switchLabels);
         namedClasses = List.copyOf(namedClasses);
         directCalls = Map.copyOf(directCalls);
+        nullChecks = Map.copyOf(nullChecks);
     }
 
     /**
@@ -73,6 +77,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         List<Reference> creations = new ArrayList<>();
         List<Reference> switchLabels = new ArrayList<>();
         List<Map.Entry<String, String>> directCalls = new ArrayList<>();
+        List<Map.Entry<String, String>> nullChecks = new ArrayList<>();
         for (MethodNode method : node.methods) {
             int line = 0;
             for (AbstractInsnNode instruction : method.instructions) {
@@ -82,12 +87,34 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                 creation(instruction, line).ifPresent(creations::add);
                 switchLabels(instruction, line).forEach(switchLabels::add);
                 directCall(method, instruction, line).ifPresent(directCalls::add);
+                nullCheck(method, instruction).ifPresent(nullChecks::add);
             }
         }
         int release = reader.readUnsignedShort(MAJOR_VERSION_OFFSET) - CLASS_FILE_VERSION_OFFSET;
-        return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
-                directCalls.stream().collect(Collectors.groupingBy(Map.Entry::getKey,
-                        Collectors.mapping(Map.Entry::getValue, Collectors.toSet()))));
+        return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader), byMethod(directCalls),
+                byMethod(nullChecks));
+    }
+
+    private static Map<String, Set<String>> byMethod(List<Map.Entry<String, String>> entries) {
+        return entries.stream().collect(Collectors.groupingBy(Map.Entry::getKey,
+                Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
+    }
+
+    /** A field the method reads and right away compares with {@code null}, keyed by the method. */
+    private static Optional<Map.Entry<String, String>> nullCheck(MethodNode method, AbstractInsnNode instruction) {
+        int opcode = instruction.getOpcode();
+        if (opcode != Opcodes.IFNULL && opcode != Opcodes.IFNONNULL) {
+            return Optional.empty();
+        }
+        AbstractInsnNode previous = instruction.getPrevious();
+        while (previous != null && previous.getOpcode() < 0) {
+            previous = previous.getPrevious();
+        }
+        if (previous instanceof FieldInsnNode field
+                && (field.getOpcode() == Opcodes.GETFIELD || field.getOpcode() == Opcodes.GETSTATIC)) {
+            return Optional.of(Map.entry(method.name + method.desc, field.name));
+        }
+        return Optional.empty();
     }
 
     /** The classes of the constant pool's class entries; a long or double takes two slots, the second one empty. */

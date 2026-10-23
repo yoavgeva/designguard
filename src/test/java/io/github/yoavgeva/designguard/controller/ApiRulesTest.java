@@ -167,6 +167,62 @@ class ApiRulesTest {
     }
 
     @Test
+    void accessorsChangeNoFields() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Counter", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Counter {
+                            private int count;
+                            private List<String> names;
+                            private boolean dirty;
+
+                            public int getNext() {
+                                return count++;
+                            }
+
+                            public List<String> getNames() {
+                                if (names == null) {
+                                    names = List.of("first");
+                                }
+                                return names;
+                            }
+
+                            public boolean isDirty() {
+                                boolean was = dirty;
+                                dirty = false;
+                                return was;
+                            }
+
+                            public boolean hasCount() {
+                                return count > 0;
+                            }
+
+                            public int getAndReset() {
+                                int was = count;
+                                count = 0;
+                                return was;
+                            }
+
+                            public void setCount(int count) {
+                                this.count = count;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.api().accessorsChangeNothing().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(
+                        tuple(11, "Counter.getNext() changes the field 'count'"),
+                        tuple(23, "Counter.isDirty() changes the field 'dirty'"));
+        assertThat(guard.api().accessorsChangeNothing().evaluate().get(0).fix()).isEqualTo("keep get, is and has"
+                + " methods free of side effects: move the change into a command method, or compute the value without"
+                + " storing it");
+    }
+
+    @Test
     void publicClassesUsedOnlyInTheirPackageShouldBePackagePrivate() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("OrderMapper", "package shop.orders;\n\npublic class OrderMapper {\n"

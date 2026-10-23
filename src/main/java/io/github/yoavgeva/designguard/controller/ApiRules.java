@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.controller;
 
 import io.github.yoavgeva.designguard.model.ClassFilter;
+import io.github.yoavgeva.designguard.service.AccessorSideEffectsCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.CheckedExceptionCheck;
 import io.github.yoavgeva.designguard.service.EffectfulStaticsCheck;
@@ -79,6 +80,16 @@ public final class ApiRules {
      */
     public BasicRule typedApis() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new UntypedApiCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on {@code get}, {@code is} and {@code has} methods that assign a field of their class: callers read
+     * accessors as queries. Lazy initialization and {@code getAnd...} methods are fine.
+     *
+     * @return the rule
+     */
+    public BasicRule accessorsChangeNothing() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new AccessorSideEffectsCheck().check(codeBase, filter));
     }
 
     /**
