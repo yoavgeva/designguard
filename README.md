@@ -127,6 +127,7 @@ implementation. Everything else is a **value**.
 | | `hexagonal().adapter(...)` | the domain using anything else; adapters using each other |
 | | `onion().adapter(...)` | rings depending outwards |
 | | `featureSlices()` | a feature using another's internals, or features in a cycle |
+| | `frameworksStayOutOf("..domain..")` | Spring, Jakarta EE, Hibernate, Jackson, Guice, Micronaut, Quarkus... types or annotations in the domain |
 | `dependencies()` | `interfacePolicy(PORTS / SERVICES / ALL)` | concrete dependencies where an interface is required |
 | | `injectServices()` | effectful classes created with `new`, or singletons reached statically, outside wiring code; a class whose effects happen only in implementations it is given doesn't count |
 | | `constructorsDoNoWork()` | constructors and static initializers that call I/O, the clock, an injected collaborator or other effectful code |

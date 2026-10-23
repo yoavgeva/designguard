@@ -22,6 +22,13 @@ public final class BoundaryCheck {
             "org.springframework.web", "org.springframework.transaction", "org.hibernate", "com.fasterxml.jackson",
             "org.apache.kafka", "software.amazon.awssdk", "com.mongodb", "redis.clients", "io.lettuce", "org.jooq");
     private static final Set<String> ENTITY_ANNOTATIONS = Set.of("Entity", "Embeddable", "MappedSuperclass");
+    private static final Set<String> FRAMEWORK_PACKAGES = Set.of("org.springframework", "jakarta.persistence",
+            "javax.persistence", "jakarta.servlet", "javax.servlet", "jakarta.ws.rs", "javax.ws.rs", "jakarta.ejb",
+            "javax.ejb", "jakarta.transaction", "javax.transaction", "jakarta.enterprise", "javax.enterprise",
+            "jakarta.inject", "javax.inject", "jakarta.validation", "javax.validation", "jakarta.json", "javax.json",
+            "jakarta.xml.bind", "javax.xml.bind", "org.hibernate", "com.fasterxml.jackson", "com.google.gson",
+            "com.google.inject", "dagger", "io.micronaut", "io.quarkus", "org.eclipse.microprofile", "io.vertx",
+            "io.dropwizard");
 
     private final String rule;
     private final List<String> guardedPackages;
@@ -65,6 +72,21 @@ public final class BoundaryCheck {
     }
 
     /**
+     * Keeps frameworks out of the guarded packages: Spring, Jakarta EE and its javax predecessors (persistence,
+     * servlets, REST, CDI, injection, validation, JSON binding), Hibernate, Jackson, Gson, Guice, Dagger, Micronaut,
+     * Quarkus, MicroProfile, Vert.x and Dropwizard, annotations included.
+     *
+     * @param domainPackages ArchUnit package patterns of the domain
+     * @return the check
+     */
+    public static BoundaryCheck frameworks(List<String> domainPackages) {
+        return new BoundaryCheck("frameworks-stay-out", domainPackages,
+                (code, target) -> inAny(FRAMEWORK_PACKAGES, target.getPackageName()),
+                "the framework type", "keep the domain plain Java: move the framework code to an adapter and map at the"
+                        + " boundary");
+    }
+
+    /**
      * Finds forbidden dependencies from guarded classes the filter selects.
      *
      * @param code   the code base
@@ -97,10 +119,13 @@ public final class BoundaryCheck {
 
     private static boolean isInfrastructureException(CodeBase code, JavaClass target) {
         String packageName = target.getPackageName();
-        boolean infrastructure = INFRASTRUCTURE.stream()
-                .anyMatch(prefix -> packageName.equals(prefix) || packageName.startsWith(prefix + "."))
+        boolean infrastructure = inAny(INFRASTRUCTURE, packageName)
                 || code.settings().impurePackages().stream()
                         .anyMatch(pattern -> PackageMatcher.of(pattern).matches(packageName));
         return infrastructure && target.isAssignableTo(Throwable.class);
+    }
+
+    private static boolean inAny(Set<String> prefixes, String packageName) {
+        return prefixes.stream().anyMatch(prefix -> packageName.equals(prefix) || packageName.startsWith(prefix + "."));
     }
 }

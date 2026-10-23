@@ -18,6 +18,7 @@ class DesignGuardSelfTest {
     static Stream<Arguments> rules() {
         return Stream.of(
                 Arguments.of("model-view-controller layers", GUARD.architecture().mvc()),
+                Arguments.of("no frameworks in the model", GUARD.architecture().frameworksStayOutOf("..model..")),
                 Arguments.of("clock is injected", GUARD.dependencies().clockIsInjected()),
                 Arguments.of("randomness is injected", GUARD.dependencies().randomnessIsInjected()),
                 Arguments.of("configuration is injected", GUARD.dependencies().configurationIsInjected()),
