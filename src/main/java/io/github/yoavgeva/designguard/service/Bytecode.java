@@ -84,6 +84,11 @@ final class Bytecode {
                         call.getTargetOwner().getName(), call.getName(), call.getLineNumber())));
     }
 
+    /** The fields a method or constructor compares with {@code null}, as lazy initialization does. */
+    Set<String> nullCheckedFieldsIn(JavaCodeUnit unit) {
+        return factsOf(unit.getOwner()).nullChecks().getOrDefault(unit.getName() + unit.getDescriptor(), Set.of());
+    }
+
     /** The oldest Java version the top-level classes were compiled for; empty if none was read. */
     OptionalInt oldestRelease() {
         return classes.stream()
