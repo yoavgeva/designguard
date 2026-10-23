@@ -153,6 +153,7 @@ implementation. Everything else is a **value**.
 | | `noSuppressions().allowing(...)` | `@SuppressWarnings`, `NOPMD`, `NOSONAR`, `noinspection`, `CHECKSTYLE:OFF` |
 | | `testsAssertMeaningfully()` | tests asserting nothing, on constants, or a value against itself |
 | | `noDisabledTests()` (`.allowingWithReason()`) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` |
+| | `testsDontMockValues()` | mocks of records, enums, other values, and interfaces whose implementations are all values |
 | | `serviceLikeClassesHaveTests()` | service-like classes with no `<Name>Test` |
 | | `noUnusedPublicCode()` | public types and methods nothing uses (applications) |
 
