@@ -88,7 +88,8 @@ public final class InterfacePolicyCheck {
         String dependentSlice = context.slices().sliceOf(dependent.getPackageName());
         String targetSlice = context.slices().sliceOf(target.getPackageName());
         boolean required = switch (policy) {
-            case PORTS -> serviceLike && !dependentSlice.equals(targetSlice);
+            case PORTS -> serviceLike && !dependentSlice.isEmpty() && !targetSlice.isEmpty()
+                    && !dependentSlice.equals(targetSlice);
             case SERVICES -> serviceLike;
             case ALL -> serviceLike || ServiceLikeClasses.canBeServiceLike(target) && !target.isEnum();
         };

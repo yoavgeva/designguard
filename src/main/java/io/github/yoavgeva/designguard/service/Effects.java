@@ -22,12 +22,13 @@ final class Effects {
             Set.of("java.io", "java.nio.file", "java.nio.channels", "java.net", "java.net.http", "java.sql", "javax.sql");
     private static final Set<String> IMPURE_TYPES = Set.of("java.time.Clock", "java.time.InstantSource",
             "java.util.Random", "java.security.SecureRandom", "java.util.concurrent.ThreadLocalRandom",
-            "java.util.random.RandomGenerator", "java.lang.Thread", "java.lang.ProcessBuilder", "java.lang.Runtime",
+            "java.util.random.RandomGenerator", "java.lang.ProcessBuilder", "java.lang.Runtime",
             "java.lang.IO");
     private static final Set<String> IMPURE_CALLS = Set.of("java.lang.System.currentTimeMillis",
             "java.lang.System.nanoTime", "java.lang.System.getenv", "java.lang.System.getProperty",
             "java.lang.Math.random", "java.util.UUID.randomUUID");
     private static final Map<String, Set<String>> IO_ON_VALUE_TYPES = Map.of(
+            "java.lang.Thread", Set.of("<init>", "start", "sleep", "join"),
             "java.nio.file.Path", Set.of("toRealPath", "register"),
             "java.nio.file.Paths", Set.of(),
             "java.net.URI", Set.of(),

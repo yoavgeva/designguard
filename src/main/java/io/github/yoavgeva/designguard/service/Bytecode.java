@@ -85,9 +85,29 @@ final class Bytecode {
                 .orElseGet(calls::stream);
     }
 
-    /** The fields a method or constructor reads if it compares anything with {@code null}, as lazy initialization does. */
-    Set<String> nullGuardedReadsIn(JavaCodeUnit unit) {
-        return factsOf(unit.getOwner()).nullGuardedReads().getOrDefault(unit.getName() + unit.getDescriptor(), Set.of());
+    /**
+     * The fields an accessor writes on {@code this} or statically, and those it reads while comparing something with
+     * {@code null}, as lazy initialization does.
+     */
+    FieldChanges fieldChangesIn(JavaCodeUnit unit) {
+        ClassFileFacts unitFacts = factsOf(unit.getOwner());
+        String key = unit.getName() + unit.getDescriptor();
+        return new FieldChanges(unitFacts.writesOnThis().getOrDefault(key, Set.of()),
+                unitFacts.nullGuardedReads().getOrDefault(key, Set.of()));
+    }
+
+    /**
+     * What an accessor does to fields.
+     *
+     * @param writtenOnThis the fields it writes on {@code this} or statically
+     * @param nullGuarded   the fields it reads while comparing something with {@code null}
+     */
+    record FieldChanges(Set<String> writtenOnThis, Set<String> nullGuarded) {
+
+        FieldChanges {
+            writtenOnThis = Set.copyOf(writtenOnThis);
+            nullGuarded = Set.copyOf(nullGuarded);
+        }
     }
 
     /**

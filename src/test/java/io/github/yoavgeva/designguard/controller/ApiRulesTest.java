@@ -210,6 +210,13 @@ class ApiRulesTest {
                                 this.count = count;
                             }
 
+                            public Counter getCopy() {
+                                Counter copy = new Counter();
+                                copy.count = count;
+                                copy.dirty = dirty;
+                                return copy;
+                            }
+
                             private volatile String label;
 
                             public String getLabel() {
@@ -275,6 +282,15 @@ class ApiRulesTest {
                                     case "s" -> 1;
                                     case "m" -> 2;
                                     default -> 3;
+                                };
+                            }
+
+                            public static Delivery delivery(String text) {
+                                return switch (text) {
+                                    case "express" -> Delivery.EXPRESS;
+                                    case "pickup" -> Delivery.PICKUP;
+                                    case "standard" -> Delivery.STANDARD;
+                                    default -> throw new IllegalArgumentException(text);
                                 };
                             }
 

@@ -3,6 +3,7 @@ package io.github.yoavgeva.designguard.service;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.NameExpr;
+import com.github.javaparser.resolution.MethodAmbiguityException;
 import com.github.javaparser.resolution.UnsolvedSymbolException;
 import com.github.javaparser.resolution.declarations.ResolvedValueDeclaration;
 import com.github.javaparser.resolution.types.ResolvedType;
@@ -23,7 +24,8 @@ final class Resolution {
         try {
             ResolvedType type = expression.calculateResolvedType();
             return type.isReferenceType() ? Optional.of(type.asReferenceType().getQualifiedName()) : Optional.empty();
-        } catch (UnsolvedSymbolException | UnsupportedOperationException | IllegalStateException e) {
+        } catch (UnsolvedSymbolException | MethodAmbiguityException | UnsupportedOperationException | IllegalStateException
+                | IllegalArgumentException e) {
             return Optional.empty();
         }
     }
@@ -41,7 +43,8 @@ final class Resolution {
             return value.isEnumConstant()
                     ? Optional.of(value.asEnumConstant().getType().describe())
                     : Optional.empty();
-        } catch (UnsolvedSymbolException | UnsupportedOperationException | IllegalStateException e) {
+        } catch (UnsolvedSymbolException | MethodAmbiguityException | UnsupportedOperationException | IllegalStateException
+                | IllegalArgumentException e) {
             return Optional.empty();
         }
     }

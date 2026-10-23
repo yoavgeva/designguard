@@ -91,6 +91,28 @@ class MeaningfulTestsCheckTest {
     }
 
     @Test
+    void equalsTestsAndRepeatedCallsCanFail() {
+        assertThat(violations("""
+                package shop;
+
+                class RangeTest {
+                    @Test
+                    void testEquals() {
+                        Range range = new Range(1, 2);
+                        assertEquals(range, range);
+                        assertThat(range).isEqualTo(range);
+                    }
+
+                    @Test
+                    void hashesTheSameEachTime() {
+                        Range range = new Range(1, 2);
+                        assertEquals(range.hash(), range.hash());
+                    }
+                }
+                """)).isEmpty();
+    }
+
+    @Test
     void acceptsRuleChecksAndAwaitilityAsAssertions() {
         assertThat(violations("""
                 package shop;

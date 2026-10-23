@@ -8,6 +8,7 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.stmt.IfStmt;
+import com.github.javaparser.ast.stmt.Statement;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
@@ -44,7 +45,7 @@ public final class FlagArgumentCheck {
 
     private static Stream<Violation> violations(ParsedFile file, MethodDeclaration method) {
         List<Expression> conditions = Stream.concat(
-                        method.findAll(IfStmt.class).stream().map(IfStmt::getCondition),
+                        method.findAll(IfStmt.class).stream().filter(statement -> !isGuard(statement)).map(IfStmt::getCondition),
                         method.findAll(ConditionalExpr.class).stream().map(ConditionalExpr::getCondition))
                 .toList();
         return method.getParameters().stream()
@@ -53,6 +54,15 @@ public final class FlagArgumentCheck {
                 .map(parameter -> Scopes.violation(RULE, file, method.getName(),
                         Scopes.describe(method) + " branches on its boolean parameter '" + parameter.getNameAsString() + "'",
                         "split it into one method per behaviour, so callers don't pass true or false"));
+    }
+
+    /** {@code if (!condition) throw ...;}: the boolean is the data a precondition checks, not a choice of behaviour. */
+    private static boolean isGuard(IfStmt statement) {
+        Statement then = statement.getThenStmt();
+        boolean onlyThrows = then.isThrowStmt()
+                || then.isBlockStmt() && then.asBlockStmt().getStatements().size() == 1
+                        && then.asBlockStmt().getStatement(0).isThrowStmt();
+        return onlyThrows && statement.getElseStmt().isEmpty();
     }
 
     private static boolean isBoolean(Parameter parameter) {

@@ -1,6 +1,8 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.EnumDeclaration;
+import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.SwitchExpr;
@@ -24,8 +26,9 @@ import java.util.stream.Stream;
 /**
  * Finds choices between strings that an enum models with type safety: a {@code switch} over three or more string
  * literals, or an {@code if}/{@code else if} chain comparing one value with three or more strings through
- * {@code equals}. A typo in a string compiles; a missing enum case doesn't. Converters, methods named {@code parse},
- * {@code from}, {@code valueOf}, {@code of} or {@code decode} that turn input strings into a type, are exempt.
+ * {@code equals}. A typo in a string compiles; a missing enum case doesn't. Converters, which turn input strings into
+ * a type, are exempt: methods named {@code parse}, {@code from}, {@code valueOf}, {@code of} or {@code decode}, and
+ * methods returning one of the project's enums.
  */
 public final class StringlyTypedChoicesCheck {
 
@@ -43,9 +46,13 @@ public final class StringlyTypedChoicesCheck {
      * @return violations ordered by file and line
      */
     public List<Violation> check(JavaSources sources, ClassFilter filter) {
+        Set<String> enums = sources.files().stream()
+                .flatMap(file -> file.unit().findAll(EnumDeclaration.class).stream())
+                .map(EnumDeclaration::getNameAsString)
+                .collect(Collectors.toSet());
         return sources.files().stream()
                 .flatMap(file -> Stream.concat(switches(file), chains(file))
-                        .filter(choice -> Scopes.selected(filter, file, choice.node()) && !inConverter(choice.node()))
+                        .filter(choice -> Scopes.selected(filter, file, choice.node()) && !inConverter(choice.node(), enums))
                         .map(choice -> choice.violation(file)))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
@@ -115,8 +122,12 @@ public final class StringlyTypedChoicesCheck {
         return selector instanceof NodeWithSimpleName<?> named ? named.getNameAsString() : selector.toString();
     }
 
-    private static boolean inConverter(Node node) {
-        return Scopes.enclosingCallable(node).filter(callable -> CONVERTER.matcher(callable.getNameAsString()).matches())
+    /** Whether the choice sits in a converter: a method named like one, or one returning a project enum. */
+    private static boolean inConverter(Node node, Set<String> enums) {
+        return Scopes.enclosingCallable(node)
+                .filter(callable -> CONVERTER.matcher(callable.getNameAsString()).matches()
+                        || callable instanceof MethodDeclaration method
+                                && enums.contains(method.getType().asString().replaceAll(".*\\.", "")))
                 .isPresent();
     }
 

@@ -77,6 +77,22 @@ class QueriesInLoopsRuleTest {
                                 }
                             }
 
+                            public long eachRepository(List<PriceRepository> repositories) {
+                                long total = 0;
+                                for (PriceRepository repository : repositories) {
+                                    total += repository.priceOf("book");
+                                }
+                                return total;
+                            }
+
+                            public long streamed(PriceRepository source, List<String> items) {
+                                long total = 0;
+                                for (String item : items) {
+                                    total += source.priceOf(item);
+                                }
+                                return total;
+                            }
+
                             public long one(String item) {
                                 return prices.priceOf(item);
                             }
