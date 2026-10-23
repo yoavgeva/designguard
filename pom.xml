@@ -21,6 +21,14 @@
     </license>
   </licenses>
 
+  <developers>
+    <developer>
+      <id>yoavgeva</id>
+      <name>Yoav Geva</name>
+      <url>https://github.com/yoavgeva</url>
+    </developer>
+  </developers>
+
   <scm>
     <url>https://github.com/yoavgeva/designguard</url>
     <connection>scm:git:https://github.com/yoavgeva/designguard.git</connection>
@@ -39,6 +47,10 @@
     <assertj.version>3.27.7</assertj.version>
     <jspecify.version>1.0.0</jspecify.version>
     <pmd.version>7.28.0</pmd.version>
+    <central-publishing.version>0.11.1</central-publishing.version>
+    <source-plugin.version>3.4.0</source-plugin.version>
+    <javadoc-plugin.version>3.12.0</javadoc-plugin.version>
+    <gpg-plugin.version>3.2.8</gpg-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -222,4 +234,85 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      Publishes to Maven Central: mvn -P release deploy, run by .github/workflows/release.yml on a version tag.
+      Adds the sources and javadoc jars Central requires, signs every artifact, and uploads them through the Central
+      Portal. See docs/releasing.md.
+    -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>${source-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>${javadoc-plugin.version}</version>
+            <configuration>
+              <!-- The API is the controller, model and view; the checks in service are public only for the controller. -->
+              <excludePackageNames>io.github.yoavgeva.designguard.service</excludePackageNames>
+              <!-- Broken references and bad HTML fail; PMD's CommentRequired already enforces the comments. -->
+              <doclint>all,-missing</doclint>
+            </configuration>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>${gpg-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+                <configuration>
+                  <!-- The passphrase comes from MAVEN_GPG_PASSPHRASE, never from the command line or settings. -->
+                  <bestPractices>true</bestPractices>
+                  <gpgArguments>
+                    <arg>--pinentry-mode</arg>
+                    <arg>loopback</arg>
+                  </gpgArguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>${central-publishing.version}</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <!-- Uploads and validates; the release is published by hand in the Central Portal. -->
+              <autoPublish>false</autoPublish>
+              <waitUntil>validated</waitUntil>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

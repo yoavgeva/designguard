@@ -103,7 +103,7 @@ public final class ArchitectureRules {
 
     /**
      * Fails when classes in the domain use infrastructure exceptions: JDBC, I/O, JPA, Spring data access, Jackson,
-     * Kafka, AWS, or the packages given to {@link DesignGuard#treatingAsImpure(String...)}.
+     * Kafka, AWS, or the packages given to {@link DesignGuard.Builder#treatingAsImpure(String...)}.
      *
      * @param domainPackages ArchUnit package patterns of the domain, e.g. {@code ..domain..}
      * @return the rule

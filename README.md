@@ -13,6 +13,25 @@ src/main/java/shop/Checkout.java:7: error [inject-services] Checkout creates ser
 
 > Status: pre-alpha.
 
+## Install
+
+designguard is a test dependency. It needs Java 17 or later to run, and checks code compiled for any Java version.
+The first release, 0.1.0, is on its way to Maven Central; until then, `mise exec -- mvn install` a clone of this
+repository and depend on `0.1.0-SNAPSHOT`.
+
+```xml
+<dependency>
+    <groupId>io.github.yoavgeva</groupId>
+    <artifactId>designguard</artifactId>
+    <version>0.1.0</version>
+    <scope>test</scope>
+</dependency>
+```
+
+```kotlin
+testImplementation("io.github.yoavgeva:designguard:0.1.0")
+```
+
 ## Use it
 
 Start with the recommended rules. They need no configuration:
@@ -287,10 +306,12 @@ mise exec -- mvn verify
 - **Compiler:** any `-Xlint:all` warning
 - **ArchUnit** (`ArchitectureTest`): model/view/controller layering with a service layer, no cycles, immutable model,
   no stdout/stderr, no generic exceptions, no field injection, no deprecated APIs
-- **designguard on itself** (`DesignGuardSelfTest`): 22 of its own rules, including the `SERVICES` interface policy,
-  `@NullMarked` packages and sealed hierarchies
+- **designguard on itself** (`DesignGuardSelfTest`): its recommended rules and 44 others, including the `SERVICES`
+  interface policy, `@NullMarked` packages and sealed hierarchies
 - **PMD** (`config/pmd/ruleset.xml`): every Java category, every priority, with exclusions documented in the file
 - **CPD:** duplicated code of 100 tokens or more
+
+Releasing is described in [docs/releasing.md](docs/releasing.md).
 
 ## License
 
