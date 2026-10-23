@@ -76,4 +76,26 @@ public final class ArchitectureRules {
     public BasicRule frameworksStayOutOf(String... domainPackages) {
         return new BasicRule(code, ClassFilter.ALL, BoundaryCheck.frameworks(List.of(domainPackages))::check);
     }
+
+    /**
+     * Fails when classes in the domain use infrastructure exceptions: JDBC, I/O, JPA, Spring data access, Jackson,
+     * Kafka, AWS, or the packages given to {@link DesignGuard#treatingAsImpure(String...)}.
+     *
+     * @param domainPackages ArchUnit package patterns of the domain, e.g. {@code ..domain..}
+     * @return the rule
+     */
+    public BasicRule infrastructureExceptionsStayOutOf(String... domainPackages) {
+        return new BasicRule(code, ClassFilter.ALL, BoundaryCheck.infrastructureExceptions(List.of(domainPackages))::check);
+    }
+
+    /**
+     * Fails when classes in the given packages use persistence entities ({@code @Entity}, {@code @Embeddable},
+     * {@code @MappedSuperclass}) instead of DTOs or domain types.
+     *
+     * @param apiPackages ArchUnit package patterns, e.g. {@code ..web..}
+     * @return the rule
+     */
+    public BasicRule entitiesStayOutOf(String... apiPackages) {
+        return new BasicRule(code, ClassFilter.ALL, BoundaryCheck.entities(List.of(apiPackages))::check);
+    }
 }

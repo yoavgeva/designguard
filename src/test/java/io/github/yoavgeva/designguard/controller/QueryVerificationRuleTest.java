@@ -77,11 +77,11 @@ class QueryVerificationRuleTest {
                         """)
                 .guard("shop");
 
-        assertThat(guard.guardrails().testsCheckResults().evaluate()).extracting(Violation::line, Violation::message)
+        assertThat(guard.tests().testsCheckResults().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
                         tuple(15, "test CheckoutTest.pays() verifies PriceList.priceOf(), a query that returns a value"),
                         tuple(23, "test CheckoutTest.refreshes() verifies PriceList.priceOf(), a query that returns a value"));
-        assertThat(guard.guardrails().testsCheckResults().evaluate().get(0).fix()).isEqualTo("stub it with"
+        assertThat(guard.tests().testsCheckResults().evaluate().get(0).fix()).isEqualTo("stub it with"
                 + " when(...).thenReturn(...) and assert on what the code under test returns; verify only commands");
     }
 }

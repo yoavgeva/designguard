@@ -125,20 +125,20 @@ class MemberIgnoringContractTest {
                         + "public class Casts {\n    @Legacy\n    @SuppressWarnings(\"unchecked\")\n"
                         + "    public java.util.List<String> names(Object list) {\n"
                         + "        return (java.util.List<String>) list;\n    }\n}\n"), List.of()),
-                member("testsAssertMeaningfully", g -> g.guardrails().testsAssertMeaningfully(), List.of(), List.of(
+                member("testsAssertMeaningfully", g -> g.tests().testsAssertMeaningfully(), List.of(), List.of(
                         "package shop;\n\nclass CartTest {\n    @Legacy\n    @org.junit.jupiter.api.Test\n"
                                 + "    void totals() {\n        new Object();\n    }\n}\n")),
-                member("noDisabledTests", g -> g.guardrails().noDisabledTests(), List.of(), List.of(
+                member("noDisabledTests", g -> g.tests().noDisabledTests(), List.of(), List.of(
                         "package shop;\n\nclass CartTest {\n    @Legacy\n    @org.junit.jupiter.api.Disabled\n"
                                 + "    @org.junit.jupiter.api.Test\n    void totals() {\n"
                                 + "        org.assertj.core.api.Assertions.assertThat(1).isOne();\n    }\n}\n")),
-                member("testsCheckResults", g -> g.guardrails().testsCheckResults(), List.of(
+                member("testsCheckResults", g -> g.tests().testsCheckResults(), List.of(
                         "package shop;\n\npublic interface Prices {\n    long priceOf(String item);\n}\n"), List.of(
                         "package shop;\n\nimport static org.mockito.Mockito.mock;\nimport static org.mockito.Mockito.verify;\n\n"
                                 + "class PricesTest {\n    private final Prices prices = mock(Prices.class);\n\n"
                                 + "    @Legacy\n    @org.junit.jupiter.api.Test\n    void prices() {\n"
                                 + "        verify(prices).priceOf(\"book\");\n    }\n}\n")),
-                member("testsDontMockValues", g -> g.guardrails().testsDontMockValues(), List.of(
+                member("testsDontMockValues", g -> g.tests().testsDontMockValues(), List.of(
                         "package shop;\n\npublic record Money(long cents) {\n}\n"), List.of(
                         "package shop;\n\nclass MoneyTest {\n    @Legacy\n    @org.mockito.Mock\n    private Money money;\n}\n")));
     }
