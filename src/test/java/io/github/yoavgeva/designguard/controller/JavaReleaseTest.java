@@ -63,26 +63,26 @@ class JavaReleaseTest {
 
     @Test
     void forJavaOverridesTheVersionReadFromTheClassFiles() {
-        var guard = new CompiledProject(directory).add(CART_TYPE, CART).guard(SHOP);
+        var configured = new CompiledProject(directory).add(CART_TYPE, CART).configure(SHOP);
 
-        assertThat(guard.types().dataClassesAreRecords().evaluate()).extracting(Violation::message)
+        assertThat(configured.build().types().dataClassesAreRecords().evaluate()).extracting(Violation::message)
                 .containsExactly("Cart only carries data: make it a record");
-        assertThatThrownBy(() -> guard.forJava(11).types().dataClassesAreRecords().evaluate())
+        assertThatThrownBy(() -> configured.forJava(11).build().types().dataClassesAreRecords().evaluate())
                 .isInstanceOf(DesignGuardException.class)
                 .hasMessageContaining("targets Java 11");
     }
 
     @Test
     void forJavaNeedsJava8OrLater() {
-        var guard = new DesignGuard(SHOP);
+        var builder = DesignGuard.forPackages(SHOP);
 
-        assertThatIllegalArgumentException().isThrownBy(() -> guard.forJava(7))
+        assertThatIllegalArgumentException().isThrownBy(() -> builder.forJava(7))
                 .withMessage("forJava needs Java 8 or later, was 7");
     }
 
     @Test
     void typeDispatchSuggestsSwitchingOnTypesOnlyFromJava21() {
-        var guard = new CompiledProject(directory)
+        var configured = new CompiledProject(directory)
                 .add("Animal", "package shop;\n\npublic interface Animal {\n}\n")
                 .add("Cat", "package shop;\n\npublic record Cat() implements Animal {\n}\n")
                 .add("Dog", "package shop;\n\npublic record Dog() implements Animal {\n}\n")
@@ -112,11 +112,12 @@ class JavaReleaseTest {
                             }
                         }
                         """)
-                .guard(SHOP);
+                .configure(SHOP);
 
-        assertThat(guard.types().typeDispatch(TypeDispatchPolicy.SEALED_ONLY).evaluate()).extracting(Violation::fix)
+        assertThat(configured.build().types().typeDispatch(TypeDispatchPolicy.SEALED_ONLY).evaluate())
+                .extracting(Violation::fix)
                 .containsExactly("make Animal sealed, or move the varying behaviour into Animal");
-        assertThat(guard.forJava(21).types().typeDispatch(TypeDispatchPolicy.SEALED_ONLY).evaluate())
+        assertThat(configured.forJava(21).build().types().typeDispatch(TypeDispatchPolicy.SEALED_ONLY).evaluate())
                 .extracting(Violation::fix)
                 .containsExactly("make Animal sealed and switch over it, or move the varying behaviour into Animal",
                         "use a switch over Shape without a default branch");
@@ -124,7 +125,7 @@ class JavaReleaseTest {
 
     @Test
     void threadHintsUseVirtualThreadsOnlyFromJava21() {
-        var guard = new CompiledProject(directory)
+        var configured = new CompiledProject(directory)
                 .add("Jobs", """
                         package shop;
 
@@ -134,12 +135,12 @@ class JavaReleaseTest {
                             }
                         }
                         """)
-                .guard(SHOP);
+                .configure(SHOP);
 
-        assertThat(guard.dependencies().noRawThreads().evaluate()).extracting(Violation::fix)
+        assertThat(configured.build().dependencies().noRawThreads().evaluate()).extracting(Violation::fix)
                 .containsExactly("submit the work to an injected ExecutorService, e.g. one from"
                         + " Executors.newFixedThreadPool(n)");
-        assertThat(guard.forJava(21).dependencies().noRawThreads().evaluate()).extracting(Violation::fix)
+        assertThat(configured.forJava(21).build().dependencies().noRawThreads().evaluate()).extracting(Violation::fix)
                 .containsExactly("submit the work to an injected ExecutorService, e.g. one from"
                         + " Executors.newVirtualThreadPerTaskExecutor()");
     }

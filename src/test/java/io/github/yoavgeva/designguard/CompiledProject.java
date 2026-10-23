@@ -78,8 +78,19 @@ public final class CompiledProject {
      * @return the guard
      */
     public DesignGuard guard(String... packages) {
+        return configure(packages).build();
+    }
+
+    /**
+     * Compiles every source and starts configuring a guard over the given packages, reading these sources and
+     * classes.
+     *
+     * @param packages packages to check
+     * @return the builder, for further settings
+     */
+    public DesignGuard.Builder configure(String... packages) {
         compile();
-        return new DesignGuard(packages).withSourceRoots(sourceRoot).withTestSourceRoots(testRoot)
+        return DesignGuard.forPackages(packages).withSourceRoots(sourceRoot).withTestSourceRoots(testRoot)
                 .withClassesFrom(classesDirectory);
     }
 
