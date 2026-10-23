@@ -172,6 +172,50 @@ class TypeRulesTest {
     }
 
     @Test
+    void domainIdentifiersHaveTheirOwnTypes() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("OrderId", "package shop.domain;\n\npublic record OrderId(String value) {\n}\n")
+                .add("Order", """
+                        package shop.domain;
+
+                        public record Order(
+                                String id,
+                                long customerId,
+                                java.util.UUID cartId,
+                                OrderId orderId,
+                                String name) {
+                        }
+                        """)
+                .add("Orders", """
+                        package shop.domain;
+
+                        public class Orders {
+                            private final java.util.Map<String, Order> byId = new java.util.HashMap<>();
+
+                            public Order find(String orderId) {
+                                return byId.get(orderId);
+                            }
+
+                            private Order load(String orderId) {
+                                return byId.get(orderId);
+                            }
+                        }
+                        """)
+                .add("OrderDto", "package shop.web;\n\npublic record OrderDto(String id) {\n}\n")
+                .guard(SHOP);
+
+        assertThat(guard.types().typedIdentifiers("..domain..").evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(
+                        tuple(4, "Order.id is a raw String identifier"),
+                        tuple(5, "Order.customerId is a raw long identifier"),
+                        tuple(6, "Order.cartId is a raw UUID identifier"),
+                        tuple(6, "Orders.find() takes orderId as a raw String identifier"));
+        assertThat(guard.types().typedIdentifiers("..domain..").evaluate()).extracting(Violation::fix).startsWith(
+                "declare record OrderId(String value) and use it, so identifiers of different things can't be swapped",
+                "declare record CustomerId(long value) and use it, so identifiers of different things can't be swapped");
+    }
+
+    @Test
     void closedHierarchiesMustBeSealed() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Shape", "package shop;\n\npublic interface Shape {\n    double area();\n    String name();\n}\n")

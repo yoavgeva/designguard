@@ -7,10 +7,12 @@ import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.DataClassCheck;
 import io.github.yoavgeva.designguard.service.EnumLikeConstantsCheck;
+import io.github.yoavgeva.designguard.service.RawIdentifiersCheck;
 import io.github.yoavgeva.designguard.service.RecordImmutabilityCheck;
 import io.github.yoavgeva.designguard.service.SealedHierarchyCheck;
 import io.github.yoavgeva.designguard.service.StatelessServicesCheck;
 import io.github.yoavgeva.designguard.service.ValueImmutabilityCheck;
+import java.util.List;
 
 /** Rules about how types are modelled: hierarchies, records, immutability and branching on kinds. */
 public final class TypeRules {
@@ -74,6 +76,19 @@ public final class TypeRules {
      */
     public BasicRule servicesAreStateless() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new StatelessServicesCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on identifiers typed as raw strings, numbers or UUIDs in the given packages: fields, record components and
+     * non-private parameters named {@code id} or {@code somethingId}. A type per identifier stops a customer ID from
+     * being passed where an order ID belongs.
+     *
+     * @param domainPackages ArchUnit package patterns to check, e.g. {@code ..domain..}
+     * @return the rule
+     */
+    public BasicRule typedIdentifiers(String... domainPackages) {
+        return new BasicRule(code, ClassFilter.ALL,
+                (codeBase, filter) -> new RawIdentifiersCheck(List.of(domainPackages)).check(codeBase.sources(), filter));
     }
 
     /**
