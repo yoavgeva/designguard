@@ -1,0 +1,62 @@
+package io.github.yoavgeva.designguard.controller;
+
+import io.github.yoavgeva.designguard.model.ClassFilter;
+import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
+import io.github.yoavgeva.designguard.model.Violation;
+import io.github.yoavgeva.designguard.service.CodeBase;
+import io.github.yoavgeva.designguard.service.TypeDispatchCheck;
+import java.util.List;
+
+/**
+ * Fails on code that branches on the kind of a project type (a {@code switch} on its subtypes, an
+ * {@code instanceof} chain, or comparisons against enum constants) in ways that break when a new kind is added.
+ *
+ * <ul>
+ *   <li>With {@link TypeDispatchPolicy#SEALED_ONLY}, branching on subtypes is allowed only over sealed types, through
+ *       a switch the compiler checks.</li>
+ *   <li>A {@code default} branch in a switch over a sealed type or enum is reported: it hides new cases.</li>
+ *   <li>A type branched on in more places than {@link #maxPlacesPerType(int)} allows, counting only branches the
+ *       compiler doesn't check, is reported once at its declaration.</li>
+ * </ul>
+ */
+public final class TypeDispatchRule extends DesignRule<TypeDispatchRule> {
+
+    private static final int DEFAULT_MAX_PLACES_PER_TYPE = 3;
+
+    private final TypeDispatchPolicy policy;
+    private final int maxPlaces;
+
+    TypeDispatchRule(CodeBase code, ClassFilter filter, TypeDispatchPolicy policy) {
+        this(code, filter, policy, DEFAULT_MAX_PLACES_PER_TYPE);
+    }
+
+    private TypeDispatchRule(CodeBase code, ClassFilter filter, TypeDispatchPolicy policy, int maxPlaces) {
+        super(code, filter);
+        this.policy = policy;
+        this.maxPlaces = maxPlaces;
+    }
+
+    /**
+     * Sets how many unchecked branches on one type are allowed. The default is 3.
+     *
+     * @param max the limit, at least 0
+     * @return the reconfigured rule
+     * @throws IllegalArgumentException if {@code max} is negative
+     */
+    public TypeDispatchRule maxPlacesPerType(int max) {
+        if (max < 0) {
+            throw new IllegalArgumentException("maxPlacesPerType must be >= 0, was " + max);
+        }
+        return new TypeDispatchRule(code(), filter(), policy, max);
+    }
+
+    @Override
+    List<Violation> violations(CodeBase code, ClassFilter filter) {
+        return new TypeDispatchCheck(policy, maxPlaces).check(code.sources(), filter);
+    }
+
+    @Override
+    TypeDispatchRule withFilter(ClassFilter filter) {
+        return new TypeDispatchRule(code(), filter, policy, maxPlaces);
+    }
+}

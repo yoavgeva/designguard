@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="designguard"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+  <description>
+    Every PMD Java category, minus rules that contradict each other or modern Java. Each exclusion says why.
+    Rules with tightened thresholds are excluded from their category and re-added below with properties.
+  </description>
+
+  <rule ref="category/java/bestpractices.xml">
+    <!-- One assertion per test is dogma; a single AssertJ chain already counts as several. -->
+    <exclude name="UnitTestContainsTooManyAsserts"/>
+    <exclude name="LooseCoupling"/>
+  </rule>
+
+  <rule ref="category/java/codestyle.xml">
+    <!-- Noise: implicit constructors and early returns are idiomatic. -->
+    <exclude name="AtLeastOneConstructor"/>
+    <exclude name="OnlyOneReturn"/>
+    <exclude name="CallSuperInConstructor"/>
+    <!-- Name length is a judgement call, not a rule. -->
+    <exclude name="LongVariable"/>
+    <exclude name="ShortVariable"/>
+    <exclude name="ShortMethodName"/>
+    <exclude name="ShortClassName"/>
+    <!-- final on every parameter and local adds noise without catching bugs. -->
+    <exclude name="MethodArgumentCouldBeFinal"/>
+    <exclude name="LocalVariableCouldBeFinal"/>
+    <!-- Package-private is the default visibility we want; it needs no comment. -->
+    <exclude name="CommentDefaultAccessModifier"/>
+    <!-- var is standard Java. -->
+    <exclude name="UseExplicitTypes"/>
+  </rule>
+
+  <rule ref="category/java/design.xml">
+    <!-- Fires on every fluent API (streams, ArchUnit, AssertJ). -->
+    <exclude name="LawOfDemeter"/>
+    <!-- Package dependencies are enforced by ArchUnit (ArchitectureTest). -->
+    <exclude name="LoosePackageCoupling"/>
+    <exclude name="CyclomaticComplexity"/>
+    <exclude name="NcssCount"/>
+    <exclude name="ExcessiveParameterList"/>
+  </rule>
+
+  <rule ref="category/java/documentation.xml">
+    <!-- Comment length is not a quality signal. -->
+    <exclude name="CommentSize"/>
+    <exclude name="CommentRequired"/>
+  </rule>
+
+  <rule ref="category/java/errorprone.xml"/>
+  <rule ref="category/java/multithreading.xml"/>
+  <rule ref="category/java/performance.xml"/>
+  <rule ref="category/java/security.xml"/>
+
+  <!-- Configured rules. -->
+
+  <!-- ArchUnit's JavaClasses has no interface to program against; ArchRule.check requires it. -->
+  <rule ref="category/java/bestpractices.xml/LooseCoupling">
+    <properties>
+      <property name="allowedTypes" value="java.util.Properties,com.tngtech.archunit.core.domain.JavaClasses"/>
+    </properties>
+  </rule>
+
+  <rule ref="category/java/design.xml/CyclomaticComplexity">
+    <properties>
+      <property name="methodReportLevel" value="10"/>
+      <property name="classReportLevel" value="50"/>
+    </properties>
+  </rule>
+
+  <rule ref="category/java/design.xml/NcssCount">
+    <properties>
+      <property name="methodReportLevel" value="30"/>
+      <property name="classReportLevel" value="400"/>
+    </properties>
+  </rule>
+
+  <rule ref="category/java/design.xml/ExcessiveParameterList">
+    <properties>
+      <property name="minimum" value="7"/>
+    </properties>
+  </rule>
+
+  <!-- Public API of a public library must be documented; tests and trivial members are exempt. -->
+  <rule ref="category/java/documentation.xml/CommentRequired">
+    <properties>
+      <property name="fieldCommentRequirement" value="ignored"/>
+      <property name="accessorCommentRequirement" value="ignored"/>
+      <property name="methodWithOverrideCommentRequirement" value="ignored"/>
+      <property name="serialVersionUIDCommentRequired" value="ignored"/>
+      <property name="violationSuppressXPath" value="./ancestor-or-self::ClassDeclaration[ends-with(@SimpleName, 'Test')]"/>
+    </properties>
+  </rule>
+</ruleset>
