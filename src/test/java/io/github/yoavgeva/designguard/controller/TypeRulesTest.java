@@ -227,6 +227,32 @@ class TypeRulesTest {
     }
 
     @Test
+    void interfacesAreNoWiderThanTheirClientsNeed() {
+        String store = "package shop;\n\npublic interface Store {\n    String load(String id);\n\n"
+                + "    void save(String id, String value);\n\n    void delete(String id);\n\n    java.util.List<String> all();\n}\n";
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Store", store)
+                .add("Reader", "package shop;\n\npublic class Reader {\n    public String read(Store store) {\n"
+                        + "        return store.load(\"a\");\n    }\n}\n")
+                .add("Writer", "package shop;\n\npublic class Writer {\n    public void write(Store store) {\n"
+                        + "        store.save(\"a\", \"b\");\n        store.delete(\"c\");\n    }\n}\n")
+                .add("Lister", "package shop;\n\npublic class Lister {\n    public int count(Store store) {\n"
+                        + "        return store.all().size();\n    }\n}\n")
+                .add("Catalog", store.replace("Store", "Catalog"))
+                .add("Browser", "package shop;\n\npublic class Browser {\n    public String browse(Catalog catalog) {\n"
+                        + "        catalog.save(\"a\", \"b\");\n        catalog.delete(\"a\");\n"
+                        + "        return catalog.load(\"a\") + catalog.all();\n    }\n}\n")
+                .add("Viewer", "package shop;\n\npublic class Viewer {\n    public String view(Catalog catalog) {\n"
+                        + "        return catalog.load(\"a\");\n    }\n}\n")
+                .guard(SHOP);
+
+        assertThat(guard.types().interfacesAreFocused().evaluate()).extracting(Violation::message, Violation::fix)
+                .containsExactly(tuple("Store has 4 methods, but each of its 3 clients uses at most 2 of them",
+                        "split it into smaller interfaces, one for each role its clients need, and let implementations"
+                                + " implement several"));
+    }
+
+    @Test
     void closedHierarchiesMustBeSealed() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Shape", "package shop;\n\npublic interface Shape {\n    double area();\n    String name();\n}\n")

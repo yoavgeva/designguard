@@ -65,6 +65,7 @@ class RuleFiltersContractTest {
                 rule("servicesAreStateless", g -> g.types().servicesAreStateless()),
                 rule("typedIdentifiers", g -> g.types().typedIdentifiers(DOMAIN)),
                 rule("enumsOverConstants", g -> g.types().enumsOverConstants()),
+                rule("interfacesAreFocused", g -> g.types().interfacesAreFocused()),
                 rule("closedHierarchiesAreSealed", g -> g.types().closedHierarchiesAreSealed()),
                 rule("inheritance", g -> g.types().inheritance(InheritancePolicy.FINAL_BY_DEFAULT)),
                 rule("noFlagArguments", g -> g.api().noFlagArguments()),

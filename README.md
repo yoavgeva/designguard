@@ -148,6 +148,7 @@ implementation. Everything else is a **value**.
 | | `dataClassesAreRecords()` | classes that only carry data |
 | | `valueTypesAreImmutable()` | values with non-final fields |
 | | `typedIdentifiers("..domain..")` | identifiers like `String customerId` or `long orderId` instead of their own types |
+| | `interfacesAreFocused()` | interfaces with 4+ methods whose 2+ clients each use at most half of them |
 | | `enumsOverConstants()` | int or String constants enumerating cases, like `STATUS_OPEN = 0`, `STATUS_PAID = 1` |
 | | `servicesAreStateless()` | service-like classes with non-final fields, or fields holding mutable collections, atomics or builders |
 | | `closedHierarchiesAreSealed()` | interfaces implemented only in the project but not sealed |
