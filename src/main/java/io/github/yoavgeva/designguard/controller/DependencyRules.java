@@ -7,6 +7,7 @@ import io.github.yoavgeva.designguard.service.ConstructorWorkCheck;
 import io.github.yoavgeva.designguard.service.FunctionalCoreChecks;
 import io.github.yoavgeva.designguard.service.InjectServicesCheck;
 import io.github.yoavgeva.designguard.service.InterfacePolicyCheck;
+import io.github.yoavgeva.designguard.service.QueriesInLoopsCheck;
 import io.github.yoavgeva.designguard.service.StableDependenciesCheck;
 
 /**
@@ -88,6 +89,16 @@ public final class DependencyRules {
      */
     public BasicRule constructorsDoNoWork() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ConstructorWorkCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on queries made once per item, the N+1 pattern: a collaborator's method that touches the outside world
+     * and returns a value, called inside a loop or from a lambda handed to a stream or {@code forEach}.
+     *
+     * @return the rule
+     */
+    public BasicRule noQueriesInLoops() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new QueriesInLoopsCheck().check(codeBase, filter));
     }
 
     /**

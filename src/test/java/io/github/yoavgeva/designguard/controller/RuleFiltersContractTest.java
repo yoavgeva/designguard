@@ -54,6 +54,7 @@ class RuleFiltersContractTest {
                 rule("configurationIsInjected", g -> g.dependencies().configurationIsInjected()),
                 rule("noRawThreads", g -> g.dependencies().noRawThreads()),
                 rule("constructorsDoNoWork", g -> g.dependencies().constructorsDoNoWork()),
+                rule("noQueriesInLoops", g -> g.dependencies().noQueriesInLoops()),
                 rule("stableDependencies", g -> g.dependencies().stableDependencies()),
                 rule("infrastructureExceptionsStayOutOf", g -> g.architecture().infrastructureExceptionsStayOutOf(DOMAIN)),
                 rule("entitiesStayOutOf", g -> g.architecture().entitiesStayOutOf(WEB)),

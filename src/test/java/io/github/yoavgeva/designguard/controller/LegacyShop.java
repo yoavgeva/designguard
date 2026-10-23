@@ -71,7 +71,7 @@ final class LegacyShop {
                             private final java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
 
                             public String charge(long cents) {
-                                return http.toString() + cents;
+                                return http.toString() + System.getenv("STRIPE_KEY") + cents;
                             }
                         }
                         """)
@@ -83,6 +83,14 @@ final class LegacyShop {
 
                             public String pay() {
                                 return client.charge(1) + new StripeClient().charge(2);
+                            }
+
+                            public String payAll(java.util.List<Long> amounts) {
+                                String receipts = "";
+                                for (long amount : amounts) {
+                                    receipts += client.charge(amount);
+                                }
+                                return receipts;
                             }
                         }
                         """)

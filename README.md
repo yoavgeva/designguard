@@ -136,6 +136,7 @@ implementation. Everything else is a **value**.
 | | `entitiesStayOutOf("..web..")` | persistence entities used past the persistence layer |
 | `dependencies()` | `interfacePolicy(PORTS / SERVICES / ALL)` | concrete dependencies where an interface is required |
 | | `injectServices()` | effectful classes created with `new`, or singletons reached statically, outside wiring code; a class whose effects happen only in implementations it is given doesn't count |
+| | `noQueriesInLoops()` | a collaborator's query (I/O that returns a value) called once per item, in a loop or a stream: N+1 |
 | | `constructorsDoNoWork()` | constructors and static initializers that call I/O, the clock, an injected collaborator or other effectful code |
 | | `clockIsInjected()` | `LocalDate.now()`, `System.currentTimeMillis()`... instead of an injected `Clock` |
 | | `randomnessIsInjected()` | `new Random()`, `UUID.randomUUID()`... |

@@ -26,6 +26,7 @@ class DesignGuardSelfTest {
                 Arguments.of("no raw threads", GUARD.dependencies().noRawThreads()),
                 Arguments.of("services are injected", GUARD.dependencies().injectServices()),
                 Arguments.of("constructors do no work", GUARD.dependencies().constructorsDoNoWork()),
+                Arguments.of("no queries in loops", GUARD.dependencies().noQueriesInLoops()),
                 Arguments.of("services are interfaces", GUARD.dependencies().interfacePolicy(InterfacePolicy.SERVICES)),
                 Arguments.of("stable dependencies", GUARD.dependencies().stableDependencies()),
                 Arguments.of("type dispatch only over sealed types", GUARD.types().typeDispatch(TypeDispatchPolicy.SEALED_ONLY)),

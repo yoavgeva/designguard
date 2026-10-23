@@ -4,6 +4,7 @@ import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
+import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import java.util.List;
 import java.util.Map;
@@ -87,6 +88,32 @@ final class Bytecode {
     /** The fields a method or constructor reads if it compares anything with {@code null}, as lazy initialization does. */
     Set<String> nullGuardedReadsIn(JavaCodeUnit unit) {
         return factsOf(unit.getOwner()).nullGuardedReads().getOrDefault(unit.getName() + unit.getDescriptor(), Set.of());
+    }
+
+    /**
+     * The calls and method references a method or constructor makes once per item: in a loop, or in a lambda or method
+     * reference it hands to a stream, {@code forEach} or a similar per-item method.
+     */
+    Stream<JavaCodeUnitAccess<?>> perItemAccesses(JavaCodeUnit unit) {
+        ClassFileFacts.Loops loops = factsOf(unit.getOwner()).loops();
+        String key = unit.getName() + unit.getDescriptor();
+        String ownName = unit.getOwner().getName() + ".";
+        Set<String> handles = loops.lambdas().getOrDefault(key, Set.of());
+        Set<String> calls = Stream.concat(loops.calls().getOrDefault(key, Set.of()).stream(), handles.stream()
+                        .filter(handle -> handle.startsWith(ownName + "lambda$"))
+                        .flatMap(handle -> loops.lambdaBodies().getOrDefault(handle.substring(ownName.length()), Set.of())
+                                .stream()))
+                .collect(Collectors.toSet());
+        Set<String> references = handles.stream().map(handle -> handle.substring(0, handle.indexOf('(')))
+                .collect(Collectors.toSet());
+        Stream<JavaCodeUnitAccess<?>> perItemCalls = unit.getCallsFromSelf().stream()
+                .filter(call -> calls.contains(ClassFileFacts.callKey(
+                        call.getTargetOwner().getName(), call.getName(), call.getLineNumber())))
+                .map(call -> call);
+        Stream<JavaCodeUnitAccess<?>> perItemReferences = unit.getCodeUnitReferencesFromSelf().stream()
+                .filter(reference -> references.contains(reference.getTargetOwner().getName() + "." + reference.getName()))
+                .map(reference -> reference);
+        return Stream.concat(perItemCalls, perItemReferences);
     }
 
     /** The oldest Java version the top-level classes were compiled for; empty if none was read. */
