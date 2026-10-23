@@ -1,5 +1,7 @@
 # designguard
 
+[![CI](https://github.com/yoavgeva/designguard/actions/workflows/ci.yml/badge.svg)](https://github.com/yoavgeva/designguard/actions/workflows/ci.yml)
+
 Deterministic design rules for AI-written Java code, run as plain JUnit tests.
 
 AI agents write a lot of code. Tests tell you whether it works; designguard tells the agent, in one actionable line
@@ -112,7 +114,7 @@ mise install
 mise exec -- mvn verify
 ```
 
-`verify` fails on any of:
+`verify` runs in CI on every push to `main` and every pull request, and fails on any of:
 
 - **Maven Enforcer:** Java/Maven versions, unpinned plugins, dependency conflicts
 - **Compiler:** any `-Xlint:all` warning
