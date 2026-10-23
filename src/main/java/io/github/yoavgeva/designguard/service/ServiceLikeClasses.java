@@ -20,9 +20,9 @@ final class ServiceLikeClasses {
 
     private final Effects effects;
     private final Set<String> effectfulNames;
-    private final Set<String> effectfulWhenRun;
-    private final Set<String> ownEffectsWhenRun;
-    private final Set<String> effectfulOnTheirOwnNames;
+    private final Memo<Set<String>> effectfulWhenRun;
+    private final Memo<Set<String>> ownEffectsWhenRun;
+    private final Memo<Set<String>> effectfulOnTheirOwnNames;
     private final Set<String> serviceLikeNames;
 
     ServiceLikeClasses(ProjectClasses classes, List<String> extraImpurePackages) {
@@ -30,9 +30,9 @@ final class ServiceLikeClasses {
         List<JavaClass> candidates = classes.stream().filter(ServiceLikeClasses::canBeServiceLike).toList();
         this.effectfulNames = Set.copyOf(withAbstractions(candidates,
                 CallGraph.ownersOf(candidates, effects.effectfulCodeUnits(classes, candidates))));
-        this.effectfulWhenRun = effects.effectfulWhenRun(classes, candidates);
-        this.ownEffectsWhenRun = effects.ownEffectsWhenRun(classes, candidates);
-        this.effectfulOnTheirOwnNames = Set.copyOf(effects.effectfulOnTheirOwn(classes, candidates));
+        this.effectfulWhenRun = new Memo<>(() -> effects.effectfulWhenRun(classes, candidates));
+        this.ownEffectsWhenRun = new Memo<>(() -> effects.ownEffectsWhenRun(classes, candidates));
+        this.effectfulOnTheirOwnNames = new Memo<>(() -> Set.copyOf(effects.effectfulOnTheirOwn(classes, candidates)));
         this.serviceLikeNames = Set.copyOf(serviceLike(candidates));
     }
 
@@ -51,7 +51,7 @@ final class ServiceLikeClasses {
      * behind interfaces and abstract methods. Creating such a class hard-wires its effects.
      */
     boolean isEffectfulOnItsOwn(JavaClass javaClass) {
-        return effectfulOnTheirOwnNames.contains(javaClass.getName());
+        return effectfulOnTheirOwnNames.get().contains(javaClass.getName());
     }
 
     /**
@@ -59,7 +59,8 @@ final class ServiceLikeClasses {
      * any override of it included, whose own calls do. Lambdas the code creates don't count until they run.
      */
     boolean runsEffects(CodeUnitAccessTarget target) {
-        return effects.isImpure(target) || CallGraph.implementations(target).anyMatch(effectfulWhenRun::contains);
+        Set<String> whenRun = effectfulWhenRun.get();
+        return effects.isImpure(target) || CallGraph.implementations(target).anyMatch(whenRun::contains);
     }
 
     /**
@@ -67,7 +68,7 @@ final class ServiceLikeClasses {
      * it is given or lambdas it creates.
      */
     boolean hasOwnEffects(JavaCodeUnit unit) {
-        return ownEffectsWhenRun.contains(unit.getFullName());
+        return ownEffectsWhenRun.get().contains(unit.getFullName());
     }
 
     static boolean canBeServiceLike(JavaClass javaClass) {

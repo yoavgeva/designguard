@@ -35,6 +35,7 @@ public final class ConstructorWorkCheck {
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && !wiring.contains(type))
                 .flatMap(type -> Stream.concat(type.getConstructors().stream(), type.getStaticInitializer().stream())
+                        .filter(unit -> classes.selected(filter, unit))
                         .flatMap(unit -> work(classes, serviceLike, type, unit).stream()))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();

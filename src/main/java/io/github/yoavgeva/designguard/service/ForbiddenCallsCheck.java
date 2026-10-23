@@ -38,13 +38,14 @@ public final class ForbiddenCallsCheck {
         WiringCode wiring = code.wiring();
         return classes.stream()
                 .filter(javaClass -> classes.selected(filter, javaClass) && !wiring.contains(javaClass))
-                .flatMap(javaClass -> violations(classes, javaClass))
+                .flatMap(javaClass -> violations(classes, filter, javaClass))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
 
-    private Stream<Violation> violations(ProjectClasses classes, JavaClass javaClass) {
+    private Stream<Violation> violations(ProjectClasses classes, ClassFilter filter, JavaClass javaClass) {
         return javaClass.getCodeUnitAccessesFromSelf().stream()
+                .filter(access -> classes.selected(filter, access.getOrigin()))
                 .flatMap(access -> match(access).stream())
                 .collect(Collectors.toMap(Match::description, match -> match,
                         (first, second) -> first.line() <= second.line() ? first : second, LinkedHashMap::new))

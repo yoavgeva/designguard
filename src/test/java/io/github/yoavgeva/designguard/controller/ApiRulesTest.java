@@ -209,6 +209,22 @@ class ApiRulesTest {
                             public void setCount(int count) {
                                 this.count = count;
                             }
+
+                            private volatile String label;
+
+                            public String getLabel() {
+                                String result = label;
+                                if (result == null) {
+                                    synchronized (this) {
+                                        result = label;
+                                        if (result == null) {
+                                            result = "computed";
+                                            label = result;
+                                        }
+                                    }
+                                }
+                                return result;
+                            }
                         }
                         """)
                 .guard(SHOP);

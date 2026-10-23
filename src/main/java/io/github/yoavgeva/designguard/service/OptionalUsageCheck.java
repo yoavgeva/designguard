@@ -37,7 +37,7 @@ public final class OptionalUsageCheck {
         ProjectClasses classes = code.projectClasses();
         Stream<Violation> compiled = classes.stream()
                 .filter(type -> classes.selected(filter, type))
-                .flatMap(type -> Stream.concat(fields(classes, type), parameters(classes, type)));
+                .flatMap(type -> Stream.concat(fields(classes, filter, type), parameters(classes, filter, type)));
         Stream<Violation> returnedNull = code.sources().files().stream()
                 .flatMap(file -> file.unit().findAll(MethodDeclaration.class).stream()
                         .filter(method -> returnsOptional(method) && Scopes.selected(filter, file, method))
@@ -48,17 +48,17 @@ public final class OptionalUsageCheck {
         return Stream.concat(compiled, returnedNull).sorted(Scopes.BY_LOCATION).toList();
     }
 
-    private static Stream<Violation> fields(ProjectClasses classes, JavaClass type) {
+    private static Stream<Violation> fields(ProjectClasses classes, ClassFilter filter, JavaClass type) {
         return type.getFields().stream()
-                .filter(field -> OPTIONALS.contains(field.getRawType().getName()))
+                .filter(field -> OPTIONALS.contains(field.getRawType().getName()) && classes.selected(filter, field))
                 .map(field -> classes.violation(RULE, type, 0,
                         ProjectClasses.nameOf(type) + " has a field '" + field.getName() + "' of type Optional",
                         "store the value itself, or null, and return an Optional from its accessor instead"));
     }
 
-    private static Stream<Violation> parameters(ProjectClasses classes, JavaClass type) {
+    private static Stream<Violation> parameters(ProjectClasses classes, ClassFilter filter, JavaClass type) {
         return type.getCodeUnits().stream()
-                .filter(unit -> !unit.getModifiers().contains(JavaModifier.SYNTHETIC)
+                .filter(unit -> !unit.getModifiers().contains(JavaModifier.SYNTHETIC) && classes.selected(filter, unit)
                         && unit.getRawParameterTypes().stream().anyMatch(parameter -> OPTIONALS.contains(parameter.getName())))
                 .map(unit -> classes.violation(RULE, type, unit.getSourceCodeLocation().getLineNumber(),
                         describe(type, unit) + " takes an Optional parameter",

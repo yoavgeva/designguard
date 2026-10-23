@@ -37,7 +37,7 @@ public final class EffectfulStaticsCheck {
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && !wiring.contains(type))
                 .flatMap(type -> type.getMethods().stream()
-                        .filter(method -> isSharedStatic(method) && serviceLike.hasOwnEffects(method))
+                        .filter(method -> isSharedStatic(method) && classes.selected(filter, method) && serviceLike.hasOwnEffects(method))
                         .flatMap(method -> firstCaller(classes, wiring, type, method).stream()
                                 .map(caller -> violation(classes, type, method, caller))))
                 .sorted(Scopes.BY_LOCATION)

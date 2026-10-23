@@ -46,9 +46,10 @@ class DesignTest {
 }
 ```
 
-Every rule takes `that().resideInAPackage(...)`, `excluding(...)` and `ignoring(annotatedWith(...))` (from
-`AnnotationName`), with ArchUnit's
-package syntax (`..domain..`). `check()` throws an `AssertionError` listing every violation; `evaluate()` returns them.
+Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(annotatedWith(...))` (from
+`AnnotationName`) and `frozen(...)` (see below). `ignoring` skips annotated classes and the code in them, and annotated
+fields, methods and constructors. Package patterns use ArchUnit's package syntax (`..domain..`). `check()` throws an
+`AssertionError` listing every violation; `evaluate()` returns them.
 
 `new DesignGuard("com.shop")` reads sources from `src/main/java` and `src/test/java`, and classes from the classpath.
 To change anything, configure it with a builder:
@@ -83,12 +84,14 @@ void layers() {
 
 - The first run records the current violations in `src/test/designguard/frozen/layers.txt` and fails once, so the
   file gets committed. Until the file exists, the rule keeps failing, so CI catches a record nobody committed.
-- Later runs fail only on violations the file doesn't list. A violation is matched by its file, rule and message, not
-  its line, so editing elsewhere in the file keeps it frozen. Each listed violation accepts one occurrence.
+- Later runs fail only on violations the file doesn't list. A violation is matched by its file, rule and what it's
+  about, not its line or the counts in its message, so editing elsewhere keeps it frozen. Each listed violation
+  accepts one occurrence.
 - Fixed violations drop out of the file, so it only shrinks and a fixed problem can't come back. Commit the change.
 - Renaming a class changes its violations' messages, so they show up as new. To accept the current violations again,
   delete the file and run the rule.
-- Give each frozen rule its own name: the name is the file's.
+- Give each frozen rule its own name: the name is the file's. A rule run against another rule's file fails instead
+  of overwriting it.
 
 ## Java versions
 

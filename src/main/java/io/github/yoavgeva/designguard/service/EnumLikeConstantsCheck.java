@@ -32,6 +32,8 @@ public final class EnumLikeConstantsCheck {
     private static final String RULE = "enums-over-constants";
     private static final String STRING = "String";
     private static final int SMALLEST_GROUP = 2;
+    /** Two constants of 1 and 2, or 1, 2 and 4, are as likely to be limits as cases; three are a pattern. */
+    private static final int SMALLEST_GROUP_WITHOUT_ZERO = 3;
     private static final Set<String> TYPES = Set.of("int", "long", STRING);
     private static final Pattern CONSTANT_NAME = Pattern.compile("[A-Z][A-Z0-9]*(_[A-Z0-9]+)+");
     private static final Pattern NOT_ALPHANUMERIC = Pattern.compile("[^a-z0-9]");
@@ -150,9 +152,11 @@ public final class EnumLikeConstantsCheck {
             List<Long> values = constants.stream().map(constant -> Long.parseLong(constant.value())).sorted().toList();
             boolean distinct = values.stream().distinct().count() == values.size();
             long first = values.get(0);
-            boolean run = (first == 0 || first == 1) && values.get(values.size() - 1) - first == values.size() - 1;
+            boolean consecutive = values.get(values.size() - 1) - first == values.size() - 1;
+            boolean bigEnough = first == 0 || values.size() >= SMALLEST_GROUP_WITHOUT_ZERO;
+            boolean run = (first == 0 || first == 1) && consecutive;
             boolean flags = values.stream().allMatch(value -> value > 0 && (value & (value - 1)) == 0);
-            return distinct && (run || flags);
+            return distinct && bigEnough && (run || flags);
         }
 
         String enumName() {

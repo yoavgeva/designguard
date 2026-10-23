@@ -2,13 +2,16 @@ package io.github.yoavgeva.designguard.service;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ConstantDynamic;
 import org.objectweb.asm.Handle;
@@ -37,13 +40,14 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * @param creations    each {@code new}, in code order
  * @param switchLabels each class a {@code switch} matches on, at the line of the {@code switch}, in code order
  * @param namedClasses each class the constant pool names, at line 0: the class file doesn't say where
- * @param directCalls  for each method and constructor, by name and descriptor such as {@code <init>(I)V}, the
- *                     {@link #callKey(String, String, int) calls} it makes itself, not those in its lambdas
- * @param nullChecks   for each method and constructor, by name and descriptor, the names of the fields it compares
- *                     with {@code null}, as lazy initialization does
+ * @param directCalls  for each method and constructor that creates lambdas, by name and descriptor such as
+ *                     {@code <init>(I)V}, the {@link #callKey(String, String, int) calls} it makes itself, not those
+ *                     in the lambdas; other methods make exactly the calls ArchUnit reports
+ * @param nullGuardedReads for each method and constructor that compares anything with {@code null}, as lazy
+ *                         initialization does, by name and descriptor, the fields it reads
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
-        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> nullChecks) {
+        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> nullGuardedReads) {
 
     /** For a class without a class file to read. */
     static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of());
@@ -53,6 +57,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
     private static final int MAJOR_VERSION_OFFSET = 6;
     private static final String SWITCH_BOOTSTRAPS = "java/lang/runtime/SwitchBootstraps";
     private static final String CLASS_DESC = "java/lang/constant/ClassDesc";
+    private static final String LAMBDA_METAFACTORY = "java/lang/invoke/LambdaMetafactory";
     private static final int CONSTANT_CLASS = 7;
 
     ClassFileFacts {
@@ -60,7 +65,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         switchLabels = List.copyOf(switchLabels);
         namedClasses = List.copyOf(namedClasses);
         directCalls = Map.copyOf(directCalls);
-        nullChecks = Map.copyOf(nullChecks);
+        nullGuardedReads = Map.copyOf(nullGuardedReads);
     }
 
     /**
@@ -76,8 +81,6 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         reader.accept(node, ClassReader.SKIP_FRAMES);
         List<Reference> creations = new ArrayList<>();
         List<Reference> switchLabels = new ArrayList<>();
-        List<Map.Entry<String, String>> directCalls = new ArrayList<>();
-        List<Map.Entry<String, String>> nullChecks = new ArrayList<>();
         for (MethodNode method : node.methods) {
             int line = 0;
             for (AbstractInsnNode instruction : method.instructions) {
@@ -86,35 +89,58 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                 }
                 creation(instruction, line).ifPresent(creations::add);
                 switchLabels(instruction, line).forEach(switchLabels::add);
-                directCall(method, instruction, line).ifPresent(directCalls::add);
-                nullCheck(method, instruction).ifPresent(nullChecks::add);
             }
         }
         int release = reader.readUnsignedShort(MAJOR_VERSION_OFFSET) - CLASS_FILE_VERSION_OFFSET;
-        return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader), byMethod(directCalls),
-                byMethod(nullChecks));
+        return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
+                byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::nullGuardedReads));
     }
 
-    private static Map<String, Set<String>> byMethod(List<Map.Entry<String, String>> entries) {
-        return entries.stream().collect(Collectors.groupingBy(Map.Entry::getKey,
-                Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
+    /** The facts of the methods that have any, by name and descriptor. */
+    private static Map<String, Set<String>> byMethod(ClassNode node, Function<MethodNode, Set<String>> facts) {
+        return node.methods.stream()
+                .map(method -> Map.entry(method.name + method.desc, facts.apply(method)))
+                .filter(entry -> !entry.getValue().isEmpty())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (first, second) -> first));
     }
 
-    /** A field the method reads and right away compares with {@code null}, keyed by the method. */
-    private static Optional<Map.Entry<String, String>> nullCheck(MethodNode method, AbstractInsnNode instruction) {
-        int opcode = instruction.getOpcode();
-        if (opcode != Opcodes.IFNULL && opcode != Opcodes.IFNONNULL) {
-            return Optional.empty();
+    /**
+     * The calls a method that creates lambdas makes itself, keyed with their line, plus a marker so the set is never
+     * empty; none for other methods.
+     */
+    private static Set<String> directCalls(MethodNode method) {
+        List<AbstractInsnNode> instructions = StreamSupport.stream(method.instructions.spliterator(), false).toList();
+        boolean createsLambdas = instructions.stream().anyMatch(instruction -> instruction instanceof InvokeDynamicInsnNode call
+                && LAMBDA_METAFACTORY.equals(call.bsm.getOwner()));
+        if (!createsLambdas) {
+            return Set.of();
         }
-        AbstractInsnNode previous = instruction.getPrevious();
-        while (previous != null && previous.getOpcode() < 0) {
-            previous = previous.getPrevious();
+        Set<String> calls = new LinkedHashSet<>();
+        calls.add(LAMBDA_METAFACTORY);
+        int line = 0;
+        for (AbstractInsnNode instruction : instructions) {
+            if (instruction instanceof LineNumberNode number) {
+                line = number.line;
+            }
+            if (instruction instanceof MethodInsnNode call) {
+                calls.add(callKey(Type.getObjectType(call.owner).getClassName(), call.name, line));
+            }
         }
-        if (previous instanceof FieldInsnNode field
-                && (field.getOpcode() == Opcodes.GETFIELD || field.getOpcode() == Opcodes.GETSTATIC)) {
-            return Optional.of(Map.entry(method.name + method.desc, field.name));
+        return Set.copyOf(calls);
+    }
+
+    /** The fields the method reads, if it compares anything with {@code null}; else none. */
+    private static Set<String> nullGuardedReads(MethodNode method) {
+        List<AbstractInsnNode> instructions = StreamSupport.stream(method.instructions.spliterator(), false).toList();
+        boolean comparesWithNull = instructions.stream()
+                .anyMatch(instruction -> instruction.getOpcode() == Opcodes.IFNULL || instruction.getOpcode() == Opcodes.IFNONNULL);
+        if (!comparesWithNull) {
+            return Set.of();
         }
-        return Optional.empty();
+        return instructions.stream()
+                .filter(instruction -> instruction.getOpcode() == Opcodes.GETFIELD || instruction.getOpcode() == Opcodes.GETSTATIC)
+                .map(instruction -> ((FieldInsnNode) instruction).name)
+                .collect(Collectors.toSet());
     }
 
     /** The classes of the constant pool's class entries; a long or double takes two slots, the second one empty. */
@@ -125,15 +151,6 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                 .filter(offset -> offset > 0 && reader.readByte(offset - 1) == CONSTANT_CLASS)
                 .mapToObj(offset -> Type.getObjectType(reader.readUTF8(offset, buffer)));
         return referencesTo(named, 0).toList();
-    }
-
-    /** A call the method makes, keyed by the method's name and descriptor. */
-    private static Optional<Map.Entry<String, String>> directCall(MethodNode method, AbstractInsnNode instruction, int line) {
-        if (instruction instanceof MethodInsnNode call) {
-            return Optional.of(Map.entry(method.name + method.desc,
-                    callKey(Type.getObjectType(call.owner).getClassName(), call.name, line)));
-        }
-        return Optional.empty();
     }
 
     /**

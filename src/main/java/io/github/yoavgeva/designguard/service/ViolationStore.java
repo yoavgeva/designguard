@@ -13,16 +13,22 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 /**
  * The violations a frozen rule accepts, so the rule can be adopted on code that already breaks it. A violation is
- * recorded by its file, rule and message, not its line, so editing elsewhere in the file keeps it frozen. Each recorded
- * violation accepts one occurrence, and fixed ones drop out of the record, so it only shrinks.
+ * recorded by its file, rule and {@link Violation#identity() identity}, not its line or the counts in its message, so
+ * editing elsewhere keeps it frozen. Each recorded violation accepts one occurrence, and fixed ones drop out of the
+ * record, so it only shrinks. A record holding another rule's violations is refused, not overwritten.
  */
 public abstract sealed class ViolationStore {
+
+    /** Where a recorded line's rule starts: {@code file: [rule] identity}. */
+    private static final String RULE_START = ": [";
 
     /**
      * A store in a text file, one violation per line. Files are named relative to the working directory, so the record
@@ -49,6 +55,7 @@ public abstract sealed class ViolationStore {
             write(sorted(keys));
             return new FreezeResult(location(), FreezeResult.Outcome.RECORDED, keys.size(), violations);
         }
+        requireSameRule(recorded.get(), violations);
         Map<String, Long> accepted = recorded.get().stream()
                 .collect(Collectors.groupingBy(key -> key, Collectors.counting()));
         Map<String, List<Violation>> byKey = violations.stream()
@@ -67,13 +74,30 @@ public abstract sealed class ViolationStore {
         return new FreezeResult(location(), FreezeResult.Outcome.COMPARED, kept.size(), added);
     }
 
+    /** Fails if the record holds only other rules' violations: two frozen rules share its name. */
+    private void requireSameRule(List<String> recorded, List<Violation> violations) {
+        Set<String> recordedRules = recorded.stream().map(ViolationStore::ruleOf).collect(Collectors.toCollection(TreeSet::new));
+        Set<String> currentRules = violations.stream().map(Violation::rule).collect(Collectors.toCollection(TreeSet::new));
+        if (!recordedRules.isEmpty() && !currentRules.isEmpty() && Collections.disjoint(recordedRules, currentRules)) {
+            throw new DesignGuardException(location() + " records violations of " + String.join(", ", recordedRules)
+                    + ", not of " + String.join(", ", currentRules) + ": give each frozen rule its own name");
+        }
+    }
+
+    /** The rule in a recorded line, {@code file: [rule] identity}. */
+    private static String ruleOf(String key) {
+        int start = key.indexOf(RULE_START) + RULE_START.length();
+        int end = key.indexOf(']', start);
+        return start < RULE_START.length() || end < 0 ? "" : key.substring(start, end);
+    }
+
     abstract Optional<List<String>> read();
 
     abstract void write(List<String> keys);
 
     abstract String location();
 
-    /** One line per violation: {@code file: [rule] message}, the file relative to the working directory. */
+    /** One line per violation: {@code file: [rule] identity}, the file relative to the working directory. */
     private static String key(Violation violation) {
         Path file = Path.of(violation.file());
         Path workingDirectory = Path.of("").toAbsolutePath();
@@ -82,7 +106,7 @@ public abstract sealed class ViolationStore {
         }
         String name = file.isAbsolute() ? file.toString()
                 : StreamSupport.stream(file.spliterator(), false).map(Path::toString).collect(Collectors.joining("/"));
-        String line = name + ": [" + violation.rule() + "] " + violation.message();
+        String line = name + RULE_START + violation.rule() + "] " + violation.identity();
         return line.replace("\r", "\\r").replace("\n", "\\n");
     }
 

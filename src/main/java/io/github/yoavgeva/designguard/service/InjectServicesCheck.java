@@ -1,5 +1,6 @@
 package io.github.yoavgeva.designguard.service;
 
+import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.core.domain.JavaModifier;
@@ -33,16 +34,18 @@ public final class InjectServicesCheck {
         WiringCode wiring = code.wiring();
         return classes.stream()
                 .filter(dependent -> classes.selected(filter, dependent) && !wiring.contains(dependent))
-                .flatMap(dependent -> Stream.concat(
-                        creations(classes, serviceLike, dependent), singletons(classes, serviceLike, dependent)))
+                .flatMap(dependent -> Stream.concat(creations(classes, filter, serviceLike, dependent),
+                        singletons(classes, filter, serviceLike, dependent)))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
 
-    private static Stream<Violation> creations(ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass dependent) {
+    private static Stream<Violation> creations(ProjectClasses classes, ClassFilter filter, ServiceLikeClasses serviceLike,
+            JavaClass dependent) {
         return classes.bytecode().creationsIn(dependent)
                 .filter(creation -> serviceLike.isEffectfulOnItsOwn(creation.target())
-                        && !Hierarchy.isSelfOrNested(dependent, creation.target()))
+                        && !Hierarchy.isSelfOrNested(dependent, creation.target())
+                        && createdInSelected(classes, filter, dependent, creation))
                 .collect(Collectors.toMap(creation -> creation.target().getName(), creation -> creation,
                         (first, second) -> first.line() <= second.line() ? first : second, LinkedHashMap::new))
                 .values().stream()
@@ -54,8 +57,21 @@ public final class InjectServicesCheck {
                 });
     }
 
-    private static Stream<Violation> singletons(ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass dependent) {
+    /** Whether the filter selects the method or constructor that creates the object, found by the call's line. */
+    private static boolean createdInSelected(ProjectClasses classes, ClassFilter filter, JavaClass dependent,
+            ClassDependency creation) {
+        return dependent.getConstructorCallsFromSelf().stream()
+                .filter(call -> call.getTargetOwner().equals(creation.target()) && call.getLineNumber() == creation.line())
+                .map(JavaAccess::getOrigin)
+                .findFirst()
+                .map(origin -> classes.selected(filter, origin))
+                .orElse(true);
+    }
+
+    private static Stream<Violation> singletons(ProjectClasses classes, ClassFilter filter, ServiceLikeClasses serviceLike,
+            JavaClass dependent) {
         return dependent.getMethodCallsFromSelf().stream()
+                .filter(call -> classes.selected(filter, call.getOrigin()))
                 .filter(call -> isForeignService(classes, serviceLike, dependent, call.getTargetOwner()))
                 .filter(InjectServicesCheck::returnsItsOwnerStatically)
                 .collect(Collectors.toMap(JavaMethodCall::getName, call -> call, (first, second) -> first,

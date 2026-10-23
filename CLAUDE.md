@@ -16,6 +16,9 @@ A library of deterministic design checks for AI-written Java code. See README.md
   `mise exec -- mvn verify -Djvm=$(mise where java@temurin-17)/bin/java`. CI runs them on 17, 21, 25 and 27.
 - Layers: `model` (immutable data), `service` (checks), `view` (output formats), `controller` (public entry point).
   `ArchitectureTest` enforces who may depend on whom.
+- Every rule belongs in `RuleFiltersContractTest`, with code in `LegacyShop` that breaks it, so it honours `that()`,
+  `excluding()` and `frozen()`. A rule that reports fields, methods, constructors or calls also belongs in
+  `MemberIgnoringContractTest`, which checks that `ignoring()` skips an annotated member.
 - `DesignGuardSelfTest` runs designguard's own rules on this repo. A new rule that passes here belongs in it. A rule
   change that breaks it is either a false positive to fix in the rule (with a regression test) or a real finding to
   fix in the code.

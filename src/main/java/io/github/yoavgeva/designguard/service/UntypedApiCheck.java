@@ -43,7 +43,7 @@ public final class UntypedApiCheck {
                 .filter(type -> classes.selected(filter, type) && type.getModifiers().contains(JavaModifier.PUBLIC)
                         && !wiring.contains(type))
                 .flatMap(type -> type.getMethods().stream()
-                        .filter(method -> isPublicApi(type, method))
+                        .filter(method -> isPublicApi(type, method) && classes.selected(filter, method))
                         .flatMap(method -> untyped(method).map(found -> classes.violation(RULE, type,
                                 method.getSourceCodeLocation().getLineNumber(),
                                 ProjectClasses.nameOf(type) + "." + method.getName() + "() " + found,

@@ -74,19 +74,19 @@ final class Bytecode {
 
     /**
      * The calls a method or constructor makes itself. ArchUnit also counts the calls in the body of a lambda it
-     * creates, which run only when the lambda does.
+     * creates, which run only when the lambda does, so for a method that creates lambdas the class file decides.
      */
     Stream<JavaCall<?>> callsMadeBy(JavaCodeUnit unit) {
-        Set<String> made = factsOf(unit.getOwner()).directCalls()
-                .getOrDefault(unit.getName() + unit.getDescriptor(), Set.of());
-        return unit.getCallsFromSelf().stream()
-                .filter(call -> made.contains(ClassFileFacts.callKey(
-                        call.getTargetOwner().getName(), call.getName(), call.getLineNumber())));
+        Set<JavaCall<?>> calls = unit.getCallsFromSelf();
+        return Optional.ofNullable(factsOf(unit.getOwner()).directCalls().get(unit.getName() + unit.getDescriptor()))
+                .map(made -> calls.stream().filter(call -> made.contains(ClassFileFacts.callKey(
+                        call.getTargetOwner().getName(), call.getName(), call.getLineNumber()))))
+                .orElseGet(calls::stream);
     }
 
-    /** The fields a method or constructor compares with {@code null}, as lazy initialization does. */
-    Set<String> nullCheckedFieldsIn(JavaCodeUnit unit) {
-        return factsOf(unit.getOwner()).nullChecks().getOrDefault(unit.getName() + unit.getDescriptor(), Set.of());
+    /** The fields a method or constructor reads if it compares anything with {@code null}, as lazy initialization does. */
+    Set<String> nullGuardedReadsIn(JavaCodeUnit unit) {
+        return factsOf(unit.getOwner()).nullGuardedReads().getOrDefault(unit.getName() + unit.getDescriptor(), Set.of());
     }
 
     /** The oldest Java version the top-level classes were compiled for; empty if none was read. */

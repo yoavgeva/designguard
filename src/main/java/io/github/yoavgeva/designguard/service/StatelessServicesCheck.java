@@ -50,7 +50,8 @@ public final class StatelessServicesCheck {
                         && !type.isEnum() && !type.isRecord() && !wiring.contains(type))
                 .flatMap(type -> type.getFields().stream()
                         .filter(field -> !field.getModifiers().contains(JavaModifier.STATIC)
-                                && !field.getModifiers().contains(JavaModifier.SYNTHETIC))
+                                && !field.getModifiers().contains(JavaModifier.SYNTHETIC)
+                                && classes.selected(filter, field))
                         .flatMap(field -> state(field).stream()
                                 .map(state -> classes.violation(RULE, type, 0, ProjectClasses.nameOf(type)
                                                 + " is service-like, but its field '" + field.getName() + "' " + state,

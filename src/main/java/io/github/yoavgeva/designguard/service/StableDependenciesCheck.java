@@ -55,7 +55,8 @@ public final class StableDependenciesCheck {
                                 + ") depends on slice " + crossing.to() + ", which is less stable (instability "
                                 + format(instability.get(crossing.to())) + ")",
                         "invert it: let " + crossing.from() + " own an interface that " + crossing.to()
-                                + " implements, or move what " + crossing.from() + " needs into " + crossing.from()))
+                                + " implements, or move what " + crossing.from() + " needs into " + crossing.from())
+                        .identifiedAs("slice " + crossing.from() + " depends on less stable slice " + crossing.to()))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }

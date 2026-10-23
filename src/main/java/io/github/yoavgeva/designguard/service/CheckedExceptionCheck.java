@@ -30,7 +30,7 @@ public final class CheckedExceptionCheck {
         WiringCode wiring = code.wiring();
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && !wiring.contains(type))
-                .flatMap(type -> Stream.concat(checkedClass(classes, type), declarations(classes, type)))
+                .flatMap(type -> Stream.concat(checkedClass(classes, type), declarations(classes, filter, type)))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
@@ -43,8 +43,9 @@ public final class CheckedExceptionCheck {
                 "extend RuntimeException instead"));
     }
 
-    private static Stream<Violation> declarations(ProjectClasses classes, JavaClass type) {
+    private static Stream<Violation> declarations(ProjectClasses classes, ClassFilter filter, JavaClass type) {
         return type.getCodeUnits().stream()
+                .filter(unit -> classes.selected(filter, unit))
                 .filter(unit -> !unit.getModifiers().contains(JavaModifier.PRIVATE)
                         && !unit.getModifiers().contains(JavaModifier.SYNTHETIC)
                         && !Hierarchy.isInherited(type, unit))
