@@ -49,6 +49,7 @@ class DesignGuardSelfTest {
                 Arguments.of("tests don't mock values", GUARD.guardrails().testsDontMockValues()),
                 Arguments.of("tests use their subject", GUARD.guardrails().testsUseTheirSubject()),
                 Arguments.of("tests check results", GUARD.guardrails().testsCheckResults()),
+                Arguments.of("nothing widened for tests", GUARD.guardrails().noWidenedForTests()),
                 Arguments.of("no disabled tests", GUARD.guardrails().noDisabledTests()));
     }
 

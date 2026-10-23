@@ -9,6 +9,7 @@ import io.github.yoavgeva.designguard.service.ServiceTestsCheck;
 import io.github.yoavgeva.designguard.service.StubCheck;
 import io.github.yoavgeva.designguard.service.SubjectUsageCheck;
 import io.github.yoavgeva.designguard.service.UnusedPublicCodeCheck;
+import io.github.yoavgeva.designguard.service.WidenedForTestsCheck;
 import java.util.Set;
 
 /** Rules that catch the shortcuts AI agents take: unfinished code, silenced warnings, tests that prove nothing. */
@@ -69,6 +70,16 @@ public final class GuardrailRules {
      */
     public BasicRule serviceLikeClassesHaveTests() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ServiceTestsCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on package-private or protected methods and constructors that no production code calls but tests in
+     * their package do: they were widened so tests could reach inside the class.
+     *
+     * @return the rule
+     */
+    public BasicRule noWidenedForTests() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new WidenedForTestsCheck().check(codeBase, filter));
     }
 
     /**
