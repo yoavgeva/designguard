@@ -8,18 +8,31 @@ import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Finds services obtained instead of injected: an effectful class (one whose own code does I/O, reads the clock...)
- * created with {@code new}, or a service-like class fetched through a static singleton accessor. Wiring code is
+ * created with {@code new}, a service-like class fetched through a static singleton accessor, or a service looked up
+ * from a container: Spring's {@code getBean}, {@code ServiceLoader}, JNDI, Guice's {@code Injector} or CDI. Wiring code is
  * exempt, and so is creating objects that only receive their collaborators: a class whose effects all happen in
  * implementations it is given, behind interfaces or abstract methods, brings no effects of its own.
  */
 public final class InjectServicesCheck {
 
     private static final String RULE = "inject-services";
+    private static final Set<String> JNDI = Set.of("javax.naming.Context", "javax.naming.InitialContext",
+            "javax.naming.directory.InitialDirContext");
+    private static final List<ForbiddenCall> CONTAINER_LOOKUPS = List.of(
+            new ForbiddenCall(target -> target.getOwner().getPackageName().startsWith("org.springframework.")
+                    && "getBean".equals(target.getName()), target -> ""),
+            ForbiddenCall.of("java.util.ServiceLoader", Set.of("load", "loadInstalled"), ""),
+            new ForbiddenCall(target -> JNDI.contains(target.getOwner().getName()) && "lookup".equals(target.getName()),
+                    target -> ""),
+            ForbiddenCall.of("com.google.inject.Injector", Set.of("getInstance", "getProvider"), ""),
+            ForbiddenCall.of("jakarta.enterprise.inject.spi.CDI", Set.of("current"), ""),
+            ForbiddenCall.of("javax.enterprise.inject.spi.CDI", Set.of("current"), ""));
 
     /**
      * Finds violations in the classes the filter selects.
@@ -34,8 +47,9 @@ public final class InjectServicesCheck {
         WiringCode wiring = code.wiring();
         return classes.stream()
                 .filter(dependent -> classes.selected(filter, dependent) && !wiring.contains(dependent))
-                .flatMap(dependent -> Stream.concat(creations(classes, filter, serviceLike, dependent),
-                        singletons(classes, filter, serviceLike, dependent)))
+                .flatMap(dependent -> Stream.of(creations(classes, filter, serviceLike, dependent),
+                        singletons(classes, filter, serviceLike, dependent), lookups(classes, filter, dependent))
+                        .flatMap(found -> found))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
@@ -84,6 +98,20 @@ public final class InjectServicesCheck {
                                     + target + "." + call.getName() + "()",
                             "take " + target + " as a constructor parameter instead");
                 });
+    }
+
+    /** Services looked up from a container instead of injected, once per lookup method. */
+    private static Stream<Violation> lookups(ProjectClasses classes, ClassFilter filter, JavaClass dependent) {
+        return dependent.getMethodCallsFromSelf().stream()
+                .filter(call -> classes.selected(filter, call.getOrigin())
+                        && CONTAINER_LOOKUPS.stream().anyMatch(lookup -> lookup.matches().test(call.getTarget())))
+                .collect(Collectors.toMap(call -> ForbiddenCall.describe(call.getTarget()), call -> call,
+                        (first, second) -> first.getLineNumber() <= second.getLineNumber() ? first : second,
+                        LinkedHashMap::new))
+                .values().stream()
+                .map(call -> classes.violation(RULE, dependent, call.getLineNumber(), ProjectClasses.nameOf(dependent)
+                                + " looks up a service through " + ForbiddenCall.describe(call.getTarget()),
+                        "take the service as a constructor parameter instead of looking it up"));
     }
 
     private static boolean isForeignService(
