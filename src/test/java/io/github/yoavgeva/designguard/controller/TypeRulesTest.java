@@ -46,6 +46,93 @@ class TypeRulesTest {
     }
 
     @Test
+    void servicesHoldNoChangingState() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Storage", "package shop;\n\npublic interface Storage {\n    void save(String text);\n}\n")
+                .add("DiskStorage", """
+                        package shop;
+
+                        public final class DiskStorage implements Storage {
+                            private final java.nio.file.Path file;
+
+                            public DiskStorage(java.nio.file.Path file) {
+                                this.file = file;
+                            }
+
+                            @Override
+                            public void save(String text) {
+                                System.out.println(file + text);
+                            }
+                        }
+                        """)
+                .add("OrderService", """
+                        package shop;
+
+                        import java.util.ArrayList;
+                        import java.util.List;
+                        import java.util.concurrent.atomic.AtomicLong;
+
+                        public class OrderService {
+                            private final Storage storage;
+                            private final List<String> log = new ArrayList<>();
+                            private final AtomicLong total = new AtomicLong();
+                            private int processed;
+
+                            public OrderService(Storage storage) {
+                                this.storage = storage;
+                            }
+
+                            public void place(String order) {
+                                processed++;
+                                total.incrementAndGet();
+                                log.add(order);
+                                storage.save(order);
+                            }
+                        }
+                        """)
+                .add("Prices", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Prices {
+                            private final Storage storage;
+                            private final List<String> names;
+
+                            public Prices(Storage storage, List<String> names) {
+                                this.storage = storage;
+                                this.names = List.copyOf(names);
+                            }
+
+                            public void publish() {
+                                names.forEach(storage::save);
+                            }
+                        }
+                        """)
+                .add("App", """
+                        package shop;
+
+                        public final class App {
+                            private static int runs;
+                            private final java.util.List<String> args = new java.util.ArrayList<>();
+
+                            public static void main(String[] args) {
+                                runs++;
+                                new DiskStorage(java.nio.file.Path.of("out.txt")).save("started " + runs);
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
+                "OrderService is service-like, but its field 'log' holds a mutable ArrayList",
+                "OrderService is service-like, but its field 'processed' isn't final",
+                "OrderService is service-like, but its field 'total' holds a mutable AtomicLong");
+        assertThat(guard.types().servicesAreStateless().evaluate().get(0).fix()).isEqualTo("keep state out of"
+                + " services: pass it in and return it as values, or keep it in a store the service calls");
+    }
+
+    @Test
     void closedHierarchiesMustBeSealed() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Shape", "package shop;\n\npublic interface Shape {\n    double area();\n    String name();\n}\n")

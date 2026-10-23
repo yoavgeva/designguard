@@ -8,6 +8,7 @@ import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.DataClassCheck;
 import io.github.yoavgeva.designguard.service.RecordImmutabilityCheck;
 import io.github.yoavgeva.designguard.service.SealedHierarchyCheck;
+import io.github.yoavgeva.designguard.service.StatelessServicesCheck;
 import io.github.yoavgeva.designguard.service.ValueImmutabilityCheck;
 
 /** Rules about how types are modelled: hierarchies, records, immutability and branching on kinds. */
@@ -62,6 +63,16 @@ public final class TypeRules {
      */
     public BasicRule valueTypesAreImmutable() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ValueImmutabilityCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails when a service-like class holds changing state: a non-final instance field, or a final one holding a
+     * mutable collection, atomic or string builder. Services are shared, so their state leaks between callers.
+     *
+     * @return the rule
+     */
+    public BasicRule servicesAreStateless() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new StatelessServicesCheck().check(codeBase, filter));
     }
 
     /**

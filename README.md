@@ -142,6 +142,7 @@ implementation. Everything else is a **value**.
 | | `recordsAreImmutable()` | record components callers can still change |
 | | `dataClassesAreRecords()` | classes that only carry data |
 | | `valueTypesAreImmutable()` | values with non-final fields |
+| | `servicesAreStateless()` | service-like classes with non-final fields, or fields holding mutable collections, atomics or builders |
 | | `closedHierarchiesAreSealed()` | interfaces implemented only in the project but not sealed |
 | | `inheritance(FINAL_BY_DEFAULT / ABSTRACT_ONLY / ANY).maxDepth(n)` | non-final leaves, extending concrete classes, deep hierarchies |
 | `api()` | `noFlagArguments()` | boolean parameters that pick between behaviours |
