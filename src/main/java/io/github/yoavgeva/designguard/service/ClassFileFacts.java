@@ -20,28 +20,35 @@ import org.objectweb.asm.tree.TypeInsnNode;
 
 /**
  * What ArchUnit doesn't import from a class file: the Java version it was compiled for, the classes its code creates
- * with {@code new}, and the classes its switches match on. A {@code case Circle c} whose {@code c} is unused names
- * {@code Circle} only as a bootstrap argument of {@code SwitchBootstraps}, and {@code case Suit.CLUBS} names
- * {@code Suit} only inside a constant {@code EnumDesc}, so ArchUnit sees no dependency on either.
+ * with {@code new}, the classes its switches match on, and every class it names. A {@code case Circle c} whose
+ * {@code c} is unused names {@code Circle} only as a bootstrap argument of {@code SwitchBootstraps}, and
+ * {@code case Suit.CLUBS} names {@code Suit} only inside a constant {@code EnumDesc}. Reading
+ * {@code Limits.PAGE_SIZE} copies the constant's value into the code, and {@code Order.Status} names
+ * {@code Order} only as the outer class, so the class file keeps {@code Limits} and {@code Order} only in its
+ * constant pool. ArchUnit sees no dependency on any of them.
  *
  * @param release      the Java version the class was compiled for, e.g. 17; 0 if unread
  * @param creations    each {@code new}, in code order
  * @param switchLabels each class a {@code switch} matches on, at the line of the {@code switch}, in code order
+ * @param namedClasses each class the constant pool names, at line 0: the class file doesn't say where
  */
-record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels) {
+record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
+        List<Reference> namedClasses) {
 
     /** For a class without a class file to read. */
-    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of());
+    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of());
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
     private static final int MAJOR_VERSION_OFFSET = 6;
     private static final String SWITCH_BOOTSTRAPS = "java/lang/runtime/SwitchBootstraps";
     private static final String CLASS_DESC = "java/lang/constant/ClassDesc";
+    private static final int CONSTANT_CLASS = 7;
 
     ClassFileFacts {
         creations = List.copyOf(creations);
         switchLabels = List.copyOf(switchLabels);
+        namedClasses = List.copyOf(namedClasses);
     }
 
     /**
@@ -68,7 +75,17 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             }
         }
         int release = reader.readUnsignedShort(MAJOR_VERSION_OFFSET) - CLASS_FILE_VERSION_OFFSET;
-        return new ClassFileFacts(release, creations, switchLabels);
+        return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader));
+    }
+
+    /** The classes of the constant pool's class entries; a long or double takes two slots, the second one empty. */
+    private static List<Reference> namedClasses(ClassReader reader) {
+        char[] buffer = new char[reader.getMaxStringLength()];
+        Stream<Type> named = IntStream.range(1, reader.getItemCount())
+                .map(reader::getItem)
+                .filter(offset -> offset > 0 && reader.readByte(offset - 1) == CONSTANT_CLASS)
+                .mapToObj(offset -> Type.getObjectType(reader.readUTF8(offset, buffer)));
+        return referencesTo(named, 0).toList();
     }
 
     private static Optional<Reference> creation(AbstractInsnNode instruction, int line) {
@@ -82,11 +99,14 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         if (!(instruction instanceof InvokeDynamicInsnNode call) || !SWITCH_BOOTSTRAPS.equals(call.bsm.getOwner())) {
             return Stream.empty();
         }
-        return Arrays.stream(call.bsmArgs)
-                .flatMap(ClassFileFacts::labelTypes)
-                .map(label -> label.getSort() == Type.ARRAY ? label.getElementType() : label)
-                .filter(label -> label.getSort() == Type.OBJECT)
-                .map(label -> new Reference(label.getClassName(), line));
+        return referencesTo(Arrays.stream(call.bsmArgs).flatMap(ClassFileFacts::labelTypes), line);
+    }
+
+    /** References to the classes among the types, an array's element class included. */
+    private static Stream<Reference> referencesTo(Stream<Type> types, int line) {
+        return types.map(type -> type.getSort() == Type.ARRAY ? type.getElementType() : type)
+                .filter(type -> type.getSort() == Type.OBJECT)
+                .map(type -> new Reference(type.getClassName(), line));
     }
 
     /** The types a switch label names: a class, or the enum of an enum constant, built by {@code ClassDesc.of}. */

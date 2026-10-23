@@ -19,7 +19,7 @@ final class Bytecode {
     private final JavaClasses classes;
     private final JavaClasses matchedOutside;
     private final Map<String, ClassFileFacts> facts;
-    private final Map<String, List<JavaClass>> switchUsers;
+    private final Map<String, List<JavaClass>> usersNotImported;
 
     /**
      * Combines ArchUnit's classes with their class files' facts.
@@ -32,25 +32,35 @@ final class Bytecode {
         this.classes = classes;
         this.matchedOutside = matchedOutside;
         this.facts = Map.copyOf(facts);
-        this.switchUsers = classes.stream()
-                .flatMap(origin -> factsOf(origin).switchLabels().stream()
-                        .map(label -> Map.entry(label.className(), origin)))
+        this.usersNotImported = classes.stream()
+                .flatMap(origin -> Stream.concat(factsOf(origin).switchLabels().stream(),
+                                factsOf(origin).namedClasses().stream())
+                        .map(reference -> Map.entry(reference.className(), origin)))
                 .collect(Collectors.groupingBy(Map.Entry::getKey,
                         Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
 
-    /** What the class's code depends on: the dependencies ArchUnit imports, and the classes its switches match on. */
+    /**
+     * What the class's code depends on: the dependencies ArchUnit imports, the classes its switches match on, and, at
+     * line 0, the other classes its class file names, like those whose constants it reads. A class named only as the
+     * outer class of one it uses already is left out.
+     */
     Stream<ClassDependency> dependenciesFrom(JavaClass origin) {
         Stream<ClassDependency> imported = origin.getDirectDependenciesFromSelf().stream()
                 .map(dependency -> new ClassDependency(origin, dependency.getTargetClass(),
                         dependency.getSourceCodeLocation().getLineNumber()));
-        return Stream.concat(imported, references(origin, factsOf(origin).switchLabels()));
+        List<ClassDependency> located = Stream.concat(imported, references(origin, factsOf(origin).switchLabels()))
+                .toList();
+        Stream<ClassDependency> namedOnly = references(origin, factsOf(origin).namedClasses())
+                .filter(named -> located.stream()
+                        .noneMatch(dependency -> Hierarchy.isSelfOrNested(named.target(), dependency.target())));
+        return Stream.concat(located.stream(), namedOnly);
     }
 
-    /** The project classes whose code depends on the class, switches that match on it included. */
+    /** The project classes whose code depends on the class, or whose class files name it. */
     Stream<JavaClass> usersOf(JavaClass target) {
         return Stream.concat(target.getDirectDependenciesToSelf().stream().map(Dependency::getOriginClass),
-                switchUsers.getOrDefault(target.getName(), List.of()).stream());
+                usersNotImported.getOrDefault(target.getName(), List.of()).stream());
     }
 
     /** The project classes the class's code creates with {@code new}, at the line of each {@code new}. */

@@ -129,4 +129,51 @@ class ApiRulesTest {
             assertThat(violation.fix()).isEqualTo("make it package-private");
         });
     }
+
+    @Test
+    void classesOtherPackagesUseForConstantsOrNestedTypesStayPublic() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Limits", """
+                        package shop.orders;
+
+                        public final class Limits {
+                            public static final int MAX_ITEMS = 10;
+
+                            private Limits() {
+                            }
+
+                            public static boolean tooMany(int items) {
+                                return items > MAX_ITEMS;
+                            }
+                        }
+                        """)
+                .add("Order", """
+                        package shop.orders;
+
+                        public record Order(Order.Status status) {
+                            public enum Status { OPEN, PAID }
+                        }
+                        """)
+                .add("Orders", """
+                        package shop.orders;
+
+                        public class Orders {
+                            public Order place(int items) {
+                                return new Order(Limits.tooMany(items) ? Order.Status.OPEN : Order.Status.PAID);
+                            }
+                        }
+                        """)
+                .add("Controller", """
+                        package shop.web;
+
+                        public class Controller {
+                            public String show(shop.orders.Orders orders) {
+                                return orders.place(shop.orders.Limits.MAX_ITEMS) + " " + shop.orders.Order.Status.PAID;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.api().minimalVisibility().evaluate()).isEmpty();
+    }
 }
