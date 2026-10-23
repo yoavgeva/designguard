@@ -215,6 +215,19 @@ final class LegacyShop {
                                 return text;
                             }
 
+                            public int width(String size) {
+                                switch (size) {
+                                    case "small":
+                                        return 1;
+                                    case "medium":
+                                        return 2;
+                                    case "large":
+                                        return 3;
+                                    default:
+                                        return 0;
+                                }
+                            }
+
                             @SuppressWarnings("unchecked")
                             public java.util.List<String> names(Object list) {
                                 return (java.util.List<String>) list;

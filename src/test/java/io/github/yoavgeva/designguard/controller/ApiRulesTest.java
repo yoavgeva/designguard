@@ -239,6 +239,71 @@ class ApiRulesTest {
     }
 
     @Test
+    void choicesBetweenStringsAreEnums() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Delivery", "package shop;\n\npublic enum Delivery { EXPRESS, PICKUP, STANDARD }\n")
+                .add("Fees", """
+                        package shop;
+
+                        public class Fees {
+                            public int fee(String delivery) {
+                                switch (delivery) {
+                                    case "express":
+                                        return 10;
+                                    case "pickup":
+                                        return 0;
+                                    case "in-store":
+                                        return 5;
+                                    default:
+                                        return -1;
+                                }
+                            }
+
+                            public int tax(String region) {
+                                if (region.equals("eu")) {
+                                    return 20;
+                                } else if ("us".equals(region)) {
+                                    return 8;
+                                } else if (region.equalsIgnoreCase("uk")) {
+                                    return 17;
+                                }
+                                return 0;
+                            }
+
+                            public int size(String size) {
+                                return switch (size) {
+                                    case "s" -> 1;
+                                    case "m" -> 2;
+                                    default -> 3;
+                                };
+                            }
+
+                            public static Delivery parse(String text) {
+                                switch (text) {
+                                    case "express":
+                                        return Delivery.EXPRESS;
+                                    case "pickup":
+                                        return Delivery.PICKUP;
+                                    case "standard":
+                                        return Delivery.STANDARD;
+                                    default:
+                                        throw new IllegalArgumentException(text);
+                                }
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.api().noStringlyTypedChoices().evaluate()).extracting(Violation::line, Violation::message, Violation::fix)
+                .containsExactly(
+                        tuple(5, "Fees.fee() switches on the strings \"express\", \"pickup\" and \"in-store\": make them an enum",
+                                "replace the strings with an enum, e.g. enum Delivery { EXPRESS, PICKUP, IN_STORE }, and"
+                                        + " switch over it"),
+                        tuple(18, "Fees.tax() compares region with the strings \"eu\", \"us\" and \"uk\": make them an enum",
+                                "replace the strings with an enum, e.g. enum Region { EU, US, UK }, and switch over it"));
+    }
+
+    @Test
     void publicClassesUsedOnlyInTheirPackageShouldBePackagePrivate() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("OrderMapper", "package shop.orders;\n\npublic class OrderMapper {\n"
