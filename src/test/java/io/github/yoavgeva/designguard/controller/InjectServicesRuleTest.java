@@ -135,6 +135,59 @@ class InjectServicesRuleTest {
     }
 
     @Test
+    void creatingObjectsFromInjectedAbstractionsIsFine() {
+        var guard = new CompiledProject(directory).release(release)
+                .add("Storage", "package shop;\n\npublic interface Storage {\n    void save(String report);\n}\n")
+                .add("DiskStorage", """
+                        package shop;
+
+                        public final class DiskStorage implements Storage {
+                            @Override
+                            public void save(String report) {
+                                try {
+                                    java.nio.file.Files.writeString(java.nio.file.Path.of("report.txt"), report);
+                                } catch (java.io.IOException e) {
+                                    throw new java.io.UncheckedIOException(e);
+                                }
+                            }
+                        }
+                        """)
+                .add("ScheduledReport", """
+                        package shop;
+
+                        public final class ScheduledReport {
+                            private final Storage storage;
+
+                            public ScheduledReport(Storage storage) {
+                                this.storage = storage;
+                            }
+
+                            public void run() {
+                                storage.save("daily");
+                            }
+                        }
+                        """)
+                .add("Reports", """
+                        package shop;
+
+                        public final class Reports {
+                            private final Storage storage;
+
+                            public Reports(Storage storage) {
+                                this.storage = storage;
+                            }
+
+                            public ScheduledReport daily() {
+                                return new ScheduledReport(storage);
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().injectServices().evaluate()).isEmpty();
+    }
+
+    @Test
     void callingTheSuperConstructorIsNotCreatingAService() {
         var guard = new CompiledProject(directory).release(release)
                 .add("Gateway", """

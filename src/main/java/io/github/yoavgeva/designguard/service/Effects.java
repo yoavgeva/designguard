@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -56,9 +57,22 @@ final class Effects {
 
     /** Names of the classes with at least one effectful method, constructor or lambda. */
     Set<String> effectfulClasses(ProjectClasses classes, List<JavaClass> candidates) {
+        return effectful(classes, candidates, Effects::implementations);
+    }
+
+    /**
+     * Names of the classes whose own code is effectful: a call counts only through the method it names, not through
+     * overrides. Effects of an implementation the class is given, behind an interface or abstract method, don't count.
+     */
+    Set<String> effectfulOnTheirOwn(ProjectClasses classes, List<JavaClass> candidates) {
+        return effectful(classes, candidates, target -> Stream.of(target.getFullName()));
+    }
+
+    private Set<String> effectful(ProjectClasses classes, List<JavaClass> candidates,
+            Function<CodeUnitAccessTarget, Stream<String>> dispatch) {
         List<JavaCodeUnit> units = candidates.stream().flatMap(type -> type.getCodeUnits().stream()).toList();
         Map<String, Set<String>> callees = units.stream().collect(Collectors.toMap(JavaCodeUnit::getFullName,
-                unit -> projectCallees(classes, unit), (first, second) -> first));
+                unit -> projectCallees(classes, unit, dispatch), (first, second) -> first));
         Set<String> effectful = units.stream().filter(this::isDirectlyEffectful).map(JavaCodeUnit::getFullName)
                 .collect(Collectors.toCollection(HashSet::new));
         boolean changed = true;
@@ -74,11 +88,12 @@ final class Effects {
                 .map(unit -> unit.getOwner().getName()).collect(Collectors.toSet());
     }
 
-    private static Set<String> projectCallees(ProjectClasses classes, JavaCodeUnit unit) {
+    private static Set<String> projectCallees(ProjectClasses classes, JavaCodeUnit unit,
+            Function<CodeUnitAccessTarget, Stream<String>> dispatch) {
         return accesses(unit)
                 .map(JavaCodeUnitAccess::getTarget)
                 .filter(target -> classes.isProject(target.getOwner()))
-                .flatMap(Effects::implementations)
+                .flatMap(dispatch)
                 .collect(Collectors.toSet());
     }
 

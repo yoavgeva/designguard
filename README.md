@@ -103,7 +103,7 @@ implementation. Everything else is a **value**.
 | | `onion().adapter(...)` | rings depending outwards |
 | | `featureSlices()` | a feature using another's internals, or features in a cycle |
 | `dependencies()` | `interfacePolicy(PORTS / SERVICES / ALL)` | concrete dependencies where an interface is required |
-| | `injectServices()` | effectful classes created with `new`, or singletons reached statically, outside wiring code |
+| | `injectServices()` | effectful classes created with `new`, or singletons reached statically, outside wiring code; a class whose effects happen only in implementations it is given doesn't count |
 | | `clockIsInjected()` | `LocalDate.now()`, `System.currentTimeMillis()`... instead of an injected `Clock` |
 | | `randomnessIsInjected()` | `new Random()`, `UUID.randomUUID()`... |
 | | `configurationIsInjected()` | `System.getenv()`, `System.getProperty()`... |
