@@ -70,18 +70,34 @@ class InjectServicesRuleTest {
                             }
                         }
                         """)
+                .add("Odds", """
+                        package shop.orders;
+
+                        public final class Odds {
+                            private static final Odds INSTANCE = new Odds();
+
+                            public static Odds getInstance() {
+                                return INSTANCE;
+                            }
+
+                            public double next() {
+                                return Math.random();
+                            }
+                        }
+                        """)
                 .add("Lottery", """
                         package shop.orders;
 
                         public class Lottery {
-                            public int draw() {
-                                return Registry.getInstance().next();
+                            public double draw() {
+                                return Registry.getInstance().next() * Odds.getInstance().next();
                             }
                         }
                         """)
                 .guard(SHOP);
 
         assertThat(guard.dependencies().injectServices().evaluate()).extracting(Violation::message).containsExactly(
+                "Lottery reaches service-like Odds through the static Odds.getInstance()",
                 "Lottery reaches service-like Registry through the static Registry.getInstance()");
     }
 

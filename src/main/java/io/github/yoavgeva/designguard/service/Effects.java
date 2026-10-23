@@ -66,9 +66,11 @@ final class Effects {
             Map.entry("java.util.concurrent.ForkJoinPool", STARTS_POOLS));
 
     private final List<PackageMatcher> extraImpurePackages;
+    private final Overrides overrides;
 
-    Effects(List<String> extraImpurePackages) {
+    Effects(List<String> extraImpurePackages, Overrides overrides) {
         this.extraImpurePackages = extraImpurePackages.stream().map(PackageMatcher::of).toList();
+        this.overrides = overrides;
     }
 
     /** Whether the class can be effectful at all: annotations and exceptions never are, they only carry data. */
@@ -88,7 +90,7 @@ final class Effects {
     /** Full names of the effectful methods, constructors and lambdas; a call may run any override of its target. */
     Set<String> effectfulCodeUnits(ProjectClasses classes, List<JavaClass> candidates) {
         return CallGraph.reaching(CallGraph.unitsOf(candidates),
-                unit -> CallGraph.projectCallees(classes, accesses(unit), CallGraph::implementations),
+                unit -> CallGraph.projectCallees(classes, accesses(unit), target -> overrides.of(target).stream()),
                 this::isDirectlyEffectful);
     }
 
@@ -99,7 +101,7 @@ final class Effects {
     Set<String> effectfulWhenRun(ProjectClasses classes, List<JavaClass> candidates) {
         Bytecode bytecode = classes.bytecode();
         return CallGraph.reaching(CallGraph.unitsOf(candidates),
-                unit -> CallGraph.projectCallees(classes, bytecode.callsMadeBy(unit), CallGraph::implementations),
+                unit -> CallGraph.projectCallees(classes, bytecode.callsMadeBy(unit), target -> overrides.of(target).stream()),
                 unit -> bytecode.callsMadeBy(unit).anyMatch(call -> isImpure(call.getTarget())));
     }
 

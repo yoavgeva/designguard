@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaAccess;
+import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaConstructor;
@@ -42,13 +43,14 @@ public final class ConstructorWorkCheck {
                 .toList();
     }
 
-    /** The first effectful call the code unit makes, except creating project objects. */
+    /** The first effectful call the code unit makes, by line and then by name, except creating project objects. */
     private static Optional<Violation> work(
             ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass type, JavaCodeUnit unit) {
         return classes.bytecode().callsMadeBy(unit)
                 .filter(call -> !(ForbiddenCall.CONSTRUCTOR.equals(call.getName()) && classes.isProject(call.getTargetOwner())))
                 .filter(call -> serviceLike.runsEffects(call.getTarget()))
-                .min(Comparator.comparingInt(JavaAccess::getLineNumber))
+                .min(Comparator.<JavaCall<?>>comparingInt(JavaAccess::getLineNumber)
+                        .thenComparing(call -> ForbiddenCall.describe(call.getTarget())))
                 .map(call -> {
                     String described = ForbiddenCall.describe(call.getTarget());
                     String place = JavaConstructor.CONSTRUCTOR_NAME.equals(unit.getName()) ? "constructor" : "static initializer";
