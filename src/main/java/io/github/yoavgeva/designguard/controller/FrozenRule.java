@@ -5,6 +5,7 @@ import io.github.yoavgeva.designguard.model.Violation;
 import io.github.yoavgeva.designguard.service.ViolationStore;
 import io.github.yoavgeva.designguard.view.TextReport;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * A rule adopted on code that already breaks it: the violations it had when frozen are recorded in a file, and only
@@ -13,10 +14,10 @@ import java.util.List;
  */
 public final class FrozenRule {
 
-    private final DesignRule<?> rule;
+    private final Supplier<List<Violation>> rule;
     private final ViolationStore store;
 
-    FrozenRule(DesignRule<?> rule, ViolationStore store) {
+    FrozenRule(Supplier<List<Violation>> rule, ViolationStore store) {
         this.rule = rule;
         this.store = store;
     }
@@ -28,7 +29,7 @@ public final class FrozenRule {
      *         the record doesn't list
      */
     public List<Violation> evaluate() {
-        return store.freeze(rule.evaluate()).failing();
+        return store.freeze(rule.get()).failing();
     }
 
     /**
@@ -38,7 +39,7 @@ public final class FrozenRule {
      *                        violation isn't recorded
      */
     public void check() {
-        FreezeResult result = store.freeze(rule.evaluate());
+        FreezeResult result = store.freeze(rule.get());
         List<Violation> failing = result.failing();
         if (failing.isEmpty()) {
             return;

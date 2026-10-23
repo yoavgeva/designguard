@@ -2,6 +2,7 @@ package io.github.yoavgeva.designguard.controller;
 
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.service.BoundaryCheck;
+import io.github.yoavgeva.designguard.service.ClassCycleCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.FeatureSliceCheck;
 import java.util.List;
@@ -63,6 +64,16 @@ public final class ArchitectureRules {
      */
     public FeatureSlicesRule featureSlices() {
         return new FeatureSlicesRule(code, ClassFilter.ALL, new FeatureSliceCheck());
+    }
+
+    /**
+     * Fails on classes that depend on each other, directly or around a loop. Nested classes count as their top-level
+     * class, and a type naming its own subtypes, as a sealed type's {@code permits} clause does, isn't a cycle.
+     *
+     * @return the rule
+     */
+    public BasicRule classesHaveNoCycles() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ClassCycleCheck().check(codeBase, filter));
     }
 
     /**

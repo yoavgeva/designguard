@@ -18,6 +18,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class ArchitectureRulesTest {
 
     private static final String SHOP = "shop";
+    private static final String ORDER = "Order";
 
     @Parameter
     private int release;
@@ -76,6 +77,32 @@ class ArchitectureRulesTest {
     }
 
     @Test
+    void classesThatDependOnEachOtherFormACycle() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add(ORDER, "package shop;\n\npublic class Order {\n    private final java.util.List<OrderLine> lines = java.util.List.of();\n\n"
+                        + "    public int size() {\n        return lines.size();\n    }\n}\n")
+                .add("OrderLine", "package shop;\n\npublic record OrderLine(Order order, int quantity) {\n}\n")
+                .add("Invoice", "package shop.billing;\n\npublic class Invoice {\n"
+                        + "    public String pay(Payment payment) {\n        return payment.toString();\n    }\n}\n")
+                .add("Payment", "package shop.billing;\n\npublic class Payment {\n"
+                        + "    public String receipt(shop.receipts.Receipt receipt) {\n        return receipt.toString();\n    }\n}\n")
+                .add("Receipt", "package shop.receipts;\n\npublic class Receipt {\n"
+                        + "    public String invoice(shop.billing.Invoice invoice) {\n        return invoice.toString();\n    }\n}\n")
+                .add("Shape", "package shop.shapes;\n\npublic sealed interface Shape permits Circle {\n"
+                        + "    static Shape unit() {\n        return new Circle(1);\n    }\n}\n")
+                .add("Circle", "package shop.shapes;\n\npublic record Circle(double radius) implements Shape {\n}\n")
+                .add("Cart", "package shop;\n\npublic class Cart {\n    public record Item(Cart cart) {\n    }\n\n"
+                        + "    public Item first() {\n        return new Item(this);\n    }\n}\n")
+                .guard(SHOP);
+
+        assertThat(guard.architecture().classesHaveNoCycles().evaluate()).extracting(Violation::message).containsExactly(
+                "Order and OrderLine depend on each other in a cycle",
+                "Invoice, Payment and Receipt depend on each other in a cycle");
+        assertThat(guard.architecture().classesHaveNoCycles().evaluate().get(0).fix()).isEqualTo("break the cycle:"
+                + " move what they share into a class of its own, or let one side depend on an interface it owns");
+    }
+
+    @Test
     void mvcKeepsViewsAwayFromServices() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Cart", "package shop.model;\n\npublic record Cart(int items) {\n}\n")
@@ -98,7 +125,7 @@ class ArchitectureRulesTest {
     @Test
     void hexagonalKeepsTheDomainPureAndAdaptersApart() {
         DesignGuard guard = new CompiledProject(directory).release(release)
-                .add("Order", "package shop.domain;\n\npublic class Order {\n"
+                .add(ORDER, "package shop.domain;\n\npublic class Order {\n"
                         + "    public String id(shop.application.PlaceOrder useCase) {\n        return useCase.toString();\n    }\n}\n")
                 .add("PlaceOrder", "package shop.application;\n\npublic class PlaceOrder {\n"
                         + "    public shop.domain.Order place() {\n        return new shop.domain.Order();\n    }\n}\n")
@@ -120,7 +147,7 @@ class ArchitectureRulesTest {
     void onionRingsDependOnlyInwards() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Pricing", "package shop.domain.service;\n\npublic class Pricing {\n}\n")
-                .add("Order", "package shop.domain.model;\n\npublic class Order {\n"
+                .add(ORDER, "package shop.domain.model;\n\npublic class Order {\n"
                         + "    public String priced(shop.domain.service.Pricing pricing) {\n        return pricing.toString();\n    }\n}\n")
                 .add("Checkout", "package shop.application;\n\npublic class Checkout {\n"
                         + "    public String run(shop.adapter.db.OrderTable table, shop.domain.model.Order order) {\n"
@@ -143,7 +170,7 @@ class ArchitectureRulesTest {
                 .add("StripeClient", "package shop.payments.internal;\n\npublic class StripeClient {\n}\n")
                 .add("Payments", "package shop.payments;\n\npublic class Payments {\n"
                         + "    public String pay(shop.orders.Order order) {\n        return order.toString();\n    }\n}\n")
-                .add("Order", "package shop.orders;\n\npublic class Order {\n}\n")
+                .add(ORDER, "package shop.orders;\n\npublic class Order {\n}\n")
                 .add("Checkout", "package shop.orders;\n\npublic class Checkout {\n"
                         + "    public String run(shop.payments.Payments payments, shop.payments.internal.StripeClient client) {\n"
                         + "        return payments.pay(new Order()) + client;\n    }\n}\n")

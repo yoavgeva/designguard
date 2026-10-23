@@ -45,6 +45,7 @@ class RuleFiltersContractTest {
                 rule("hexagonal", g -> g.architecture().hexagonal().adapter("web", WEB)),
                 rule("onion", g -> g.architecture().onion()),
                 rule("featureSlices", g -> g.architecture().featureSlices()),
+                rule("classesHaveNoCycles", g -> g.architecture().classesHaveNoCycles()),
                 rule("frameworksStayOutOf", g -> g.architecture().frameworksStayOutOf(DOMAIN)),
                 rule("interfacePolicy", g -> g.dependencies().interfacePolicy(InterfacePolicy.SERVICES)),
                 rule("injectServices", g -> g.dependencies().injectServices()),
