@@ -188,6 +188,9 @@ Rules also see classes that ArchUnit doesn't import, which designguard reads fro
 
 ## Rules
 
+[docs/rules.md](docs/rules.md) describes each rule: what it reports and why, an example with the message it prints,
+how to fix the code, and its options. The table below sums them up.
+
 A class is **effectful** if its code touches the outside world: I/O, the clock, randomness, the environment, threads,
 or an impure package. For threads and executors, starting, configuring or running work on one counts; holding one,
 or reading the current thread, doesn't. That holds directly, through a field holding such a resource, or by calling project code that

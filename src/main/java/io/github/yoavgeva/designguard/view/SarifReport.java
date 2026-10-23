@@ -13,13 +13,14 @@ import java.util.regex.Pattern;
 
 /**
  * Renders violations as a SARIF 2.1.0 log, which GitHub code scanning and other tools show as annotations: one run of
- * designguard, its rules, and one result per violation. Each result carries the violation's file, rule and identity
+ * designguard, its rules, each linked to its documentation, and one result per violation. Each result carries the violation's file, rule and identity
  * as a fingerprint, so tools keep tracking it as the code around it moves. Relative paths stay relative, as code
  * scanning expects paths from the repository root; absolute ones become {@code file} URIs.
  */
 public final class SarifReport {
 
     private static final Pattern WINDOWS_DRIVE = Pattern.compile("[A-Za-z]:/.*");
+    private static final String RULE_DOCS = "https://github.com/yoavgeva/designguard/blob/main/docs/rules.md#";
 
     /**
      * Renders the violations.
@@ -32,7 +33,7 @@ public final class SarifReport {
         Json driver = Json.object(
                 field("name", text("designguard")),
                 field("informationUri", text("https://github.com/yoavgeva/designguard")),
-                field("rules", Json.array(rules.stream().map(rule -> Json.object(field("id", text(rule)))).toList())));
+                field("rules", Json.array(rules.stream().map(SarifReport::rule).toList())));
         Json run = Json.object(
                 field("tool", Json.object(field("driver", driver))),
                 field("results", Json.array(violations.stream().map(violation -> result(violation, rules)).toList())));
@@ -41,6 +42,11 @@ public final class SarifReport {
                 field("version", text("2.1.0")),
                 field("runs", Json.array(List.of(run))))
                 .write(0) + "\n";
+    }
+
+    /** A rule, linked to its section of the rule docs. */
+    private static Json rule(String id) {
+        return Json.object(field("id", text(id)), field("helpUri", text(RULE_DOCS + id)));
     }
 
     private static Json result(Violation violation, List<String> rules) {
