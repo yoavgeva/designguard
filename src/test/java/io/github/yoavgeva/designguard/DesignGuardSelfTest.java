@@ -31,6 +31,7 @@ class DesignGuardSelfTest {
                 Arguments.of("records are immutable", GUARD.types().recordsAreImmutable()),
                 Arguments.of("data classes are records", GUARD.types().dataClassesAreRecords()),
                 Arguments.of("values are immutable", GUARD.types().valueTypesAreImmutable()),
+                Arguments.of("services are stateless", GUARD.types().servicesAreStateless()),
                 Arguments.of("closed hierarchies are sealed", GUARD.types().closedHierarchiesAreSealed()),
                 Arguments.of("classes are final by default", GUARD.types().inheritance(InheritancePolicy.FINAL_BY_DEFAULT)),
                 Arguments.of("no flag arguments", GUARD.api().noFlagArguments()),
