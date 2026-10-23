@@ -40,7 +40,7 @@ final class InstanceofChainSites implements SiteFinder {
         return checksByTarget.values().stream()
                 .filter(checks -> checks.size() > 1)
                 .findFirst()
-                .flatMap(checks -> sources.projectTypeOf(checks.getFirst().getExpression()))
+                .flatMap(checks -> sources.projectTypeOf(checks.get(0).getExpression()))
                 .map(type -> new DispatchSite(type, DispatchSite.Kind.INSTANCEOF_CHAIN, file, head,
                         false, false, type.encloses(head)));
     }

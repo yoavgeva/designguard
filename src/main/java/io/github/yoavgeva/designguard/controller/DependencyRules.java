@@ -77,7 +77,8 @@ public final class DependencyRules {
      * @return the rule
      */
     public BasicRule noRawThreads() {
-        return new BasicRule(code, ClassFilter.ALL, FunctionalCoreChecks.rawThreads()::check);
+        return new BasicRule(code, ClassFilter.ALL,
+                (codeBase, filter) -> FunctionalCoreChecks.rawThreads(codeBase.javaRelease()).check(codeBase, filter));
     }
 
     /**

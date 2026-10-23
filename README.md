@@ -49,12 +49,32 @@ class DesignTest {
 Every rule takes `that().resideInAPackage(...)`, `excluding(...)` and `ignoring(annotatedWith(...))`, with ArchUnit's
 package syntax (`..domain..`). `check()` throws an `AssertionError` listing every violation; `evaluate()` returns them.
 
-`DesignGuard` reads sources from `src/main/java` and `src/test/java`, and classes from the classpath. Change that with
-`withSourceRoots`, `withTestSourceRoots` and `withClassesFrom`. Two settings shape how classes are classified:
+`new DesignGuard("com.shop")` reads sources from `src/main/java` and `src/test/java`, and classes from the classpath.
+To change anything, configure it with a builder:
 
+```java
+private static final DesignGuard GUARD = DesignGuard.forPackages("com.shop")
+        .wiringIn("..config..")
+        .treatingAsImpure("com.stripe..")
+        .build();
+```
+
+- `withSourceRoots`, `withTestSourceRoots`, `withClassesFrom`: where the code is.
 - `wiringIn("..config..")`: wiring code may create and hold concrete services. Classes with `main`, and
   `@Configuration`, `@SpringBootApplication` or `@Module` classes, always are wiring code.
 - `treatingAsImpure("com.stripe..")`: using these packages counts as I/O, like `java.net`.
+- `forJava(17)`: the Java version the code targets, if reading it from the class files isn't right (see below).
+
+## Java versions
+
+designguard runs on Java 17 and later, and checks code compiled for any Java version. It reads the version the
+code targets from its class files, so its advice fits that version:
+
+- Rules built on newer features fail with an explanation when the code targets an older Java:
+  `dataClassesAreRecords()` needs Java 16, and `closedHierarchiesAreSealed()` and `typeDispatch(SEALED_ONLY)` need
+  Java 17.
+- Fixes only suggest what the code's Java has: an exhaustive `switch` over a sealed type from Java 21, over an enum
+  from Java 14, and virtual threads from Java 21.
 
 ## Rules
 
@@ -107,7 +127,8 @@ designguard doesn't repeat what these do well:
 
 ## Build
 
-Requires Java 25 and Maven 3.9, pinned in `mise.toml`.
+Builds with Java 25 and Maven 3.9, pinned in `mise.toml`. The library compiles for Java 17 (`--release 17`), and CI
+runs the tests on Java 17, 21 and 25.
 
 ```shell
 mise install

@@ -38,7 +38,7 @@ class DesignGuardTest {
                             // TODO delete
                         }
                         """);
-        guard = new DesignGuard("shop").withSourceRoots(root);
+        guard = DesignGuard.forPackages("shop").withSourceRoots(root).build();
     }
 
     @Test

@@ -152,7 +152,7 @@ class InjectServicesRuleTest {
 
     @Test
     void wiringPackagesMayCreateServices() {
-        var guard = ShopFixture.write(directory)
+        var configured = ShopFixture.write(directory)
                 .add("PaymentsConfig", """
                         package shop.config;
 
@@ -165,9 +165,9 @@ class InjectServicesRuleTest {
                             }
                         }
                         """)
-                .guard(SHOP);
+                .configure(SHOP);
 
-        assertThat(guard.dependencies().injectServices().evaluate()).isNotEmpty();
-        assertThat(guard.wiringIn("..config..").dependencies().injectServices().evaluate()).isEmpty();
+        assertThat(configured.build().dependencies().injectServices().evaluate()).isNotEmpty();
+        assertThat(configured.wiringIn("..config..").build().dependencies().injectServices().evaluate()).isEmpty();
     }
 }

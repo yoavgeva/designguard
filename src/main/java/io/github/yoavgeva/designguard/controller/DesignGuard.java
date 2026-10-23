@@ -6,8 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Entry point: describes the code to check and hands out design rules for it, grouped by topic. Use it from a plain
- * JUnit test:
+ * Entry point: hands out design rules for the code to check, grouped by topic. Use it from a plain JUnit test:
  *
  * <pre>{@code
  * private static final DesignGuard GUARD = new DesignGuard("com.shop");
@@ -19,15 +18,15 @@ import java.util.List;
  * }</pre>
  *
  * <p>Sources are read from {@code src/main/java} and {@code src/test/java} relative to the working directory, which
- * is the module directory under Maven and Gradle; compiled classes come from the classpath.
+ * is the module directory under Maven and Gradle; compiled classes come from the classpath. To change that, or how
+ * classes are classified, start from {@link #forPackages(String...)}.
  */
 public final class DesignGuard {
 
-    private final ProjectSettings settings;
     private final CodeBase code;
 
     /**
-     * Checks the given packages and their subpackages.
+     * Checks the given packages and their subpackages, with the defaults.
      *
      * @param packages package names, e.g. {@code com.shop}
      * @throws IllegalArgumentException if no package is given
@@ -37,60 +36,22 @@ public final class DesignGuard {
     }
 
     private DesignGuard(ProjectSettings settings) {
-        this.settings = settings;
         this.code = CodeBase.of(settings);
     }
 
     /**
-     * Reads production sources from other roots than {@code src/main/java}.
+     * Starts configuring a guard for the given packages and their subpackages:
      *
-     * @param roots source roots
-     * @return a new guard
-     */
-    public DesignGuard withSourceRoots(Path... roots) {
-        return new DesignGuard(settings.withSourceRoots(List.of(roots)));
-    }
-
-    /**
-     * Reads test sources from other roots than {@code src/test/java}. Roots that don't exist are skipped.
+     * <pre>{@code
+     * DesignGuard.forPackages("com.shop").wiringIn("..config..").forJava(17).build()
+     * }</pre>
      *
-     * @param roots test source roots
-     * @return a new guard
+     * @param packages package names, e.g. {@code com.shop}
+     * @return a builder with the defaults
+     * @throws IllegalArgumentException if no package is given
      */
-    public DesignGuard withTestSourceRoots(Path... roots) {
-        return new DesignGuard(settings.withTestSourceRoots(List.of(roots)));
-    }
-
-    /**
-     * Reads compiled classes from directories instead of the classpath.
-     *
-     * @param directories class directories, e.g. {@code target/classes}
-     * @return a new guard
-     */
-    public DesignGuard withClassesFrom(Path... directories) {
-        return new DesignGuard(settings.withClassDirectories(List.of(directories)));
-    }
-
-    /**
-     * Marks packages as wiring code, which may create and hold concrete services. Classes with a {@code main}
-     * method and {@code @Configuration}, {@code @SpringBootApplication} or {@code @Module} classes always are.
-     *
-     * @param patterns ArchUnit package patterns, e.g. {@code ..config..}
-     * @return a new guard
-     */
-    public DesignGuard wiringIn(String... patterns) {
-        return new DesignGuard(settings.withWiringPackages(List.of(patterns)));
-    }
-
-    /**
-     * Treats using these packages as impure, like I/O: classes using them become service-like. Use it for SDK
-     * clients, e.g. {@code com.stripe..} or {@code software.amazon.awssdk..}.
-     *
-     * @param patterns ArchUnit package patterns
-     * @return a new guard
-     */
-    public DesignGuard treatingAsImpure(String... patterns) {
-        return new DesignGuard(settings.withImpurePackages(List.of(patterns)));
+    public static Builder forPackages(String... packages) {
+        return new Builder(ProjectSettings.forPackages(List.of(packages)));
     }
 
     /**
@@ -136,5 +97,88 @@ public final class DesignGuard {
      */
     public GuardrailRules guardrails() {
         return new GuardrailRules(code);
+    }
+
+    /** Describes where the code lives and how to classify it. Immutable: every method returns a new builder. */
+    public static final class Builder {
+
+        private final ProjectSettings settings;
+
+        private Builder(ProjectSettings settings) {
+            this.settings = settings;
+        }
+
+        /**
+         * Reads production sources from other roots than {@code src/main/java}.
+         *
+         * @param roots source roots
+         * @return a new builder
+         */
+        public Builder withSourceRoots(Path... roots) {
+            return new Builder(settings.withSourceRoots(List.of(roots)));
+        }
+
+        /**
+         * Reads test sources from other roots than {@code src/test/java}. Roots that don't exist are skipped.
+         *
+         * @param roots test source roots
+         * @return a new builder
+         */
+        public Builder withTestSourceRoots(Path... roots) {
+            return new Builder(settings.withTestSourceRoots(List.of(roots)));
+        }
+
+        /**
+         * Reads compiled classes from directories instead of the classpath.
+         *
+         * @param directories class directories, e.g. {@code target/classes}
+         * @return a new builder
+         */
+        public Builder withClassesFrom(Path... directories) {
+            return new Builder(settings.withClassDirectories(List.of(directories)));
+        }
+
+        /**
+         * Marks packages as wiring code, which may create and hold concrete services. Classes with a {@code main}
+         * method and {@code @Configuration}, {@code @SpringBootApplication} or {@code @Module} classes always are.
+         *
+         * @param patterns ArchUnit package patterns, e.g. {@code ..config..}
+         * @return a new builder
+         */
+        public Builder wiringIn(String... patterns) {
+            return new Builder(settings.withWiringPackages(List.of(patterns)));
+        }
+
+        /**
+         * Treats using these packages as impure, like I/O: classes using them become service-like. Use it for SDK
+         * clients, e.g. {@code com.stripe..} or {@code software.amazon.awssdk..}.
+         *
+         * @param patterns ArchUnit package patterns
+         * @return a new builder
+         */
+        public Builder treatingAsImpure(String... patterns) {
+            return new Builder(settings.withImpurePackages(List.of(patterns)));
+        }
+
+        /**
+         * Sets the Java version the checked code targets, instead of reading it from the class files. Rules that
+         * need a newer Java fail with an explanation, and fixes only suggest features that version has.
+         *
+         * @param release the Java version, e.g. 17
+         * @return a new builder
+         * @throws IllegalArgumentException if the version is below 8
+         */
+        public Builder forJava(int release) {
+            return new Builder(settings.withJavaRelease(release));
+        }
+
+        /**
+         * Creates the guard. Nothing is read until a rule needs it.
+         *
+         * @return the guard
+         */
+        public DesignGuard build() {
+            return new DesignGuard(settings);
+        }
     }
 }

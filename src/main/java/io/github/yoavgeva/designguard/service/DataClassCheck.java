@@ -75,7 +75,7 @@ public final class DataClassCheck {
         List<Statement> statements = method.getBody().map(body -> List.copyOf(body.getStatements())).orElse(List.of());
         return method.getParameters().isEmpty()
                 && statements.size() == 1
-                && statements.getFirst() instanceof ReturnStmt returned
+                && statements.get(0) instanceof ReturnStmt returned
                 && returned.getExpression().map(value -> isFieldRead(value, fieldNames)).orElse(false);
     }
 

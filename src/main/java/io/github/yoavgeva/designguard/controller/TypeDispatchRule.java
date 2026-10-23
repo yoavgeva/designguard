@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.controller;
 
 import io.github.yoavgeva.designguard.model.ClassFilter;
+import io.github.yoavgeva.designguard.model.JavaFeature;
 import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
 import io.github.yoavgeva.designguard.model.Violation;
 import io.github.yoavgeva.designguard.service.CodeBase;
@@ -13,7 +14,7 @@ import java.util.List;
  *
  * <ul>
  *   <li>With {@link TypeDispatchPolicy#SEALED_ONLY}, branching on subtypes is allowed only over sealed types, through
- *       a switch the compiler checks.</li>
+ *       a switch the compiler checks from Java 21. It needs code that targets Java 17 or later.</li>
  *   <li>A {@code default} branch in a switch over a sealed type or enum is reported: it hides new cases.</li>
  *   <li>A type branched on in more places than {@link #maxPlacesPerType(int)} allows, counting only branches the
  *       compiler doesn't check, is reported once at its declaration.</li>
@@ -52,7 +53,10 @@ public final class TypeDispatchRule extends DesignRule<TypeDispatchRule> {
 
     @Override
     List<Violation> violations(CodeBase code, ClassFilter filter) {
-        return new TypeDispatchCheck(policy, maxPlaces).check(code.sources(), filter);
+        if (policy == TypeDispatchPolicy.SEALED_ONLY) {
+            code.requires(JavaFeature.SEALED_TYPES, "typeDispatch(SEALED_ONLY)");
+        }
+        return new TypeDispatchCheck(policy, maxPlaces, code.javaRelease()).check(code.sources(), filter);
     }
 
     @Override

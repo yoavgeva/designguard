@@ -79,7 +79,7 @@ class SuppressionCheckTest {
 
     @Test
     void suggestsFixingTheCause() {
-        assertThat(violations(Set.of()).getFirst()).satisfies(violation -> {
+        assertThat(violations(Set.of()).get(0)).satisfies(violation -> {
             assertThat(violation.rule()).isEqualTo("no-suppressions");
             assertThat(violation.fix()).isEqualTo("fix what the tool reports instead of silencing it");
         });

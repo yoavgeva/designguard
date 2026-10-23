@@ -2,6 +2,7 @@ package io.github.yoavgeva.designguard.controller;
 
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.InheritancePolicy;
+import io.github.yoavgeva.designguard.model.JavaFeature;
 import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.DataClassCheck;
@@ -42,13 +43,15 @@ public final class TypeRules {
 
     /**
      * Fails on classes that only carry data (private final fields, accessors, {@code equals}, {@code hashCode},
-     * {@code toString}) and should be records.
+     * {@code toString}) and should be records. Needs code that targets Java 16 or later.
      *
      * @return the rule
      */
     public BasicRule dataClassesAreRecords() {
-        return new BasicRule(code, ClassFilter.ALL,
-                (codeBase, filter) -> new DataClassCheck().check(codeBase.sources(), filter));
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> {
+            codeBase.requires(JavaFeature.RECORDS, "dataClassesAreRecords()");
+            return new DataClassCheck().check(codeBase.sources(), filter);
+        });
     }
 
     /**
@@ -64,11 +67,15 @@ public final class TypeRules {
     /**
      * Fails when an interface or abstract class is implemented only inside the project but isn't sealed.
      * Functional interfaces are skipped. Meant for applications: a library's users may implement its interfaces.
+     * Needs code that targets Java 17 or later.
      *
      * @return the rule
      */
     public BasicRule closedHierarchiesAreSealed() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new SealedHierarchyCheck().check(codeBase, filter));
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> {
+            codeBase.requires(JavaFeature.SEALED_TYPES, "closedHierarchiesAreSealed()");
+            return new SealedHierarchyCheck().check(codeBase, filter);
+        });
     }
 
     /**

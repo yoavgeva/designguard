@@ -67,14 +67,15 @@ class FunctionalCoreRulesTest {
                 .add("Jobs", """
                         package shop;
 
+                        import java.util.concurrent.ExecutorService;
                         import java.util.concurrent.Executors;
 
                         public class Jobs {
                             public void run(Runnable job) {
                                 new Thread(job).start();
-                                try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-                                    executor.submit(job);
-                                }
+                                ExecutorService executor = Executors.newFixedThreadPool(2);
+                                executor.submit(job);
+                                executor.shutdown();
                             }
                         }
                         """)
@@ -98,7 +99,7 @@ class FunctionalCoreRulesTest {
                         tuple(10, "Invoice reads the system clock through LocalDate.now()"),
                         tuple(14, "Invoice reads the system clock through System.currentTimeMillis()"),
                         tuple(22, "Invoice reads the system clock through Instant.now()"));
-        assertThat(guard.dependencies().clockIsInjected().evaluate().getFirst().fix())
+        assertThat(guard.dependencies().clockIsInjected().evaluate().get(0).fix())
                 .isEqualTo("inject a java.time.Clock and pass it in, e.g. LocalDate.now(clock)");
     }
 
@@ -123,7 +124,7 @@ class FunctionalCoreRulesTest {
         assertThat(guard.dependencies().noRawThreads().evaluate()).singleElement().satisfies(violation -> {
             assertThat(violation.message()).isEqualTo("Jobs starts a thread directly through new Thread()");
             assertThat(violation.fix()).isEqualTo("submit the work to an injected ExecutorService,"
-                    + " e.g. one from Executors.newVirtualThreadPerTaskExecutor()");
+                    + " e.g. one from Executors.newFixedThreadPool(n)");
         });
     }
 }

@@ -20,6 +20,7 @@ public final class CompiledProject {
     private final Path sourceRoot;
     private final Path testRoot;
     private final Path classesDirectory;
+    private int javaRelease = 17;
 
     /**
      * Uses {@code directory/src} for sources, {@code directory/test} for test sources and
@@ -33,6 +34,17 @@ public final class CompiledProject {
         this.classesDirectory = directory.resolve("classes");
         this.tree = new SourceTree(sourceRoot);
         this.testTree = new SourceTree(testRoot);
+    }
+
+    /**
+     * Compiles for another Java version than 17, the oldest designguard runs on.
+     *
+     * @param release the {@code --release} to compile with
+     * @return this project, for chaining
+     */
+    public CompiledProject release(int release) {
+        this.javaRelease = release;
+        return this;
     }
 
     /**
@@ -66,14 +78,25 @@ public final class CompiledProject {
      * @return the guard
      */
     public DesignGuard guard(String... packages) {
+        return configure(packages).build();
+    }
+
+    /**
+     * Compiles every source and starts configuring a guard over the given packages, reading these sources and
+     * classes.
+     *
+     * @param packages packages to check
+     * @return the builder, for further settings
+     */
+    public DesignGuard.Builder configure(String... packages) {
         compile();
-        return new DesignGuard(packages).withSourceRoots(sourceRoot).withTestSourceRoots(testRoot)
+        return DesignGuard.forPackages(packages).withSourceRoots(sourceRoot).withTestSourceRoots(testRoot)
                 .withClassesFrom(classesDirectory);
     }
 
     private void compile() {
         List<String> arguments = new ArrayList<>(List.of(
-                "-d", classesDirectory.toString(), "--release", "25", "-proc:none", "-Xlint:none"));
+                "-d", classesDirectory.toString(), "--release", Integer.toString(javaRelease), "-proc:none", "-Xlint:none"));
         try (Stream<Path> files = Files.walk(sourceRoot)) {
             files.filter(path -> path.toString().endsWith(".java")).map(Path::toString).forEach(arguments::add);
         } catch (IOException e) {
