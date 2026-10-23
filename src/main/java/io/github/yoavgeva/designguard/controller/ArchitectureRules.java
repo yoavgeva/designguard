@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.controller;
 
 import io.github.yoavgeva.designguard.model.ClassFilter;
+import io.github.yoavgeva.designguard.service.BoundaryCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.FeatureSliceCheck;
 import java.util.List;
@@ -62,5 +63,17 @@ public final class ArchitectureRules {
      */
     public FeatureSlicesRule featureSlices() {
         return new FeatureSlicesRule(code, ClassFilter.ALL, new FeatureSliceCheck());
+    }
+
+    /**
+     * Keeps frameworks out of the domain, as hexagonal, onion and clean architectures require: Spring, Jakarta EE and
+     * javax (persistence, servlets, REST, CDI, injection, validation, JSON binding), Hibernate, Jackson, Gson, Guice,
+     * Dagger, Micronaut, Quarkus, MicroProfile, Vert.x and Dropwizard, annotations included.
+     *
+     * @param domainPackages ArchUnit package patterns of the domain, e.g. {@code ..domain..}
+     * @return the rule
+     */
+    public BasicRule frameworksStayOutOf(String... domainPackages) {
+        return new BasicRule(code, ClassFilter.ALL, BoundaryCheck.frameworks(List.of(domainPackages))::check);
     }
 }

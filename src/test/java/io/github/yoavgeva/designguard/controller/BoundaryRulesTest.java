@@ -1,8 +1,10 @@
 package io.github.yoavgeva.designguard.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.yoavgeva.designguard.CompiledProject;
+import io.github.yoavgeva.designguard.model.Violation;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -66,6 +68,44 @@ class BoundaryRulesTest {
                     assertThat(violation.fix())
                             .isEqualTo("catch it in an adapter and throw a domain exception instead");
                 });
+    }
+
+    @Test
+    void frameworksStayOutOfTheDomain() {
+        String runtime = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n";
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Service", "package org.springframework.stereotype;\n\n" + runtime + "public @interface Service {\n}\n")
+                .add("JsonProperty", "package com.fasterxml.jackson.annotation;\n\n" + runtime
+                        + "public @interface JsonProperty {\n    String value();\n}\n")
+                .add("Order", """
+                        package shop.domain;
+
+                        public class Order {
+                            @com.fasterxml.jackson.annotation.JsonProperty("id")
+                            private final String id;
+
+                            public Order(String id) {
+                                this.id = id;
+                            }
+
+                            public String id() {
+                                return id;
+                            }
+                        }
+                        """)
+                .add("Pricing", "package shop.domain;\n\n@org.springframework.stereotype.Service\npublic class Pricing {\n}\n")
+                .add("Money", "package shop.domain;\n\npublic record Money(long cents) {\n}\n")
+                .add("OrderController", "package shop.web;\n\n@org.springframework.stereotype.Service\n"
+                        + "public class OrderController {\n}\n")
+                .guard(SHOP);
+
+        assertThat(guard.architecture().frameworksStayOutOf("..domain..").evaluate())
+                .extracting(Violation::rule, Violation::message, Violation::fix)
+                .containsExactly(
+                        tuple("frameworks-stay-out", "Order uses the framework type JsonProperty",
+                                "keep the domain plain Java: move the framework code to an adapter and map at the boundary"),
+                        tuple("frameworks-stay-out", "Pricing uses the framework type Service",
+                                "keep the domain plain Java: move the framework code to an adapter and map at the boundary"));
     }
 
     @Test
