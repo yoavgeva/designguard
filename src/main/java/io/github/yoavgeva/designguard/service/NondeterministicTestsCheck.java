@@ -14,14 +14,13 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Finds test code that gives different results on different runs or machines: it reads the system clock, uses
- * unseeded randomness, reads environment variables or system properties, or sleeps. Seeded {@code new Random(42)},
- * {@code Clock.fixed(...)} and {@code now(clock)} are fine. Test methods, helpers and field initializers are all
- * checked; fixture code inside strings isn't code.
+ * Finds test code that gives different results on different runs or machines, one subject per check: it reads the
+ * system clock, uses unseeded randomness, reads environment variables or system properties, or sleeps. Seeded
+ * {@code new Random(42)}, {@code Clock.fixed(...)} and {@code now(clock)} are fine. Test methods, helpers and field
+ * initializers are all checked; fixture code inside strings isn't code.
  */
 public final class NondeterministicTestsCheck {
 
-    private static final String RULE = "tests-are-deterministic";
     private static final Set<String> TIME_TYPES = Set.of("Instant", "LocalDate", "LocalDateTime", "LocalTime",
             "ZonedDateTime", "OffsetDateTime", "OffsetTime", "Year", "YearMonth", "MonthDay");
     private static final Set<String> TIME_UNITS = Set.of("NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS",
@@ -46,6 +45,50 @@ public final class NondeterministicTestsCheck {
             new Call(Set.of(), "SecureRandom", Arguments.NONE, Kind.RANDOMNESS),
             new Call(Set.of(), "Date", Arguments.NONE, Kind.CLOCK));
 
+    private final Kind kind;
+
+    private NondeterministicTestsCheck(Kind kind) {
+        this.kind = kind;
+    }
+
+    /**
+     * Forbids reading the system clock: {@code now()} without a {@code Clock}, {@code System.currentTimeMillis()},
+     * {@code nanoTime()}, {@code new Date()}, {@code Calendar.getInstance()} and the system {@code Clock}s.
+     *
+     * @return the check
+     */
+    public static NondeterministicTestsCheck clock() {
+        return new NondeterministicTestsCheck(Kind.CLOCK);
+    }
+
+    /**
+     * Forbids unseeded randomness: {@code new Random()}, {@code new SecureRandom()}, {@code Math.random()},
+     * {@code UUID.randomUUID()} and {@code ThreadLocalRandom.current()}.
+     *
+     * @return the check
+     */
+    public static NondeterministicTestsCheck randomness() {
+        return new NondeterministicTestsCheck(Kind.RANDOMNESS);
+    }
+
+    /**
+     * Forbids reading environment variables and system properties.
+     *
+     * @return the check
+     */
+    public static NondeterministicTestsCheck environment() {
+        return new NondeterministicTestsCheck(Kind.ENVIRONMENT);
+    }
+
+    /**
+     * Forbids sleeping: {@code Thread.sleep} and {@code TimeUnit.X.sleep}.
+     *
+     * @return the check
+     */
+    public static NondeterministicTestsCheck sleep() {
+        return new NondeterministicTestsCheck(Kind.SLEEP);
+    }
+
     /**
      * Finds violations in the test sources the filter selects.
      *
@@ -58,7 +101,7 @@ public final class NondeterministicTestsCheck {
                 .flatMap(file -> Stream.concat(
                         file.unit().findAll(MethodCallExpr.class).stream().flatMap(call -> called(call).stream()),
                         file.unit().findAll(ObjectCreationExpr.class).stream().flatMap(creation -> created(creation).stream()))
-                        .filter(found -> Scopes.selected(filter, file, found.node()))
+                        .filter(found -> found.kind() == kind && Scopes.selected(filter, file, found.node()))
                         .map(found -> found.violation(file)))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
@@ -92,15 +135,19 @@ public final class NondeterministicTestsCheck {
 
     /** What a nondeterministic call does, and how to make the test fixed. */
     private enum Kind {
-        CLOCK("reads the system clock", "pass a fixed Clock, such as Clock.fixed(...), to the code under test"),
-        RANDOMNESS("uses unseeded randomness", "use fixed data, or a Random with a fixed seed"),
-        ENVIRONMENT("reads the environment", "pass the value in, so the test doesn't depend on the machine it runs on"),
-        SLEEP("sleeps", "wait for the condition instead, for example with Awaitility, or make time injectable");
+        CLOCK("tests-fixed-clock", "reads the system clock",
+                "pass a fixed Clock, such as Clock.fixed(...), to the code under test"),
+        RANDOMNESS("tests-seeded-randomness", "uses unseeded randomness", "use fixed data, or a Random with a fixed seed"),
+        ENVIRONMENT("tests-no-environment", "reads the environment",
+                "pass the value in, so the test doesn't depend on the machine it runs on"),
+        SLEEP("tests-no-sleep", "sleeps", "wait for the condition instead, for example with Awaitility, or make time injectable");
 
+        private final String rule;
         private final String verb;
         private final String fix;
 
-        Kind(String verb, String fix) {
+        Kind(String rule, String verb, String fix) {
+            this.rule = rule;
             this.verb = verb;
             this.fix = fix;
         }
@@ -131,7 +178,7 @@ public final class NondeterministicTestsCheck {
                     .map(callable -> callable instanceof MethodDeclaration method && UnitTestMethods.isTest(method)
                             ? "test " + Scopes.describe(callable) : Scopes.describe(callable))
                     .orElseGet(() -> Scopes.enclosingType(node).map(type -> type.getNameAsString()).orElse("a test"));
-            return Scopes.violation(RULE, file, node, where + " " + kind.verb + " through " + described, kind.fix);
+            return Scopes.violation(kind.rule, file, node, where + " " + kind.verb + " through " + described, kind.fix);
         }
     }
 }

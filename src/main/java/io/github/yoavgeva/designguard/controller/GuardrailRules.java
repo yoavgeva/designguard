@@ -2,6 +2,7 @@ package io.github.yoavgeva.designguard.controller;
 
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.service.CodeBase;
+import io.github.yoavgeva.designguard.service.ServiceTestsCheck;
 import io.github.yoavgeva.designguard.service.StubCheck;
 import io.github.yoavgeva.designguard.service.UnusedPublicCodeCheck;
 import io.github.yoavgeva.designguard.service.WidenedForTestsCheck;
@@ -34,6 +35,16 @@ public final class GuardrailRules {
      */
     public NoSuppressionsRule noSuppressions() {
         return new NoSuppressionsRule(code, ClassFilter.ALL, Set.of());
+    }
+
+    /**
+     * Fails when a service-like class has no test class named {@code <Name>Test}, {@code <Name>Tests} or
+     * {@code <Name>IT} in the test sources.
+     *
+     * @return the rule
+     */
+    public BasicRule serviceLikeClassesHaveTests() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ServiceTestsCheck().check(codeBase, filter));
     }
 
     /**

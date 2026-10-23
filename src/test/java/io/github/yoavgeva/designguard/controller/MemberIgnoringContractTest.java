@@ -149,10 +149,16 @@ class MemberIgnoringContractTest {
                         PACKAGE + "class CartTest {\n    @Legacy\n    @org.junit.jupiter.api.Test\n    void totals() {\n"
                                 + "        if (Math.abs(-1) > 0) {\n            org.assertj.core.api.Assertions.assertThat(1).isOne();\n"
                                 + "        }\n    }\n}\n")),
-                member("testsAreDeterministic", g -> g.tests().testsAreDeterministic(), List.of(), List.of(
-                        PACKAGE + "class CartTest {\n    @Legacy\n    @org.junit.jupiter.api.Test\n    void totals() {\n"
-                                + "        org.assertj.core.api.Assertions.assertThat(java.time.LocalDate.now()).isNotNull();\n"
-                                + "    }\n}\n")),
+                member("testsUseAFixedClock", g -> g.tests().testsUseAFixedClock(), List.of(), List.of(nondeterministicTest(
+                        "java.time.LocalDate.now()"))),
+                member("testsUseSeededRandomness", g -> g.tests().testsUseSeededRandomness(), List.of(), List.of(
+                        nondeterministicTest("new java.util.Random().nextInt()"))),
+                member("testsDontReadTheEnvironment", g -> g.tests().testsDontReadTheEnvironment(), List.of(), List.of(
+                        nondeterministicTest("System.getenv(\"REGION\")"))),
+                member("testsDontSleep", g -> g.tests().testsDontSleep(), List.of(), List.of(PACKAGE + "class CartTest {\n"
+                        + "    @Legacy\n    @org.junit.jupiter.api.Test\n    void totals() throws InterruptedException {\n"
+                        + "        Thread.sleep(10);\n        org.assertj.core.api.Assertions.assertThat(1).isOne();\n"
+                        + "    }\n}\n")),
                 member("noDisabledTests", g -> g.tests().noDisabledTests(), List.of(), List.of(
                         "package shop;\n\nclass CartTest {\n    @Legacy\n    @org.junit.jupiter.api.Disabled\n"
                                 + "    @org.junit.jupiter.api.Test\n    void totals() {\n"
@@ -186,6 +192,12 @@ class MemberIgnoringContractTest {
     private static Arguments member(String name, Function<DesignGuard, DesignRule<?>> rule, List<String> sources,
                                     List<String> tests) {
         return Arguments.of(name, rule, sources, tests);
+    }
+
+    /** A test, annotated {@code @Legacy}, asserting on a nondeterministic expression. */
+    private static String nondeterministicTest(String expression) {
+        return PACKAGE + "class CartTest {\n    @Legacy\n    @org.junit.jupiter.api.Test\n    void totals() {\n"
+                + "        org.assertj.core.api.Assertions.assertThat(" + expression + ").isNotNull();\n    }\n}\n";
     }
 
     private static String typeName(String source) {

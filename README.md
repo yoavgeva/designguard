@@ -166,15 +166,18 @@ implementation. Everything else is a **value**.
 | `guardrails()` | `noStubs()` | `TODO`/`FIXME`, `UnsupportedOperationException` placeholders, empty methods |
 | | `noSuppressions().allowing(...)` | `@SuppressWarnings`, `NOPMD`, `NOSONAR`, `noinspection`, `CHECKSTYLE:OFF` |
 | | `noWidenedForTests()` | package-private or protected methods and constructors only tests call |
+| | `serviceLikeClassesHaveTests()` | service-like classes with no `<Name>Test` |
 | | `noUnusedPublicCode()` | public types and methods nothing uses (applications) |
 | `tests()` | `testsAssertMeaningfully()` | tests asserting nothing, on constants, or a value against itself |
 | | `noDisabledTests()` (`.allowingWithReason()`) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` |
 | | `testsHaveNoLogic()` | `if` or `switch` in test methods, or loops around assertions |
-| | `testsAreDeterministic()` | tests reading the system clock or the environment, using unseeded randomness, or sleeping |
+| | `testsUseAFixedClock()` | tests reading the system clock: `LocalDate.now()`, `System.currentTimeMillis()`... |
+| | `testsUseSeededRandomness()` | tests using unseeded randomness: `new Random()`, `UUID.randomUUID()`... |
+| | `testsDontReadTheEnvironment()` | tests reading environment variables or system properties |
+| | `testsDontSleep()` | tests calling `Thread.sleep` or `TimeUnit.X.sleep` |
 | | `testsCheckResults()` | `verify(mock).query()` on methods that return a value, instead of stubbing them and asserting on the result |
 | | `testsUseTheirSubject()` | `OrderServiceTest` never using `OrderService`, or only mocking it |
 | | `testsDontMockValues()` | mocks of records, enums, other values, and interfaces whose implementations are all values |
-| | `serviceLikeClassesHaveTests()` | service-like classes with no `<Name>Test` |
 
 ## Use it alongside
 

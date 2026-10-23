@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import io.github.yoavgeva.designguard.CompiledProject;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -50,15 +51,22 @@ class DeterministicTestsRuleTest {
                         """)
                 .guard("shop");
 
-        assertThat(guard.tests().testsAreDeterministic().evaluate()).extracting(Violation::line, Violation::message)
-                .containsExactly(
-                        tuple(10, "CartTest reads the system clock through System.currentTimeMillis()"),
-                        tuple(14, "test CartTest.totals() reads the system clock through LocalDate.now()"),
-                        tuple(15, "test CartTest.totals() uses unseeded randomness through new Random()"),
-                        tuple(16, "test CartTest.totals() reads the environment through System.getenv()"),
-                        tuple(17, "test CartTest.totals() sleeps through Thread.sleep()"));
-        assertThat(guard.tests().testsAreDeterministic().evaluate()).extracting(Violation::fix).containsExactly(
-                "pass a fixed Clock, such as Clock.fixed(...), to the code under test",
+        assertThat(guard.tests().testsUseAFixedClock().evaluate()).extracting(Violation::rule, Violation::line,
+                Violation::message).containsExactly(
+                        tuple("tests-fixed-clock", 10, "CartTest reads the system clock through System.currentTimeMillis()"),
+                        tuple("tests-fixed-clock", 14, "test CartTest.totals() reads the system clock through LocalDate.now()"));
+        assertThat(guard.tests().testsUseSeededRandomness().evaluate()).extracting(Violation::rule, Violation::line,
+                Violation::message).containsExactly(tuple("tests-seeded-randomness", 15,
+                        "test CartTest.totals() uses unseeded randomness through new Random()"));
+        assertThat(guard.tests().testsDontReadTheEnvironment().evaluate()).extracting(Violation::rule, Violation::line,
+                Violation::message).containsExactly(tuple("tests-no-environment", 16,
+                        "test CartTest.totals() reads the environment through System.getenv()"));
+        assertThat(guard.tests().testsDontSleep().evaluate()).extracting(Violation::rule, Violation::line,
+                Violation::message).containsExactly(tuple("tests-no-sleep", 17,
+                        "test CartTest.totals() sleeps through Thread.sleep()"));
+        assertThat(Stream.of(guard.tests().testsUseAFixedClock(), guard.tests().testsUseSeededRandomness(),
+                        guard.tests().testsDontReadTheEnvironment(), guard.tests().testsDontSleep())
+                .map(rule -> rule.evaluate().get(0).fix())).containsExactly(
                 "pass a fixed Clock, such as Clock.fixed(...), to the code under test",
                 "use fixed data, or a Random with a fixed seed",
                 "pass the value in, so the test doesn't depend on the machine it runs on",

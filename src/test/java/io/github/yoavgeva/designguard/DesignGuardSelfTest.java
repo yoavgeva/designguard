@@ -55,7 +55,10 @@ class DesignGuardSelfTest {
                 Arguments.of("tests use their subject", GUARD.tests().testsUseTheirSubject()),
                 Arguments.of("tests check results", GUARD.tests().testsCheckResults()),
                 Arguments.of("tests have no logic", GUARD.tests().testsHaveNoLogic()),
-                Arguments.of("tests are deterministic", GUARD.tests().testsAreDeterministic()),
+                Arguments.of("tests use a fixed clock", GUARD.tests().testsUseAFixedClock()),
+                Arguments.of("tests use seeded randomness", GUARD.tests().testsUseSeededRandomness()),
+                Arguments.of("tests don't read the environment", GUARD.tests().testsDontReadTheEnvironment()),
+                Arguments.of("tests don't sleep", GUARD.tests().testsDontSleep()),
                 Arguments.of("nothing widened for tests", GUARD.guardrails().noWidenedForTests()),
                 Arguments.of("no disabled tests", GUARD.tests().noDisabledTests()));
     }
