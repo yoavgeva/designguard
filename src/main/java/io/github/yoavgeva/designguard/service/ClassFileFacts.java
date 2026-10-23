@@ -21,6 +21,7 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LineNumberNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -45,12 +46,15 @@ import org.objectweb.asm.tree.TypeInsnNode;
  *                     in the lambdas; other methods make exactly the calls ArchUnit reports
  * @param nullGuardedReads for each method and constructor that compares anything with {@code null}, as lazy
  *                         initialization does, by name and descriptor, the fields it reads
+ * @param loops            the calls each method makes once per item: in a loop, or in a lambda it gives a stream
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
-        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> nullGuardedReads) {
+        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> nullGuardedReads,
+        Loops loops) {
 
     /** For a class without a class file to read. */
-    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of());
+    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of(),
+            new Loops(Map.of(), Map.of(), Map.of()));
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
@@ -93,7 +97,9 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         }
         int release = reader.readUnsignedShort(MAJOR_VERSION_OFFSET) - CLASS_FILE_VERSION_OFFSET;
         return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
-                byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::nullGuardedReads));
+                byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::nullGuardedReads),
+                new Loops(byMethod(node, Loops::callsInLoops), byMethod(node, Loops::iteratedLambdas),
+                        byMethod(node, Loops::lambdaBodyCalls)));
     }
 
     /** The facts of the methods that have any, by name and descriptor. */
@@ -211,5 +217,107 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
      * @param line      the source line, or 0 if the class file has no line numbers
      */
     record Reference(String className, int line) {
+    }
+
+    /**
+     * Calls made once per item. Keys are methods by name and descriptor; calls are {@link #callKey(String, String, int)
+     * call keys} of instance calls, the ones that can reach a collaborator.
+     *
+     * @param calls        the instance calls each method makes inside a loop: a backward jump and what it repeats
+     * @param lambdas      the lambdas and method references each method hands to a stream, {@code forEach} or a
+     *                     similar per-item method, as {@code owner.name} plus descriptor
+     * @param lambdaBodies the instance calls in each lambda body, a synthetic {@code lambda$} method
+     */
+    record Loops(Map<String, Set<String>> calls, Map<String, Set<String>> lambdas, Map<String, Set<String>> lambdaBodies) {
+
+        private static final Set<String> PER_ITEM_OWNERS = Set.of("java/util/stream/Stream", "java/util/stream/IntStream",
+                "java/util/stream/LongStream", "java/util/stream/DoubleStream", "java/lang/Iterable",
+                "java/util/Collection", "java/util/List", "java/util/Set", "java/util/Map", "java/util/Iterator");
+        private static final Set<String> PER_ITEM_METHODS = Set.of("forEach", "forEachOrdered", "forEachRemaining", "map",
+                "mapToObj", "mapToInt", "mapToLong", "mapToDouble", "flatMap", "filter", "peek", "anyMatch", "allMatch",
+                "noneMatch", "takeWhile", "dropWhile", "removeIf", "replaceAll");
+
+        Loops {
+            calls = Map.copyOf(calls);
+            lambdas = Map.copyOf(lambdas);
+            lambdaBodies = Map.copyOf(lambdaBodies);
+        }
+
+        /** The instance calls between a backward jump and its target. */
+        static Set<String> callsInLoops(MethodNode method) {
+            List<AbstractInsnNode> instructions = instructionsOf(method);
+            int[] lines = linesOf(instructions);
+            List<int[]> loops = IntStream.range(0, instructions.size())
+                    .filter(index -> instructions.get(index) instanceof JumpInsnNode jump
+                            && method.instructions.indexOf(jump.label) < index)
+                    .mapToObj(index -> new int[] {method.instructions.indexOf(((JumpInsnNode) instructions.get(index)).label), index})
+                    .toList();
+            return IntStream.range(0, instructions.size())
+                    .filter(index -> isInstanceCall(instructions.get(index))
+                            && loops.stream().anyMatch(loop -> loop[0] <= index && index <= loop[1]))
+                    .mapToObj(index -> keyOf((MethodInsnNode) instructions.get(index), lines[index]))
+                    .collect(Collectors.toSet());
+        }
+
+        /** The lambdas and method references passed straight on to a per-item method such as {@code map}. */
+        static Set<String> iteratedLambdas(MethodNode method) {
+            List<AbstractInsnNode> instructions = instructionsOf(method);
+            return IntStream.range(0, instructions.size())
+                    .filter(index -> instructions.get(index) instanceof InvokeDynamicInsnNode call
+                            && LAMBDA_METAFACTORY.equals(call.bsm.getOwner()) && call.bsmArgs.length > 1
+                            && call.bsmArgs[1] instanceof Handle && takesItems(instructions, index))
+                    .mapToObj(index -> (Handle) ((InvokeDynamicInsnNode) instructions.get(index)).bsmArgs[1])
+                    .map(handle -> Type.getObjectType(handle.getOwner()).getClassName() + "." + handle.getName()
+                            + handle.getDesc())
+                    .collect(Collectors.toSet());
+        }
+
+        /** The instance calls of a lambda body; none for other methods. */
+        static Set<String> lambdaBodyCalls(MethodNode method) {
+            if (!method.name.startsWith("lambda$")) {
+                return Set.of();
+            }
+            List<AbstractInsnNode> instructions = instructionsOf(method);
+            int[] lines = linesOf(instructions);
+            return IntStream.range(0, instructions.size())
+                    .filter(index -> isInstanceCall(instructions.get(index)))
+                    .mapToObj(index -> keyOf((MethodInsnNode) instructions.get(index), lines[index]))
+                    .collect(Collectors.toSet());
+        }
+
+        /** Whether the next call after the lambda is a per-item method it is the argument of. */
+        private static boolean takesItems(List<AbstractInsnNode> instructions, int lambda) {
+            return instructions.subList(lambda + 1, instructions.size()).stream()
+                    .filter(MethodInsnNode.class::isInstance)
+                    .map(MethodInsnNode.class::cast)
+                    .findFirst()
+                    .filter(call -> PER_ITEM_OWNERS.contains(call.owner) && PER_ITEM_METHODS.contains(call.name))
+                    .isPresent();
+        }
+
+        private static boolean isInstanceCall(AbstractInsnNode instruction) {
+            return instruction.getOpcode() == Opcodes.INVOKEVIRTUAL || instruction.getOpcode() == Opcodes.INVOKEINTERFACE;
+        }
+
+        private static String keyOf(MethodInsnNode call, int line) {
+            return callKey(Type.getObjectType(call.owner).getClassName(), call.name, line);
+        }
+
+        private static List<AbstractInsnNode> instructionsOf(MethodNode method) {
+            return StreamSupport.stream(method.instructions.spliterator(), false).toList();
+        }
+
+        /** The source line of each instruction: the last line number before it. */
+        private static int[] linesOf(List<AbstractInsnNode> instructions) {
+            int[] lines = new int[instructions.size()];
+            int line = 0;
+            for (int index = 0; index < instructions.size(); index++) {
+                if (instructions.get(index) instanceof LineNumberNode number) {
+                    line = number.line;
+                }
+                lines[index] = line;
+            }
+            return lines;
+        }
     }
 }
