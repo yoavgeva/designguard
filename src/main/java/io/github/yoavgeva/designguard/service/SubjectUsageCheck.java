@@ -37,10 +37,12 @@ public final class SubjectUsageCheck {
      */
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         SourceTypes types = new SourceTypes(code.projectClasses());
-        Map<String, TestType> testTypes = code.testSources().files().stream()
+        List<TestType> tests = code.testSources().files().stream()
                 .flatMap(file -> file.unit().getTypes().stream().map(type -> new TestType(file, type)))
+                .toList();
+        Map<String, TestType> testTypes = tests.stream()
                 .collect(Collectors.toMap(test -> test.type().getNameAsString(), test -> test, (first, second) -> first));
-        return testTypes.values().stream()
+        return tests.stream()
                 .filter(test -> Scopes.selected(filter, test.file(), test.type()))
                 .flatMap(test -> subject(test.file(), test.type(), types).stream()
                         .flatMap(subject -> violation(test, subject, types, testTypes).stream()))

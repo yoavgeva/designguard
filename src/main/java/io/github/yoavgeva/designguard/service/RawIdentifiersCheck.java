@@ -28,8 +28,8 @@ public final class RawIdentifiersCheck {
     private static final String PLAIN_ID = "id";
     private static final Pattern ID_NAME = Pattern.compile("id|[a-z][A-Za-z0-9]*(Id|ID)");
     private static final Pattern ID_TYPE = Pattern.compile(".*(Id|ID)");
-    private static final Set<String> RAW_TYPES = Set.of("String", "java.lang.String", "long", "Long", "int", "Integer",
-            "UUID", "java.util.UUID");
+    private static final Set<String> RAW_TYPES = Set.of("String", "java.lang.String", "long", "Long", "java.lang.Long",
+            "int", "Integer", "java.lang.Integer", "UUID", "java.util.UUID");
 
     private final List<PackageMatcher> guardedPackages;
 

@@ -106,7 +106,8 @@ public final class TypeDispatchCheck {
         return Scopes.violation(RULE, type.file(), type.declaration().getName(),
                 type.simpleName() + " is branched on in " + sites.size() + " places the compiler can't check (max "
                         + maxPlacesPerType + "): " + places,
-                "move the varying behaviour into " + type.simpleName() + orSwitch);
+                "move the varying behaviour into " + type.simpleName() + orSwitch)
+                .identifiedAs(type.simpleName() + " is branched on in more places than the compiler can check");
     }
 
     private static Optional<Violation> violation(DispatchSite site, String message, String fix) {

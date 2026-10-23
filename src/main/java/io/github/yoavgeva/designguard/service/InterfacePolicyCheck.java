@@ -102,7 +102,8 @@ public final class InterfacePolicyCheck {
         int line = usages.stream().mapToInt(Usage::line).filter(value -> value > 0).min().orElse(0);
         return Optional.of(context.classes().violation(RULE, dependent, line,
                 ProjectClasses.nameOf(dependent) + " depends on " + kind + targetName + " (" + members + ")" + crossing,
-                "depend on an interface instead of " + targetName + ", and let the wiring code pass it in"));
+                "depend on an interface instead of " + targetName + ", and let the wiring code pass it in")
+                .identifiedAs(ProjectClasses.nameOf(dependent) + " depends on concrete " + targetName));
     }
 
     private static Stream<Usage> usages(JavaClass dependent) {

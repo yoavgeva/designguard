@@ -79,7 +79,8 @@ public final class InheritanceCheck {
         }
         return Optional.of(classes.violation(RULE, type, 0, ProjectClasses.nameOf(type) + " is " + depth
                         + " classes deep in its inheritance hierarchy (max " + maxDepth + ")",
-                "flatten it: replace a level of inheritance with composition"));
+                "flatten it: replace a level of inheritance with composition")
+                .identifiedAs(ProjectClasses.nameOf(type) + " is too deep in its inheritance hierarchy"));
     }
 
     private static boolean isOrdinaryClass(JavaClass type) {

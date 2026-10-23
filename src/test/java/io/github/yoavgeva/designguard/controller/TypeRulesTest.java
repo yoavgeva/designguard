@@ -153,6 +153,10 @@ class TypeRulesTest {
                             public static final int HTTP_NOT_FOUND = 404;
                             private static final String NAME_SHOP = "Corner Shop";
                             private static final String NAME_OWNER = "Ada";
+                            public static final int MIN_LENGTH = 1;
+                            public static final int MIN_COUNT = 2;
+                            public static final int MODE_OFF = 0;
+                            public static final int MODE_ON = 1;
 
                             private Orders() {
                             }
@@ -168,7 +172,9 @@ class TypeRulesTest {
                         tuple(4, "Orders declares STATUS_OPEN, STATUS_PAID, STATUS_SHIPPED as int constants: make them"
                                 + " an enum", "replace them with an enum, e.g. enum Status { OPEN, PAID, SHIPPED }"),
                         tuple(7, "Orders declares CHANNEL_WEB, CHANNEL_IN_STORE as String constants: make them an enum",
-                                "replace them with an enum, e.g. enum Channel { WEB, IN_STORE }"));
+                                "replace them with an enum, e.g. enum Channel { WEB, IN_STORE }"),
+                        tuple(17, "Orders declares MODE_OFF, MODE_ON as int constants: make them an enum",
+                                "replace them with an enum, e.g. enum Mode { OFF, ON }"));
     }
 
     @Test
@@ -196,6 +202,10 @@ class TypeRulesTest {
                                 return byId.get(orderId);
                             }
 
+                            public Order byAccount(java.lang.Long accountId) {
+                                return byId.get(String.valueOf(accountId));
+                            }
+
                             private Order load(String orderId) {
                                 return byId.get(orderId);
                             }
@@ -209,7 +219,8 @@ class TypeRulesTest {
                         tuple(4, "Order.id is a raw String identifier"),
                         tuple(5, "Order.customerId is a raw long identifier"),
                         tuple(6, "Order.cartId is a raw UUID identifier"),
-                        tuple(6, "Orders.find() takes orderId as a raw String identifier"));
+                        tuple(6, "Orders.find() takes orderId as a raw String identifier"),
+                        tuple(10, "Orders.byAccount() takes accountId as a raw Long identifier"));
         assertThat(guard.types().typedIdentifiers("..domain..").evaluate()).extracting(Violation::fix).startsWith(
                 "declare record OrderId(String value) and use it, so identifiers of different things can't be swapped",
                 "declare record CustomerId(long value) and use it, so identifiers of different things can't be swapped");

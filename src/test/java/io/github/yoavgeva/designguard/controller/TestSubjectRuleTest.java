@@ -120,4 +120,20 @@ class TestSubjectRuleTest {
                         tuple("ReportTest never uses Report, the class it's named after",
                                 "exercise Report in the test, or name the test after what it tests"));
     }
+
+    @Test
+    void testsWithTheSameNameInDifferentPackagesAreEachChecked() {
+        String test = "class ReportTest {\n    @org.junit.jupiter.api.Test\n    void adds() {\n"
+                + "        org.assertj.core.api.Assertions.assertThat(1 + 1).isEqualTo(2);\n    }\n}\n";
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Report", "package shop.sales;\n\npublic class Report {\n}\n")
+                .addTest("ReportTest", "package shop.sales;\n\n" + test)
+                .add("Report", "package shop.billing;\n\npublic class Report {\n}\n")
+                .addTest("ReportTest", "package shop.billing;\n\n" + test)
+                .guard("shop");
+
+        assertThat(guard.guardrails().testsUseTheirSubject().evaluate()).extracting(Violation::file)
+                .hasSize(2).anyMatch(file -> file.endsWith("shop/sales/ReportTest.java"))
+                .anyMatch(file -> file.endsWith("shop/billing/ReportTest.java"));
+    }
 }

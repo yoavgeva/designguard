@@ -16,7 +16,8 @@ import java.util.regex.Pattern;
 /**
  * Finds accessors that change state: {@code get}, {@code is} and {@code has} methods that assign a field of their
  * class. Callers read accessors as queries, so a hidden change surprises them (command-query separation). Lazy
- * initialization, assigning a field the method first compares with {@code null}, is fine, and so are
+ * initialization, assigning a field the method reads and checks for {@code null}, double-checked locking included, is
+ * fine, and so are
  * {@code getAnd...} methods, which say they change something.
  */
 public final class AccessorSideEffectsCheck {
@@ -57,7 +58,7 @@ public final class AccessorSideEffectsCheck {
 
     /** The first assignment to a field of the class that isn't lazy initialization. */
     private static Optional<JavaFieldAccess> firstChange(ProjectClasses classes, JavaClass type, JavaMethod method) {
-        Set<String> lazy = classes.bytecode().nullCheckedFieldsIn(method);
+        Set<String> lazy = classes.bytecode().nullGuardedReadsIn(method);
         return method.getFieldAccesses().stream()
                 .filter(access -> access.getAccessType() == JavaFieldAccess.AccessType.SET
                         && access.getTargetOwner().equals(type) && !lazy.contains(access.getName()))
