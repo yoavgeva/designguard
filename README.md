@@ -46,7 +46,8 @@ class DesignTest {
 }
 ```
 
-Every rule takes `that().resideInAPackage(...)`, `excluding(...)` and `ignoring(annotatedWith(...))`, with ArchUnit's
+Every rule takes `that().resideInAPackage(...)`, `excluding(...)` and `ignoring(annotatedWith(...))` (from
+`AnnotationName`), with ArchUnit's
 package syntax (`..domain..`). `check()` throws an `AssertionError` listing every violation; `evaluate()` returns them.
 
 `new DesignGuard("com.shop")` reads sources from `src/main/java` and `src/test/java`, and classes from the classpath.
@@ -64,6 +65,30 @@ private static final DesignGuard GUARD = DesignGuard.forPackages("com.shop")
   `@Configuration`, `@SpringBootApplication` or `@Module` classes, always are wiring code.
 - `treatingAsImpure("com.stripe..")`: using these packages counts as I/O, like `java.net`.
 - `forJava(17)`: the Java version the code targets, if reading it from the class files isn't right (see below).
+- `freezingIn(...)`: where frozen rules record their violations, instead of `src/test/designguard/frozen` (see below).
+
+## Adopting a rule on existing code
+
+`frozen(name)` makes a rule fail only on new violations, so you can adopt it on code that already breaks it:
+
+```java
+@Test
+void layers() {
+    GUARD.architecture().layered()
+            .layer("Web", "..web..").layer("Persistence", "..persistence..")
+            .frozen("layers")
+            .check();
+}
+```
+
+- The first run records the current violations in `src/test/designguard/frozen/layers.txt` and fails once, so the
+  file gets committed. Until the file exists, the rule keeps failing, so CI catches a record nobody committed.
+- Later runs fail only on violations the file doesn't list. A violation is matched by its file, rule and message, not
+  its line, so editing elsewhere in the file keeps it frozen. Each listed violation accepts one occurrence.
+- Fixed violations drop out of the file, so it only shrinks and a fixed problem can't come back. Commit the change.
+- Renaming a class changes its violations' messages, so they show up as new. To accept the current violations again,
+  delete the file and run the rule.
+- Give each frozen rule its own name: the name is the file's.
 
 ## Java versions
 
@@ -103,7 +128,7 @@ implementation. Everything else is a **value**.
 | | `onion().adapter(...)` | rings depending outwards |
 | | `featureSlices()` | a feature using another's internals, or features in a cycle |
 | `dependencies()` | `interfacePolicy(PORTS / SERVICES / ALL)` | concrete dependencies where an interface is required |
-| | `injectServices()` | effectful classes created with `new`, or singletons reached statically, outside wiring code |
+| | `injectServices()` | effectful classes created with `new`, or singletons reached statically, outside wiring code; a class whose effects happen only in implementations it is given doesn't count |
 | | `clockIsInjected()` | `LocalDate.now()`, `System.currentTimeMillis()`... instead of an injected `Clock` |
 | | `randomnessIsInjected()` | `new Random()`, `UUID.randomUUID()`... |
 | | `configurationIsInjected()` | `System.getenv()`, `System.getProperty()`... |
@@ -133,7 +158,7 @@ implementation. Everything else is a **value**.
 
 designguard doesn't repeat what these do well:
 
-- [ArchUnit](https://www.archunit.org/): custom rules, cycles, naming, `FreezingArchRule`
+- [ArchUnit](https://www.archunit.org/): custom rules, cycles, naming
 - [PMD](https://pmd.github.io/): complexity thresholds, God Class, copy-paste detection
 - [Maven Enforcer](https://maven.apache.org/enforcer/): a dependency allowlist
 

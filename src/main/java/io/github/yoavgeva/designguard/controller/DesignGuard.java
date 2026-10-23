@@ -173,6 +173,17 @@ public final class DesignGuard {
         }
 
         /**
+         * Records the violations of {@link DesignRule#frozen(String) frozen rules} in another directory than
+         * {@code src/test/designguard/frozen}.
+         *
+         * @param directory the directory; commit it with the code
+         * @return a new builder
+         */
+        public Builder freezingIn(Path directory) {
+            return new Builder(settings.withFrozenViolations(directory));
+        }
+
+        /**
          * Creates the guard. Nothing is read until a rule needs it.
          *
          * @return the guard

@@ -5,7 +5,6 @@ import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.view.TextReport;
-import java.lang.annotation.Annotation;
 import java.util.List;
 import java.util.Objects;
 
@@ -25,16 +24,6 @@ public abstract sealed class DesignRule<T extends DesignRule<T>>
     DesignRule(CodeBase code, ClassFilter filter) {
         this.codeBase = Objects.requireNonNull(code, "code");
         this.classFilter = Objects.requireNonNull(filter, "filter");
-    }
-
-    /**
-     * Names an annotation for {@link #ignoring(AnnotationName)}.
-     *
-     * @param annotation the annotation type
-     * @return its name, matched simply or qualified against the code
-     */
-    public static AnnotationName annotatedWith(Class<? extends Annotation> annotation) {
-        return new AnnotationName(annotation.getSimpleName(), annotation.getCanonicalName());
     }
 
     /**
@@ -59,7 +48,7 @@ public abstract sealed class DesignRule<T extends DesignRule<T>>
     /**
      * Skips classes and members carrying the annotation.
      *
-     * @param annotation see {@link #annotatedWith(Class)}
+     * @param annotation see {@link AnnotationName#annotatedWith(Class)}
      * @return the narrowed rule
      */
     public T ignoring(AnnotationName annotation) {
@@ -86,6 +75,19 @@ public abstract sealed class DesignRule<T extends DesignRule<T>>
             String header = violations.size() == 1 ? "1 design violation:\n" : violations.size() + " design violations:\n";
             throw new AssertionError(header + new TextReport().render(violations));
         }
+    }
+
+    /**
+     * Adopts the rule on code that already breaks it: the first run records the violations in
+     * {@code src/test/designguard/frozen/<name>.txt} and fails once, so the file gets committed. Later runs fail only
+     * on violations the file doesn't list, and drop the fixed ones from it.
+     *
+     * @param name the file's name, unique among the project's frozen rules, e.g. {@code layers}
+     * @return the frozen rule
+     * @throws IllegalArgumentException if the name isn't a plain file name
+     */
+    public FrozenRule frozen(String name) {
+        return new FrozenRule(this, codeBase.frozenViolations(name));
     }
 
     abstract List<Violation> violations(CodeBase code, ClassFilter filter);

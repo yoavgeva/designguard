@@ -11,9 +11,10 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Finds services obtained instead of injected: an effectful class (one whose code does I/O, reads the clock...)
+ * Finds services obtained instead of injected: an effectful class (one whose own code does I/O, reads the clock...)
  * created with {@code new}, or a service-like class fetched through a static singleton accessor. Wiring code is
- * exempt, and so is creating objects that only receive their collaborators.
+ * exempt, and so is creating objects that only receive their collaborators: a class whose effects all happen in
+ * implementations it is given, behind interfaces or abstract methods, brings no effects of its own.
  */
 public final class InjectServicesCheck {
 
@@ -40,7 +41,7 @@ public final class InjectServicesCheck {
 
     private static Stream<Violation> creations(ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass dependent) {
         return classes.bytecode().creationsIn(dependent)
-                .filter(creation -> serviceLike.isEffectful(creation.target())
+                .filter(creation -> serviceLike.isEffectfulOnItsOwn(creation.target())
                         && !Hierarchy.isSelfOrNested(dependent, creation.target()))
                 .collect(Collectors.toMap(creation -> creation.target().getName(), creation -> creation,
                         (first, second) -> first.line() <= second.line() ? first : second, LinkedHashMap::new))

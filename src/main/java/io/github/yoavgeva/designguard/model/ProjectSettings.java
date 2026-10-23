@@ -15,10 +15,12 @@ import org.jspecify.annotations.Nullable;
  * @param wiringPackages   ArchUnit package patterns of wiring code, which may create and hold anything
  * @param impurePackages   extra ArchUnit package patterns whose use makes a class service-like, e.g. SDK clients
  * @param javaRelease      the Java version the code targets; null means "read it from the class files"
+ * @param frozenViolations the directory where frozen rules record the violations they accept
  */
 public record ProjectSettings(
         List<String> packages, List<Path> sourceRoots, List<Path> testSourceRoots, List<Path> classDirectories,
-        List<String> wiringPackages, List<String> impurePackages, @Nullable Integer javaRelease) {
+        List<String> wiringPackages, List<String> impurePackages, @Nullable Integer javaRelease,
+        Path frozenViolations) {
 
     private static final int OLDEST_RELEASE = 8;
 
@@ -44,14 +46,16 @@ public record ProjectSettings(
     }
 
     /**
-     * Maven and Gradle defaults: {@code src/main/java}, {@code src/test/java}, classes from the classpath.
+     * Maven and Gradle defaults: {@code src/main/java}, {@code src/test/java}, classes from the classpath, and
+     * frozen violations in {@code src/test/designguard/frozen}.
      *
      * @param packages packages to check
      * @return the settings
      */
     public static ProjectSettings forPackages(List<String> packages) {
         return new ProjectSettings(packages, List.of(Path.of("src", "main", "java")),
-                List.of(Path.of("src", "test", "java")), List.of(), List.of(), List.of(), null);
+                List.of(Path.of("src", "test", "java")), List.of(), List.of(), List.of(), null,
+                Path.of("src", "test", "designguard", "frozen"));
     }
 
     /**
@@ -62,7 +66,7 @@ public record ProjectSettings(
      */
     public ProjectSettings withSourceRoots(List<Path> roots) {
         return new ProjectSettings(packages, roots, testSourceRoots, classDirectories, wiringPackages, impurePackages,
-                javaRelease);
+                javaRelease, frozenViolations);
     }
 
     /**
@@ -73,7 +77,7 @@ public record ProjectSettings(
      */
     public ProjectSettings withTestSourceRoots(List<Path> roots) {
         return new ProjectSettings(packages, sourceRoots, roots, classDirectories, wiringPackages, impurePackages,
-                javaRelease);
+                javaRelease, frozenViolations);
     }
 
     /**
@@ -84,7 +88,7 @@ public record ProjectSettings(
      */
     public ProjectSettings withClassDirectories(List<Path> directories) {
         return new ProjectSettings(packages, sourceRoots, testSourceRoots, directories, wiringPackages, impurePackages,
-                javaRelease);
+                javaRelease, frozenViolations);
     }
 
     /**
@@ -95,7 +99,7 @@ public record ProjectSettings(
      */
     public ProjectSettings withWiringPackages(List<String> patterns) {
         return new ProjectSettings(packages, sourceRoots, testSourceRoots, classDirectories,
-                concat(wiringPackages, patterns), impurePackages, javaRelease);
+                concat(wiringPackages, patterns), impurePackages, javaRelease, frozenViolations);
     }
 
     /**
@@ -106,7 +110,7 @@ public record ProjectSettings(
      */
     public ProjectSettings withImpurePackages(List<String> patterns) {
         return new ProjectSettings(packages, sourceRoots, testSourceRoots, classDirectories, wiringPackages,
-                concat(impurePackages, patterns), javaRelease);
+                concat(impurePackages, patterns), javaRelease, frozenViolations);
     }
 
     /**
@@ -117,7 +121,18 @@ public record ProjectSettings(
      */
     public ProjectSettings withJavaRelease(int release) {
         return new ProjectSettings(packages, sourceRoots, testSourceRoots, classDirectories, wiringPackages,
-                impurePackages, release);
+                impurePackages, release, frozenViolations);
+    }
+
+    /**
+     * Records frozen rules' violations in another directory.
+     *
+     * @param directory the directory, e.g. {@code src/test/resources/frozen}
+     * @return new settings
+     */
+    public ProjectSettings withFrozenViolations(Path directory) {
+        return new ProjectSettings(packages, sourceRoots, testSourceRoots, classDirectories, wiringPackages,
+                impurePackages, javaRelease, directory);
     }
 
     private static List<String> concat(List<String> first, List<String> second) {

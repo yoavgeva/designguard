@@ -18,12 +18,14 @@ final class ServiceLikeClasses {
 
     private final Effects effects;
     private final Set<String> effectfulNames;
+    private final Set<String> effectfulOnTheirOwnNames;
     private final Set<String> serviceLikeNames;
 
     ServiceLikeClasses(ProjectClasses classes, List<String> extraImpurePackages) {
         this.effects = new Effects(extraImpurePackages);
         List<JavaClass> candidates = classes.stream().filter(ServiceLikeClasses::canBeServiceLike).toList();
         this.effectfulNames = Set.copyOf(withAbstractions(candidates, effects.effectfulClasses(classes, candidates)));
+        this.effectfulOnTheirOwnNames = Set.copyOf(effects.effectfulOnTheirOwn(classes, candidates));
         this.serviceLikeNames = Set.copyOf(serviceLike(candidates));
     }
 
@@ -35,6 +37,14 @@ final class ServiceLikeClasses {
     /** Whether the class's own code touches the outside world, directly or through project code it calls. */
     boolean isEffectful(JavaClass javaClass) {
         return effectfulNames.contains(javaClass.getName());
+    }
+
+    /**
+     * Whether the class's own code touches the outside world, not counting what implementations it is given do
+     * behind interfaces and abstract methods. Creating such a class hard-wires its effects.
+     */
+    boolean isEffectfulOnItsOwn(JavaClass javaClass) {
+        return effectfulOnTheirOwnNames.contains(javaClass.getName());
     }
 
     static boolean canBeServiceLike(JavaClass javaClass) {
