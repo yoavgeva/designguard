@@ -11,8 +11,8 @@ public final class BasicRule extends DesignRule<BasicRule> {
 
     private final BiFunction<CodeBase, ClassFilter, List<Violation>> check;
 
-    BasicRule(CodeBase code, ClassFilter filter, BiFunction<CodeBase, ClassFilter, List<Violation>> check) {
-        super(code, filter);
+    BasicRule(CodeBase code, RuleScope scope, BiFunction<CodeBase, ClassFilter, List<Violation>> check) {
+        super(code, scope);
         this.check = check;
     }
 
@@ -22,7 +22,7 @@ public final class BasicRule extends DesignRule<BasicRule> {
     }
 
     @Override
-    BasicRule withFilter(ClassFilter filter) {
-        return new BasicRule(code(), filter, check);
+    BasicRule withScope(RuleScope scope) {
+        return new BasicRule(code(), scope, check);
     }
 }

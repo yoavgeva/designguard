@@ -1,12 +1,11 @@
 package io.github.yoavgeva.designguard;
 
 import io.github.yoavgeva.designguard.controller.DesignGuard;
-import io.github.yoavgeva.designguard.controller.DesignRule;
+import io.github.yoavgeva.designguard.controller.Checkable;
 import io.github.yoavgeva.designguard.model.InheritancePolicy;
 import io.github.yoavgeva.designguard.model.InterfacePolicy;
 import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -18,6 +17,7 @@ class DesignGuardSelfTest {
 
     static Stream<Arguments> rules() {
         return Stream.of(
+                Arguments.of("the recommended rules", GUARD.recommended()),
                 Arguments.of("model-view-controller layers", GUARD.architecture().mvc()),
                 Arguments.of("no class cycles", GUARD.architecture().classesHaveNoCycles()),
                 Arguments.of("thin controllers", GUARD.architecture().adaptersStayThin("..controller..")),
@@ -66,12 +66,8 @@ class DesignGuardSelfTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("rules")
-    void holds(String name, DesignRule<?> rule) {
+    void holds(String name, Checkable rule) {
         rule.check();
     }
 
-    @Test
-    void holdsTheRecommendedRules() {
-        GUARD.recommended().check();
-    }
 }

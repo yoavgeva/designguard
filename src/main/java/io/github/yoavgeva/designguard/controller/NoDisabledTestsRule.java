@@ -14,8 +14,8 @@ public final class NoDisabledTestsRule extends DesignRule<NoDisabledTestsRule> {
 
     private final boolean allowWithReason;
 
-    NoDisabledTestsRule(CodeBase code, ClassFilter filter, boolean allowWithReason) {
-        super(code, filter);
+    NoDisabledTestsRule(CodeBase code, RuleScope scope, boolean allowWithReason) {
+        super(code, scope);
         this.allowWithReason = allowWithReason;
     }
 
@@ -25,7 +25,7 @@ public final class NoDisabledTestsRule extends DesignRule<NoDisabledTestsRule> {
      * @return the reconfigured rule
      */
     public NoDisabledTestsRule allowingWithReason() {
-        return new NoDisabledTestsRule(code(), filter(), true);
+        return new NoDisabledTestsRule(code(), scope(), true);
     }
 
     @Override
@@ -34,7 +34,7 @@ public final class NoDisabledTestsRule extends DesignRule<NoDisabledTestsRule> {
     }
 
     @Override
-    NoDisabledTestsRule withFilter(ClassFilter filter) {
-        return new NoDisabledTestsRule(code(), filter, allowWithReason);
+    NoDisabledTestsRule withScope(RuleScope scope) {
+        return new NoDisabledTestsRule(code(), scope, allowWithReason);
     }
 }

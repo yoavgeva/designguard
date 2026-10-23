@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.controller;
 
-import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.service.BoundaryCheck;
 import io.github.yoavgeva.designguard.service.ClassCycleCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
@@ -26,7 +25,7 @@ public final class ArchitectureRules {
      * @return the rule, with no layers yet
      */
     public LayeredArchitectureRule layered() {
-        return new LayeredArchitectureRule(code, ClassFilter.ALL, List.of(), false);
+        return new LayeredArchitectureRule(code, RuleScope.DEFAULT, List.of(), false);
     }
 
     /**
@@ -36,7 +35,7 @@ public final class ArchitectureRules {
      * @return the rule
      */
     public MvcArchitectureRule mvc() {
-        return new MvcArchitectureRule(code, ClassFilter.ALL, MvcArchitectureRule.defaults());
+        return new MvcArchitectureRule(code, RuleScope.DEFAULT, MvcArchitectureRule.defaults());
     }
 
     /**
@@ -45,7 +44,7 @@ public final class ArchitectureRules {
      * @return the rule
      */
     public HexagonalArchitectureRule hexagonal() {
-        return new HexagonalArchitectureRule(code, ClassFilter.ALL, List.of("..domain.."), List.of("..application.."),
+        return new HexagonalArchitectureRule(code, RuleScope.DEFAULT, List.of("..domain.."), List.of("..application.."),
                 List.of());
     }
 
@@ -55,7 +54,7 @@ public final class ArchitectureRules {
      * @return the rule
      */
     public OnionArchitectureRule onion() {
-        return new OnionArchitectureRule(code, ClassFilter.ALL, OnionArchitectureRule.defaultRings(), List.of());
+        return new OnionArchitectureRule(code, RuleScope.DEFAULT, OnionArchitectureRule.defaultRings(), List.of());
     }
 
     /**
@@ -64,7 +63,7 @@ public final class ArchitectureRules {
      * @return the rule
      */
     public FeatureSlicesRule featureSlices() {
-        return new FeatureSlicesRule(code, ClassFilter.ALL, new FeatureSliceCheck());
+        return new FeatureSlicesRule(code, RuleScope.DEFAULT, new FeatureSliceCheck());
     }
 
     /**
@@ -74,7 +73,7 @@ public final class ArchitectureRules {
      * @return the rule
      */
     public BasicRule classesHaveNoCycles() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ClassCycleCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new ClassCycleCheck().check(codeBase, filter));
     }
 
     /**
@@ -86,7 +85,7 @@ public final class ArchitectureRules {
      * @return the rule
      */
     public BasicRule adaptersStayThin(String... adapterPackages) {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> new ThickAdapterCheck(List.of(adapterPackages)).check(codeBase.sources(), filter));
     }
 
@@ -99,7 +98,7 @@ public final class ArchitectureRules {
      * @return the rule
      */
     public BasicRule frameworksStayOutOf(String... domainPackages) {
-        return new BasicRule(code, ClassFilter.ALL, BoundaryCheck.frameworks(List.of(domainPackages))::check);
+        return new BasicRule(code, RuleScope.DEFAULT, BoundaryCheck.frameworks(List.of(domainPackages))::check);
     }
 
     /**
@@ -110,7 +109,7 @@ public final class ArchitectureRules {
      * @return the rule
      */
     public BasicRule infrastructureExceptionsStayOutOf(String... domainPackages) {
-        return new BasicRule(code, ClassFilter.ALL, BoundaryCheck.infrastructureExceptions(List.of(domainPackages))::check);
+        return new BasicRule(code, RuleScope.DEFAULT, BoundaryCheck.infrastructureExceptions(List.of(domainPackages))::check);
     }
 
     /**
@@ -121,6 +120,6 @@ public final class ArchitectureRules {
      * @return the rule
      */
     public BasicRule entitiesStayOutOf(String... apiPackages) {
-        return new BasicRule(code, ClassFilter.ALL, BoundaryCheck.entities(List.of(apiPackages))::check);
+        return new BasicRule(code, RuleScope.DEFAULT, BoundaryCheck.entities(List.of(apiPackages))::check);
     }
 }

@@ -21,8 +21,8 @@ public final class LayeredArchitectureRule extends DesignRule<LayeredArchitectur
     private final List<Layer> layers;
     private final boolean strictLayering;
 
-    LayeredArchitectureRule(CodeBase code, ClassFilter filter, List<Layer> layers, boolean strict) {
-        super(code, filter);
+    LayeredArchitectureRule(CodeBase code, RuleScope scope, List<Layer> layers, boolean strict) {
+        super(code, scope);
         this.layers = List.copyOf(layers);
         this.strictLayering = strict;
     }
@@ -36,7 +36,7 @@ public final class LayeredArchitectureRule extends DesignRule<LayeredArchitectur
      */
     public LayeredArchitectureRule layer(String name, String... packages) {
         List<Layer> withLayer = Stream.concat(layers.stream(), Stream.of(new Layer(name, List.of(packages)))).toList();
-        return new LayeredArchitectureRule(code(), filter(), withLayer, strictLayering);
+        return new LayeredArchitectureRule(code(), scope(), withLayer, strictLayering);
     }
 
     /**
@@ -45,7 +45,7 @@ public final class LayeredArchitectureRule extends DesignRule<LayeredArchitectur
      * @return the stricter rule
      */
     public LayeredArchitectureRule strict() {
-        return new LayeredArchitectureRule(code(), filter(), layers, true);
+        return new LayeredArchitectureRule(code(), scope(), layers, true);
     }
 
     @Override
@@ -61,7 +61,7 @@ public final class LayeredArchitectureRule extends DesignRule<LayeredArchitectur
     }
 
     @Override
-    LayeredArchitectureRule withFilter(ClassFilter filter) {
-        return new LayeredArchitectureRule(code(), filter, layers, strictLayering);
+    LayeredArchitectureRule withScope(RuleScope scope) {
+        return new LayeredArchitectureRule(code(), scope, layers, strictLayering);
     }
 }

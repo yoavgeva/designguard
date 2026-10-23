@@ -1,9 +1,7 @@
 package io.github.yoavgeva.designguard.controller;
 
-import io.github.yoavgeva.designguard.model.FreezeResult;
 import io.github.yoavgeva.designguard.model.Violation;
 import io.github.yoavgeva.designguard.service.ViolationStore;
-import io.github.yoavgeva.designguard.view.TextReport;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -12,7 +10,7 @@ import java.util.function.Supplier;
  * new ones fail. Fixed violations drop out of the file, so it only shrinks. Create one with
  * {@link DesignRule#frozen(String)}.
  */
-public final class FrozenRule {
+public final class FrozenRule implements Checkable {
 
     private final Supplier<List<Violation>> rule;
     private final ViolationStore store;
@@ -28,20 +26,19 @@ public final class FrozenRule {
      * @return the violations that fail: on the first run every violation, as they were just recorded; later, those
      *         the record doesn't list
      */
+    @Override
     public List<Violation> evaluate() {
         return store.freeze(rule.get()).failing();
     }
 
     /**
-     * Runs the rule, updates the record, and fails if any violation fails.
+     * Runs the rule, updates the record, and fails if any violation fails. If the rule warns, it logs them instead.
      *
      * @throws AssertionError on the first run if there are violations, so the new record gets committed; later, if a
      *                        violation isn't recorded
      */
+    @Override
     public void check() {
-        FreezeResult result = store.freeze(rule.get());
-        if (!result.failing().isEmpty()) {
-            throw new AssertionError(new TextReport().renderFrozen(result));
-        }
+        Verdicts.deliver(store.freeze(rule.get()));
     }
 }

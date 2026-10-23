@@ -14,8 +14,8 @@ public final class FeatureSlicesRule extends DesignRule<FeatureSlicesRule> {
 
     private final FeatureSliceCheck check;
 
-    FeatureSlicesRule(CodeBase code, ClassFilter filter, FeatureSliceCheck check) {
-        super(code, filter);
+    FeatureSlicesRule(CodeBase code, RuleScope scope, FeatureSliceCheck check) {
+        super(code, scope);
         this.check = check;
     }
 
@@ -26,7 +26,7 @@ public final class FeatureSlicesRule extends DesignRule<FeatureSlicesRule> {
      * @return the reconfigured rule
      */
     public FeatureSlicesRule slicesBelow(String packageName) {
-        return new FeatureSlicesRule(code(), filter(), new FeatureSliceCheck(packageName));
+        return new FeatureSlicesRule(code(), scope(), new FeatureSliceCheck(packageName));
     }
 
     @Override
@@ -35,7 +35,7 @@ public final class FeatureSlicesRule extends DesignRule<FeatureSlicesRule> {
     }
 
     @Override
-    FeatureSlicesRule withFilter(ClassFilter filter) {
-        return new FeatureSlicesRule(code(), filter, check);
+    FeatureSlicesRule withScope(RuleScope scope) {
+        return new FeatureSlicesRule(code(), scope, check);
     }
 }

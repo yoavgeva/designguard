@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.controller;
 
-import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.InterfacePolicy;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.ConstructorWorkCheck;
@@ -29,7 +28,7 @@ public final class DependencyRules {
      * @return the rule
      */
     public InterfacePolicyRule interfacePolicy(InterfacePolicy policy) {
-        return new InterfacePolicyRule(code, ClassFilter.ALL, policy, new InterfacePolicyCheck(policy));
+        return new InterfacePolicyRule(code, RuleScope.DEFAULT, policy, new InterfacePolicyCheck(policy));
     }
 
     /**
@@ -39,7 +38,7 @@ public final class DependencyRules {
      * @return the rule
      */
     public BasicRule injectServices() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new InjectServicesCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new InjectServicesCheck().check(codeBase, filter));
     }
 
     /**
@@ -49,7 +48,7 @@ public final class DependencyRules {
      * @return the rule
      */
     public BasicRule clockIsInjected() {
-        return new BasicRule(code, ClassFilter.ALL, FunctionalCoreChecks.clock()::check);
+        return new BasicRule(code, RuleScope.DEFAULT, FunctionalCoreChecks.clock()::check);
     }
 
     /**
@@ -59,7 +58,7 @@ public final class DependencyRules {
      * @return the rule
      */
     public BasicRule randomnessIsInjected() {
-        return new BasicRule(code, ClassFilter.ALL, FunctionalCoreChecks.randomness()::check);
+        return new BasicRule(code, RuleScope.DEFAULT, FunctionalCoreChecks.randomness()::check);
     }
 
     /**
@@ -68,7 +67,7 @@ public final class DependencyRules {
      * @return the rule
      */
     public BasicRule configurationIsInjected() {
-        return new BasicRule(code, ClassFilter.ALL, FunctionalCoreChecks.configuration()::check);
+        return new BasicRule(code, RuleScope.DEFAULT, FunctionalCoreChecks.configuration()::check);
     }
 
     /**
@@ -77,7 +76,7 @@ public final class DependencyRules {
      * @return the rule
      */
     public BasicRule noRawThreads() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> FunctionalCoreChecks.rawThreads(codeBase.javaRelease()).check(codeBase, filter));
     }
 
@@ -88,7 +87,7 @@ public final class DependencyRules {
      * @return the rule
      */
     public BasicRule constructorsDoNoWork() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ConstructorWorkCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new ConstructorWorkCheck().check(codeBase, filter));
     }
 
     /**
@@ -98,7 +97,7 @@ public final class DependencyRules {
      * @return the rule
      */
     public BasicRule noQueriesInLoops() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new QueriesInLoopsCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new QueriesInLoopsCheck().check(codeBase, filter));
     }
 
     /**
@@ -108,6 +107,6 @@ public final class DependencyRules {
      * @return the rule
      */
     public BasicRule stableDependencies() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new StableDependenciesCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new StableDependenciesCheck().check(codeBase, filter));
     }
 }

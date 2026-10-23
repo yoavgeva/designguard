@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.controller;
 
-import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.ServiceTestsCheck;
 import io.github.yoavgeva.designguard.service.StubCheck;
@@ -24,7 +23,7 @@ public final class GuardrailRules {
      * @return the rule
      */
     public BasicRule noStubs() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new StubCheck().check(codeBase.sources(), filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new StubCheck().check(codeBase.sources(), filter));
     }
 
     /**
@@ -34,7 +33,7 @@ public final class GuardrailRules {
      * @see NoSuppressionsRule
      */
     public NoSuppressionsRule noSuppressions() {
-        return new NoSuppressionsRule(code, ClassFilter.ALL, Set.of());
+        return new NoSuppressionsRule(code, RuleScope.DEFAULT, Set.of());
     }
 
     /**
@@ -44,7 +43,7 @@ public final class GuardrailRules {
      * @return the rule
      */
     public BasicRule serviceLikeClassesHaveTests() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ServiceTestsCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new ServiceTestsCheck().check(codeBase, filter));
     }
 
     /**
@@ -54,7 +53,7 @@ public final class GuardrailRules {
      * @return the rule
      */
     public BasicRule noWidenedForTests() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new WidenedForTestsCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new WidenedForTestsCheck().check(codeBase, filter));
     }
 
     /**
@@ -64,6 +63,6 @@ public final class GuardrailRules {
      * @return the rule
      */
     public BasicRule noUnusedPublicCode() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new UnusedPublicCodeCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new UnusedPublicCodeCheck().check(codeBase, filter));
     }
 }

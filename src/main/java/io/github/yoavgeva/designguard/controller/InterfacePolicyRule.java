@@ -17,8 +17,8 @@ public final class InterfacePolicyRule extends DesignRule<InterfacePolicyRule> {
     private final InterfacePolicy policy;
     private final InterfacePolicyCheck check;
 
-    InterfacePolicyRule(CodeBase code, ClassFilter filter, InterfacePolicy policy, InterfacePolicyCheck check) {
-        super(code, filter);
+    InterfacePolicyRule(CodeBase code, RuleScope scope, InterfacePolicy policy, InterfacePolicyCheck check) {
+        super(code, scope);
         this.policy = policy;
         this.check = check;
     }
@@ -32,7 +32,7 @@ public final class InterfacePolicyRule extends DesignRule<InterfacePolicyRule> {
      * @return the reconfigured rule
      */
     public InterfacePolicyRule slicedBy(String pattern) {
-        return new InterfacePolicyRule(code(), filter(), policy, new InterfacePolicyCheck(policy, pattern));
+        return new InterfacePolicyRule(code(), scope(), policy, new InterfacePolicyCheck(policy, pattern));
     }
 
     @Override
@@ -41,7 +41,7 @@ public final class InterfacePolicyRule extends DesignRule<InterfacePolicyRule> {
     }
 
     @Override
-    InterfacePolicyRule withFilter(ClassFilter filter) {
-        return new InterfacePolicyRule(code(), filter, policy, check);
+    InterfacePolicyRule withScope(RuleScope scope) {
+        return new InterfacePolicyRule(code(), scope, policy, check);
     }
 }

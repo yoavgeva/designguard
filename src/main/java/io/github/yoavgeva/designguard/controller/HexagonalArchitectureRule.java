@@ -25,9 +25,9 @@ public final class HexagonalArchitectureRule extends DesignRule<HexagonalArchite
     private final List<String> applicationPackages;
     private final List<Layer> adapters;
 
-    HexagonalArchitectureRule(CodeBase code, ClassFilter filter, List<String> domain, List<String> application,
+    HexagonalArchitectureRule(CodeBase code, RuleScope scope, List<String> domain, List<String> application,
                               List<Layer> adapters) {
-        super(code, filter);
+        super(code, scope);
         this.domainPackages = List.copyOf(domain);
         this.applicationPackages = List.copyOf(application);
         this.adapters = List.copyOf(adapters);
@@ -40,7 +40,7 @@ public final class HexagonalArchitectureRule extends DesignRule<HexagonalArchite
      * @return the reconfigured rule
      */
     public HexagonalArchitectureRule domain(String... patterns) {
-        return new HexagonalArchitectureRule(code(), filter(), List.of(patterns), applicationPackages, adapters);
+        return new HexagonalArchitectureRule(code(), scope(), List.of(patterns), applicationPackages, adapters);
     }
 
     /**
@@ -50,7 +50,7 @@ public final class HexagonalArchitectureRule extends DesignRule<HexagonalArchite
      * @return the reconfigured rule
      */
     public HexagonalArchitectureRule application(String... patterns) {
-        return new HexagonalArchitectureRule(code(), filter(), domainPackages, List.of(patterns), adapters);
+        return new HexagonalArchitectureRule(code(), scope(), domainPackages, List.of(patterns), adapters);
     }
 
     /**
@@ -63,7 +63,7 @@ public final class HexagonalArchitectureRule extends DesignRule<HexagonalArchite
     public HexagonalArchitectureRule adapter(String name, String... patterns) {
         List<Layer> withAdapter = Stream.concat(adapters.stream(),
                 Stream.of(new Layer("Adapter " + name, List.of(patterns)))).toList();
-        return new HexagonalArchitectureRule(code(), filter(), domainPackages, applicationPackages, withAdapter);
+        return new HexagonalArchitectureRule(code(), scope(), domainPackages, applicationPackages, withAdapter);
     }
 
     @Override
@@ -79,7 +79,7 @@ public final class HexagonalArchitectureRule extends DesignRule<HexagonalArchite
     }
 
     @Override
-    HexagonalArchitectureRule withFilter(ClassFilter filter) {
-        return new HexagonalArchitectureRule(code(), filter, domainPackages, applicationPackages, adapters);
+    HexagonalArchitectureRule withScope(RuleScope scope) {
+        return new HexagonalArchitectureRule(code(), scope, domainPackages, applicationPackages, adapters);
     }
 }

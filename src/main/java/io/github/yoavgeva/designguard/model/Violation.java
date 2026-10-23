@@ -60,6 +60,16 @@ public record Violation(String rule, Severity severity, String file, int line, S
     }
 
     /**
+     * The same violation with another severity.
+     *
+     * @param changed the severity
+     * @return this violation if it already has the severity, else a copy with it
+     */
+    public Violation withSeverity(Severity changed) {
+        return changed == severity ? this : new Violation(rule, changed, file, line, message, fix, identity);
+    }
+
+    /**
      * The same violation, identified by what it is about rather than its message.
      *
      * @param about what it is about, without counts or other details that move as unrelated code changes
