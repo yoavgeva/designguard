@@ -29,10 +29,12 @@ class SarifReportTest {
                           "informationUri": "https://github.com/yoavgeva/designguard",
                           "rules": [
                             {
-                              "id": "class-cycles"
+                              "id": "class-cycles",
+                              "helpUri": "https://github.com/yoavgeva/designguard/blob/main/docs/rules.md#class-cycles"
                             },
                             {
-                              "id": "no-stubs"
+                              "id": "no-stubs",
+                              "helpUri": "https://github.com/yoavgeva/designguard/blob/main/docs/rules.md#no-stubs"
                             }
                           ]
                         }

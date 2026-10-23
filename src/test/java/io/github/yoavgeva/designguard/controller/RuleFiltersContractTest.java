@@ -8,10 +8,17 @@ import io.github.yoavgeva.designguard.CompiledProject;
 import io.github.yoavgeva.designguard.model.InheritancePolicy;
 import io.github.yoavgeva.designguard.model.InterfacePolicy;
 import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
+import io.github.yoavgeva.designguard.model.Violation;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -25,6 +32,7 @@ class RuleFiltersContractTest {
 
     private static final String WEB = "..web..";
     private static final String DOMAIN = "..domain..";
+    private static final Pattern RULE_HEADING = Pattern.compile("^### `([a-z-]+)`$", Pattern.MULTILINE);
 
     @TempDir
     private static Path directory;
@@ -112,6 +120,27 @@ class RuleFiltersContractTest {
                 .isInstanceOf(AssertionError.class)
                 .hasMessageStartingWith("Recorded ");
         assertThatCode(rule.apply(guard).frozen(name)::check).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("rules")
+    void theRuleDocsDescribeItUnderItsId(String name, Function<DesignGuard, DesignRule<?>> rule) throws IOException {
+        Set<String> documented = documentedRules();
+
+        assertThat(rule.apply(guard).evaluate()).extracting(Violation::rule).allSatisfy(id ->
+                assertThat(documented).as("docs/rules.md has a section for %s, the id of %s", id, name).contains(id));
+    }
+
+    @Test
+    void theRuleDocsDescribeNoOtherRules() throws IOException {
+        assertThat(documentedRules()).hasSize(Math.toIntExact(rules().count()));
+    }
+
+    /** The rule ids docs/rules.md has a section for: a heading like {@code ### `no-stubs`}. */
+    private static Set<String> documentedRules() throws IOException {
+        return RULE_HEADING.matcher(Files.readString(Path.of("docs/rules.md"))).results()
+                .map(heading -> heading.group(1))
+                .collect(Collectors.toSet());
     }
 
     private static Arguments rule(String name, Function<DesignGuard, DesignRule<?>> rule) {
