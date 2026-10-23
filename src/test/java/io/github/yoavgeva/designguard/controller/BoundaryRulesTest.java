@@ -61,7 +61,7 @@ class BoundaryRulesTest {
                         + "        throw new java.sql.SQLException(id);\n    }\n}\n")
                 .guard(SHOP);
 
-        assertThat(guard.dependencies().infrastructureExceptionsStayOutOf("..domain..").evaluate())
+        assertThat(guard.architecture().infrastructureExceptionsStayOutOf("..domain..").evaluate())
                 .singleElement().satisfies(violation -> {
                     assertThat(violation.rule()).isEqualTo("domain-exceptions");
                     assertThat(violation.message()).isEqualTo("OrderStore uses the infrastructure exception SQLException");
@@ -122,7 +122,7 @@ class BoundaryRulesTest {
                         + "        return service.load();\n    }\n}\n")
                 .guard(SHOP);
 
-        assertThat(guard.dependencies().entitiesStayOutOf("..web..").evaluate()).singleElement().satisfies(violation -> {
+        assertThat(guard.architecture().entitiesStayOutOf("..web..").evaluate()).singleElement().satisfies(violation -> {
             assertThat(violation.rule()).isEqualTo("entities-stay-behind");
             assertThat(violation.message()).isEqualTo("OrderController uses the entity OrderEntity");
             assertThat(violation.fix())

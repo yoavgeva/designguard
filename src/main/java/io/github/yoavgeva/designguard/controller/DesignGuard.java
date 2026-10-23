@@ -91,12 +91,21 @@ public final class DesignGuard {
     }
 
     /**
-     * Rules that catch AI shortcuts: stubs, suppressions, weak tests.
+     * Rules that catch AI shortcuts: stubs, suppressions, unused code, code opened up for tests.
      *
      * @return the guardrail rules
      */
     public GuardrailRules guardrails() {
         return new GuardrailRules(code);
+    }
+
+    /**
+     * Rules about tests: they assert something, use real values and their subject, and take one path.
+     *
+     * @return the test rules
+     */
+    public SuiteRules tests() {
+        return new SuiteRules(code);
     }
 
     /** Describes where the code lives and how to classify it. Immutable: every method returns a new builder. */

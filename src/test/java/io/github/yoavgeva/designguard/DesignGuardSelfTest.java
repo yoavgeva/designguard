@@ -45,12 +45,12 @@ class DesignGuardSelfTest {
                 Arguments.of("accessors change nothing", GUARD.api().accessorsChangeNothing()),
                 Arguments.of("no stubs", GUARD.guardrails().noStubs()),
                 Arguments.of("no suppressions", GUARD.guardrails().noSuppressions()),
-                Arguments.of("tests assert meaningfully", GUARD.guardrails().testsAssertMeaningfully()),
-                Arguments.of("tests don't mock values", GUARD.guardrails().testsDontMockValues()),
-                Arguments.of("tests use their subject", GUARD.guardrails().testsUseTheirSubject()),
-                Arguments.of("tests check results", GUARD.guardrails().testsCheckResults()),
+                Arguments.of("tests assert meaningfully", GUARD.tests().testsAssertMeaningfully()),
+                Arguments.of("tests don't mock values", GUARD.tests().testsDontMockValues()),
+                Arguments.of("tests use their subject", GUARD.tests().testsUseTheirSubject()),
+                Arguments.of("tests check results", GUARD.tests().testsCheckResults()),
                 Arguments.of("nothing widened for tests", GUARD.guardrails().noWidenedForTests()),
-                Arguments.of("no disabled tests", GUARD.guardrails().noDisabledTests()));
+                Arguments.of("no disabled tests", GUARD.tests().noDisabledTests()));
     }
 
     @ParameterizedTest(name = "{0}")

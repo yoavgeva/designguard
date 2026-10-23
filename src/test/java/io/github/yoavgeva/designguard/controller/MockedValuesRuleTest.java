@@ -91,13 +91,13 @@ class MockedValuesRuleTest {
                         """)
                 .guard("shop");
 
-        assertThat(guard.guardrails().testsDontMockValues().evaluate()).extracting(Violation::line, Violation::message)
+        assertThat(guard.tests().testsDontMockValues().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
                         tuple(14, "CheckoutTest mocks Money, which is a value"),
                         tuple(18, "CheckoutTest mocks Status, which is a value"),
                         tuple(19, "CheckoutTest mocks Order.Line, which is a value"),
                         tuple(20, "CheckoutTest mocks Shape, which is a value"));
-        assertThat(guard.guardrails().testsDontMockValues().evaluate().get(0).fix())
+        assertThat(guard.tests().testsDontMockValues().evaluate().get(0).fix())
                 .isEqualTo("use a real Money instead; mock only service-like types");
     }
 }

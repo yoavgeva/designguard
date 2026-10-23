@@ -41,7 +41,7 @@ class DesignTest {
     void noAiShortcuts() {
         GUARD.guardrails().noStubs().check();
         GUARD.guardrails().noSuppressions().allowing("serial").check();
-        GUARD.guardrails().testsAssertMeaningfully().check();
+        GUARD.tests().testsAssertMeaningfully().check();
     }
 }
 ```
@@ -131,6 +131,8 @@ implementation. Everything else is a **value**.
 | | `onion().adapter(...)` | rings depending outwards |
 | | `featureSlices()` | a feature using another's internals, or features in a cycle |
 | | `frameworksStayOutOf("..domain..")` | Spring, Jakarta EE, Hibernate, Jackson, Guice, Micronaut, Quarkus... types or annotations in the domain |
+| | `infrastructureExceptionsStayOutOf("..domain..")` | `SQLException`, `IOException`, JPA or Spring data exceptions in the domain |
+| | `entitiesStayOutOf("..web..")` | persistence entities used past the persistence layer |
 | `dependencies()` | `interfacePolicy(PORTS / SERVICES / ALL)` | concrete dependencies where an interface is required |
 | | `injectServices()` | effectful classes created with `new`, or singletons reached statically, outside wiring code; a class whose effects happen only in implementations it is given doesn't count |
 | | `constructorsDoNoWork()` | constructors and static initializers that call I/O, the clock, an injected collaborator or other effectful code |
@@ -139,8 +141,6 @@ implementation. Everything else is a **value**.
 | | `configurationIsInjected()` | `System.getenv()`, `System.getProperty()`... |
 | | `noRawThreads()` | `new Thread(...)` instead of an executor |
 | | `stableDependencies()` | a slice depending on a less stable slice |
-| | `infrastructureExceptionsStayOutOf("..domain..")` | `SQLException`, `IOException`, JPA or Spring data exceptions in the domain |
-| | `entitiesStayOutOf("..web..")` | persistence entities used past the persistence layer |
 | `types()` | `typeDispatch(SEALED_ONLY / ALLOW)` | switches or `instanceof` chains on open hierarchies, `default` branches hiding new cases, a type branched on in too many unchecked places |
 | | `recordsAreImmutable()` | record components callers can still change |
 | | `dataClassesAreRecords()` | classes that only carry data |
@@ -160,14 +160,14 @@ implementation. Everything else is a **value**.
 | | `minimalVisibility()` | public types only their own package uses (applications) |
 | `guardrails()` | `noStubs()` | `TODO`/`FIXME`, `UnsupportedOperationException` placeholders, empty methods |
 | | `noSuppressions().allowing(...)` | `@SuppressWarnings`, `NOPMD`, `NOSONAR`, `noinspection`, `CHECKSTYLE:OFF` |
-| | `testsAssertMeaningfully()` | tests asserting nothing, on constants, or a value against itself |
-| | `noDisabledTests()` (`.allowingWithReason()`) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` |
 | | `noWidenedForTests()` | package-private or protected methods and constructors only tests call |
+| | `noUnusedPublicCode()` | public types and methods nothing uses (applications) |
+| `tests()` | `testsAssertMeaningfully()` | tests asserting nothing, on constants, or a value against itself |
+| | `noDisabledTests()` (`.allowingWithReason()`) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` |
 | | `testsCheckResults()` | `verify(mock).query()` on methods that return a value, instead of stubbing them and asserting on the result |
 | | `testsUseTheirSubject()` | `OrderServiceTest` never using `OrderService`, or only mocking it |
 | | `testsDontMockValues()` | mocks of records, enums, other values, and interfaces whose implementations are all values |
 | | `serviceLikeClassesHaveTests()` | service-like classes with no `<Name>Test` |
-| | `noUnusedPublicCode()` | public types and methods nothing uses (applications) |
 
 ## Use it alongside
 

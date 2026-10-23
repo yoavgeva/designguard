@@ -112,7 +112,7 @@ class TestSubjectRuleTest {
                         """)
                 .guard("shop");
 
-        assertThat(guard.guardrails().testsUseTheirSubject().evaluate())
+        assertThat(guard.tests().testsUseTheirSubject().evaluate())
                 .extracting(Violation::message, Violation::fix)
                 .containsExactly(
                         tuple("CheckoutTest only mocks Checkout, the class it's named after",
@@ -132,7 +132,7 @@ class TestSubjectRuleTest {
                 .addTest("ReportTest", "package shop.billing;\n\n" + test)
                 .guard("shop");
 
-        assertThat(guard.guardrails().testsUseTheirSubject().evaluate()).extracting(Violation::file)
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::file)
                 .hasSize(2).anyMatch(file -> file.endsWith("shop/sales/ReportTest.java"))
                 .anyMatch(file -> file.endsWith("shop/billing/ReportTest.java"));
     }

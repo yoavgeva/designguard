@@ -157,7 +157,7 @@ class NewerJavaCodeTest {
                         """)
                 .guard(SHOP);
 
-        assertThat(guard.dependencies().infrastructureExceptionsStayOutOf("..domain..").evaluate())
+        assertThat(guard.architecture().infrastructureExceptionsStayOutOf("..domain..").evaluate())
                 .extracting(Violation::line, Violation::message)
                 .containsExactly(tuple(5, "Failures uses the infrastructure exception SQLException"));
     }
