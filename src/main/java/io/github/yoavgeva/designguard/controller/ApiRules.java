@@ -8,6 +8,7 @@ import io.github.yoavgeva.designguard.service.FlagArgumentCheck;
 import io.github.yoavgeva.designguard.service.MinimalVisibilityCheck;
 import io.github.yoavgeva.designguard.service.NullMarkedCheck;
 import io.github.yoavgeva.designguard.service.OptionalUsageCheck;
+import io.github.yoavgeva.designguard.service.UntypedApiCheck;
 
 /** Rules about the shape of methods and types other code calls: parameters, nullness, exceptions, visibility. */
 public final class ApiRules {
@@ -68,6 +69,16 @@ public final class ApiRules {
      */
     public BasicRule noEffectfulStaticMethods() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new EffectfulStaticsCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on public methods that take or return untyped data: {@code Object}, a map to {@code Object} such as
+     * {@code Map<String, Object>}, or a JSON tree. A record names the fields and their types.
+     *
+     * @return the rule
+     */
+    public BasicRule typedApis() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new UntypedApiCheck().check(codeBase, filter));
     }
 
     /**

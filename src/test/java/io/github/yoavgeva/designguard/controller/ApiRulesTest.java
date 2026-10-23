@@ -18,6 +18,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 class ApiRulesTest {
 
     private static final String SHOP = "shop";
+    private static final String ORDER = "Order";
+    private static final String ORDERS = "Orders";
 
     @Parameter
     private int release;
@@ -30,7 +32,7 @@ class ApiRulesTest {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("NullMarked", "package org.jspecify.annotations;\n\npublic @interface NullMarked {\n}\n")
                 .add("package-info", "@NullMarked\npackage shop.orders;\n\nimport org.jspecify.annotations.NullMarked;\n")
-                .add("Order", "package shop.orders;\n\npublic class Order {\n}\n")
+                .add(ORDER, "package shop.orders;\n\npublic class Order {\n}\n")
                 .add("Payment", "package shop.payments;\n\npublic class Payment {\n}\n")
                 .guard(SHOP);
 
@@ -46,7 +48,7 @@ class ApiRulesTest {
     @Test
     void optionalIsOnlyForReturnValues() {
         DesignGuard guard = new CompiledProject(directory).release(release)
-                .add("Order", """
+                .add(ORDER, """
                         package shop;
 
                         import java.util.Optional;
@@ -82,7 +84,7 @@ class ApiRulesTest {
     void checkedExceptionsStayOutOfTheApi() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("OrderException", "package shop;\n\npublic class OrderException extends Exception {\n}\n")
-                .add("Orders", """
+                .add(ORDERS, """
                         package shop;
 
                         public class Orders implements AutoCloseable {
@@ -113,11 +115,63 @@ class ApiRulesTest {
     }
 
     @Test
+    void publicApisUseTypesNotObjectsOrMaps() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("JsonNode", "package com.fasterxml.jackson.databind;\n\npublic abstract class JsonNode {\n}\n")
+                .add(ORDER, "package shop;\n\npublic record Order(String name) {\n}\n")
+                .add(ORDERS, """
+                        package shop;
+
+                        import java.util.Map;
+
+                        public class Orders {
+                            public Order create(Map<String, Object> fields) {
+                                return new Order(String.valueOf(fields.get("name")));
+                            }
+
+                            public Object find(String name) {
+                                return new Order(name);
+                            }
+
+                            public <T> T convert(Class<T> type) {
+                                return type.cast(find("x"));
+                            }
+
+                            public Map<String, Integer> counts() {
+                                return Map.of("orders", 1);
+                            }
+
+                            public com.fasterxml.jackson.databind.JsonNode export() {
+                                return null;
+                            }
+
+                            @Override
+                            public boolean equals(Object other) {
+                                return this == other;
+                            }
+
+                            @Override
+                            public int hashCode() {
+                                return 1;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.api().typedApis().evaluate()).extracting(Violation::message).containsExactly(
+                "Orders.create() takes an untyped Map<String, Object>",
+                "Orders.find() returns an untyped Object",
+                "Orders.export() returns an untyped JsonNode");
+        assertThat(guard.api().typedApis().evaluate().get(0).fix())
+                .isEqualTo("define a record with named, typed fields and use it instead");
+    }
+
+    @Test
     void publicClassesUsedOnlyInTheirPackageShouldBePackagePrivate() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("OrderMapper", "package shop.orders;\n\npublic class OrderMapper {\n"
                         + "    public String map(String value) {\n        return value;\n    }\n}\n")
-                .add("Orders", "package shop.orders;\n\npublic class Orders {\n"
+                .add(ORDERS, "package shop.orders;\n\npublic class Orders {\n"
                         + "    public String run() {\n        return new OrderMapper().map(\"x\");\n    }\n}\n")
                 .add("Controller", "package shop.web;\n\npublic class Controller {\n"
                         + "    public String go() {\n        return new shop.orders.Orders().run();\n    }\n}\n")
@@ -147,14 +201,14 @@ class ApiRulesTest {
                             }
                         }
                         """)
-                .add("Order", """
+                .add(ORDER, """
                         package shop.orders;
 
                         public record Order(Order.Status status) {
                             public enum Status { OPEN, PAID }
                         }
                         """)
-                .add("Orders", """
+                .add(ORDERS, """
                         package shop.orders;
 
                         public class Orders {
