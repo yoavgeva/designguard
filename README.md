@@ -159,6 +159,7 @@ implementation. Everything else is a **value**.
 | | `noSuppressions().allowing(...)` | `@SuppressWarnings`, `NOPMD`, `NOSONAR`, `noinspection`, `CHECKSTYLE:OFF` |
 | | `testsAssertMeaningfully()` | tests asserting nothing, on constants, or a value against itself |
 | | `noDisabledTests()` (`.allowingWithReason()`) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` |
+| | `testsCheckResults()` | `verify(mock).query()` on methods that return a value, instead of stubbing them and asserting on the result |
 | | `testsUseTheirSubject()` | `OrderServiceTest` never using `OrderService`, or only mocking it |
 | | `testsDontMockValues()` | mocks of records, enums, other values, and interfaces whose implementations are all values |
 | | `serviceLikeClassesHaveTests()` | service-like classes with no `<Name>Test` |

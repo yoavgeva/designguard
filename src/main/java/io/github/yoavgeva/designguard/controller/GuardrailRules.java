@@ -4,6 +4,7 @@ import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.MeaningfulTestsCheck;
 import io.github.yoavgeva.designguard.service.MockedValuesCheck;
+import io.github.yoavgeva.designguard.service.QueryVerificationCheck;
 import io.github.yoavgeva.designguard.service.ServiceTestsCheck;
 import io.github.yoavgeva.designguard.service.StubCheck;
 import io.github.yoavgeva.designguard.service.SubjectUsageCheck;
@@ -68,6 +69,16 @@ public final class GuardrailRules {
      */
     public BasicRule serviceLikeClassesHaveTests() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ServiceTestsCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails when a test verifies a query, {@code verify(mock).method()} for a method that returns a value: stub
+     * queries and assert on the result, and verify only commands.
+     *
+     * @return the rule
+     */
+    public BasicRule testsCheckResults() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new QueryVerificationCheck().check(codeBase, filter));
     }
 
     /**
