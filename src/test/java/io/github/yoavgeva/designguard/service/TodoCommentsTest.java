@@ -53,6 +53,9 @@ class TodoCommentsTest {
 
     private List<Violation> violations(String typeName, String source) {
         new SourceTree(root).add(typeName, source);
-        return new StubCheck().check(SourceReader.read(List.of(root)), ClassFilter.ALL);
+        TodoComments todos = new TodoComments();
+        return SourceReader.read(List.of(root)).files().stream()
+                .flatMap(file -> todos.find(file, ClassFilter.ALL))
+                .toList();
     }
 }

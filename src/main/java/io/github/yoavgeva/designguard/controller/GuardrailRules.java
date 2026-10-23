@@ -6,6 +6,7 @@ import io.github.yoavgeva.designguard.service.MeaningfulTestsCheck;
 import io.github.yoavgeva.designguard.service.MockedValuesCheck;
 import io.github.yoavgeva.designguard.service.ServiceTestsCheck;
 import io.github.yoavgeva.designguard.service.StubCheck;
+import io.github.yoavgeva.designguard.service.SubjectUsageCheck;
 import io.github.yoavgeva.designguard.service.UnusedPublicCodeCheck;
 import java.util.Set;
 
@@ -67,6 +68,16 @@ public final class GuardrailRules {
      */
     public BasicRule serviceLikeClassesHaveTests() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ServiceTestsCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails when a test class doesn't exercise the class it's named after: {@code OrderServiceTest} never uses
+     * {@code OrderService}, or only mocks it.
+     *
+     * @return the rule
+     */
+    public BasicRule testsUseTheirSubject() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new SubjectUsageCheck().check(codeBase, filter));
     }
 
     /**
