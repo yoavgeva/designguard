@@ -6,17 +6,26 @@ import io.github.yoavgeva.designguard.CompiledProject;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 
+/** Runs once for each Java version's class files: see {@link CompiledProject#releases()}. */
+@ParameterizedClass(name = "class files for Java {0}")
+@MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class BoundaryRulesTest {
 
     private static final String SHOP = "shop";
+
+    @Parameter
+    private int release;
 
     @TempDir
     private Path directory;
 
     @Test
     void stableSlicesMustNotDependOnLessStableOnes() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Money", "package shop.core;\n\npublic record Money(long cents) {\n}\n")
                 .add("Audit", "package shop.core;\n\npublic class Audit {\n"
                         + "    public String log(shop.reports.Report report) {\n        return report.toString();\n    }\n}\n")
@@ -39,7 +48,7 @@ class BoundaryRulesTest {
 
     @Test
     void infrastructureExceptionsStayOutOfTheDomain() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("OrderStore", "package shop.domain;\n\npublic interface OrderStore {\n"
                         + "    String load(String id) throws java.sql.SQLException;\n}\n")
                 .add("Order", "package shop.domain;\n\npublic class Order {\n"
@@ -61,7 +70,7 @@ class BoundaryRulesTest {
 
     @Test
     void entitiesStayBehindTheApi() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Entity", "package shop.persistence;\n\n"
                         + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
                         + "public @interface Entity {\n}\n")

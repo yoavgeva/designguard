@@ -7,10 +7,19 @@ import io.github.yoavgeva.designguard.model.Violation;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 
+/** Runs once for each Java version's class files: see {@link CompiledProject#releases()}. */
+@ParameterizedClass(name = "class files for Java {0}")
+@MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class ArchitectureRulesTest {
 
     private static final String SHOP = "shop";
+
+    @Parameter
+    private int release;
 
     @TempDir
     private Path directory;
@@ -46,7 +55,7 @@ class ArchitectureRulesTest {
 
     @Test
     void mvcKeepsViewsAwayFromServices() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Cart", "package shop.model;\n\npublic record Cart(int items) {\n}\n")
                 .add("CartService", "package shop.service;\n\npublic class CartService {\n"
                         + "    public shop.model.Cart load() {\n        return new shop.model.Cart(1);\n    }\n}\n")
@@ -66,7 +75,7 @@ class ArchitectureRulesTest {
 
     @Test
     void hexagonalKeepsTheDomainPureAndAdaptersApart() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Order", "package shop.domain;\n\npublic class Order {\n"
                         + "    public String id(shop.application.PlaceOrder useCase) {\n        return useCase.toString();\n    }\n}\n")
                 .add("PlaceOrder", "package shop.application;\n\npublic class PlaceOrder {\n"
@@ -87,7 +96,7 @@ class ArchitectureRulesTest {
 
     @Test
     void onionRingsDependOnlyInwards() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Pricing", "package shop.domain.service;\n\npublic class Pricing {\n}\n")
                 .add("Order", "package shop.domain.model;\n\npublic class Order {\n"
                         + "    public String priced(shop.domain.service.Pricing pricing) {\n        return pricing.toString();\n    }\n}\n")
@@ -108,7 +117,7 @@ class ArchitectureRulesTest {
 
     @Test
     void featureSlicesUseEachOthersApiOnlyAndHaveNoCycles() {
-        DesignGuard guard = new CompiledProject(directory)
+        DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("StripeClient", "package shop.payments.internal;\n\npublic class StripeClient {\n}\n")
                 .add("Payments", "package shop.payments;\n\npublic class Payments {\n"
                         + "    public String pay(shop.orders.Order order) {\n        return order.toString();\n    }\n}\n")
@@ -124,7 +133,7 @@ class ArchitectureRulesTest {
     }
 
     private CompiledProject layeredShop() {
-        return new CompiledProject(directory)
+        return new CompiledProject(directory).release(release)
                 .add("OrderController", "package shop.web;\n\npublic class OrderController {\n"
                         + "    public String show(shop.service.OrderService service, shop.persistence.OrderRepository repository) {\n"
                         + "        return service.toString() + repository;\n    }\n}\n")

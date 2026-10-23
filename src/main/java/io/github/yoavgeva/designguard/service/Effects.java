@@ -24,7 +24,8 @@ final class Effects {
             Set.of("java.io", "java.nio.file", "java.nio.channels", "java.net", "java.net.http", "java.sql", "javax.sql");
     private static final Set<String> IMPURE_TYPES = Set.of("java.time.Clock", "java.time.InstantSource",
             "java.util.Random", "java.security.SecureRandom", "java.util.concurrent.ThreadLocalRandom",
-            "java.util.random.RandomGenerator", "java.lang.Thread", "java.lang.ProcessBuilder", "java.lang.Runtime");
+            "java.util.random.RandomGenerator", "java.lang.Thread", "java.lang.ProcessBuilder", "java.lang.Runtime",
+            "java.lang.IO");
     private static final Set<String> IMPURE_CALLS = Set.of("java.lang.System.currentTimeMillis",
             "java.lang.System.nanoTime", "java.lang.System.getenv", "java.lang.System.getProperty",
             "java.lang.Math.random", "java.util.UUID.randomUUID");

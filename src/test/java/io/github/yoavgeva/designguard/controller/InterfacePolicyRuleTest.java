@@ -9,8 +9,17 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 
+/** Runs once for each Java version's class files: see {@link CompiledProject#releases()}. */
+@ParameterizedClass(name = "class files for Java {0}")
+@MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class InterfacePolicyRuleTest {
+
+    @Parameter
+    private int release;
 
     @TempDir
     private Path directory;
@@ -19,7 +28,7 @@ class InterfacePolicyRuleTest {
 
     @BeforeEach
     void compileShop() {
-        guard = ShopFixture.write(directory).guard("shop");
+        guard = ShopFixture.write(directory).release(release).guard("shop");
     }
 
     @Test
@@ -56,7 +65,7 @@ class InterfacePolicyRuleTest {
 
     @Test
     void valuesHoldingPathsAreNotServices(@TempDir Path other) {
-        var paths = new CompiledProject(other)
+        var paths = new CompiledProject(other).release(release)
                 .add("Settings", "package shop.config;\n\npublic record Settings(java.nio.file.Path root) {\n}\n")
                 .add("Loader", "package shop.loading;\n\npublic class Loader {\n"
                         + "    private final shop.config.Settings settings;\n\n"

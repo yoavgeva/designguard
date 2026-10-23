@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.yoavgeva.designguard.SourceTree;
+import io.github.yoavgeva.designguard.model.DesignGuardException;
 import java.lang.annotation.Documented;
 import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,6 +54,13 @@ class DesignGuardTest {
                         + " -> fix: implement it, or delete the method until it is needed\n"
                         + legacy + ":5: error [no-stubs] TODO left in the code: TODO delete"
                         + " -> fix: finish the work now, or track it in an issue instead of a comment");
+    }
+
+    @Test
+    void bytecodeRulesFailWhenNoClassesAreFound() {
+        assertThatThrownBy(() -> guard.dependencies().injectServices().check())
+                .isInstanceOf(DesignGuardException.class)
+                .hasMessageStartingWith("Found no compiled classes of packages [shop] on the classpath.");
     }
 
     @Test

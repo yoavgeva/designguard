@@ -9,8 +9,17 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 
+/** Runs once for each Java version's class files: see {@link CompiledProject#releases()}. */
+@ParameterizedClass(name = "class files for Java {0}")
+@MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class FunctionalCoreRulesTest {
+
+    @Parameter
+    private int release;
 
     @TempDir
     private Path directory;
@@ -19,7 +28,7 @@ class FunctionalCoreRulesTest {
 
     @BeforeEach
     void compile() {
-        guard = new CompiledProject(directory)
+        guard = new CompiledProject(directory).release(release)
                 .add("Invoice", """
                         package shop;
 
@@ -120,11 +129,12 @@ class FunctionalCoreRulesTest {
     }
 
     @Test
-    void threadsComeFromExecutors() {
+    void threadsComeFromExecutorsOfTheVersionTheClassFilesTarget() {
+        String executor = release >= 21 ? "Executors.newVirtualThreadPerTaskExecutor()" : "Executors.newFixedThreadPool(n)";
+
         assertThat(guard.dependencies().noRawThreads().evaluate()).singleElement().satisfies(violation -> {
             assertThat(violation.message()).isEqualTo("Jobs starts a thread directly through new Thread()");
-            assertThat(violation.fix()).isEqualTo("submit the work to an injected ExecutorService,"
-                    + " e.g. one from Executors.newFixedThreadPool(n)");
+            assertThat(violation.fix()).isEqualTo("submit the work to an injected ExecutorService, e.g. one from " + executor);
         });
     }
 }

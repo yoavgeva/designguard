@@ -9,11 +9,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.tools.ToolProvider;
 
 /** Writes fixture sources and compiles them, so rules that read bytecode run on real classes. */
 public final class CompiledProject {
+
+    /** The long-term-support Java versions designguard runs on. */
+    private static final List<Integer> LTS_RELEASES = List.of(17, 21, 25);
+
+    /** A class file starts with the magic number and the minor version, then the major version, two bytes each. */
+    private static final int MAJOR_VERSION_OFFSET = 6;
 
     private final SourceTree tree;
     private final SourceTree testTree;
@@ -21,6 +28,7 @@ public final class CompiledProject {
     private final Path testRoot;
     private final Path classesDirectory;
     private int javaRelease = 17;
+    private int stampedMajorVersion;
 
     /**
      * Uses {@code directory/src} for sources, {@code directory/test} for test sources and
@@ -37,6 +45,19 @@ public final class CompiledProject {
     }
 
     /**
+     * The Java versions whose class files the bytecode rules are tested on: each LTS from 17 that the running JDK can
+     * compile for, and the running JDK's own version. Newer compilers turn the same source into different bytecode,
+     * and new versions add shapes, such as switches on types.
+     *
+     * @return the releases, oldest first
+     */
+    public static IntStream releases() {
+        int newest = Runtime.version().feature();
+        return IntStream.concat(
+                LTS_RELEASES.stream().mapToInt(Integer::intValue).filter(release -> release < newest), IntStream.of(newest));
+    }
+
+    /**
      * Compiles for another Java version than 17, the oldest designguard runs on.
      *
      * @param release the {@code --release} to compile with
@@ -44,6 +65,17 @@ public final class CompiledProject {
      */
     public CompiledProject release(int release) {
         this.javaRelease = release;
+        return this;
+    }
+
+    /**
+     * Rewrites the class files' major version after compiling, as a Java newer than designguard knows would write them.
+     *
+     * @param majorVersion the class file major version, e.g. 69 for Java 25
+     * @return this project, for chaining
+     */
+    public CompiledProject stampMajorVersion(int majorVersion) {
+        this.stampedMajorVersion = majorVersion;
         return this;
     }
 
@@ -106,6 +138,22 @@ public final class CompiledProject {
         int status = ToolProvider.getSystemJavaCompiler().run(null, null, errors, arguments.toArray(String[]::new));
         if (status != 0) {
             throw new IllegalStateException("fixture does not compile:\n" + errors.toString(StandardCharsets.UTF_8));
+        }
+        if (stampedMajorVersion != 0) {
+            stampClassFiles();
+        }
+    }
+
+    private void stampClassFiles() {
+        try (Stream<Path> files = Files.walk(classesDirectory)) {
+            for (Path classFile : files.filter(path -> path.toString().endsWith(".class")).toList()) {
+                byte[] bytes = Files.readAllBytes(classFile);
+                bytes[MAJOR_VERSION_OFFSET] = (byte) (stampedMajorVersion >> Byte.SIZE);
+                bytes[MAJOR_VERSION_OFFSET + 1] = (byte) stampedMajorVersion;
+                Files.write(classFile, bytes);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 }

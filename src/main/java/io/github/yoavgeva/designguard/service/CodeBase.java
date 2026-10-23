@@ -78,7 +78,7 @@ public abstract sealed class CodeBase {
     abstract ServiceLikeClasses serviceLike();
 
     WiringCode wiring() {
-        return new WiringCode(settings().wiringPackages());
+        return new WiringCode(settings().wiringPackages(), javaRelease());
     }
 
     /** Reads classes and sources from disk on first use, and keeps them. */
@@ -100,7 +100,7 @@ public abstract sealed class CodeBase {
             this.parsedSources = new Memo<>(() -> SourceReader.read(settings.sourceRoots()).inPackages(settings.packages()));
             this.parsedTestSources = new Memo<>(() -> SourceReader.read(
                     settings.testSourceRoots().stream().filter(Files::isDirectory).toList()));
-            this.classification = new Memo<>(() -> new ServiceLikeClasses(importedClasses.get(), settings.impurePackages()));
+            this.classification = new Memo<>(() -> new ServiceLikeClasses(projectClasses(), settings.impurePackages()));
             this.release = new Memo<>(() -> releaseOf(settings, importedClasses));
         }
 
@@ -124,9 +124,19 @@ public abstract sealed class CodeBase {
             return projectSettings;
         }
 
+        /** The imported classes; none means the rule would check nothing, so it fails instead. */
         @Override
         ProjectClasses projectClasses() {
-            return importedClasses.get();
+            ProjectClasses classes = importedClasses.get();
+            if (classes.stream().findAny().isEmpty()) {
+                List<Path> directories = projectSettings.classDirectories();
+                throw new DesignGuardException("Found no compiled classes of packages " + projectSettings.packages()
+                        + (directories.isEmpty() ? " on the classpath" : " in " + directories) + ". Check the package"
+                        + " names, and that the code is compiled before designguard runs. If it is, its class files may"
+                        + " target a newer Java than designguard can read: upgrade designguard, or compile for an"
+                        + " older Java.");
+            }
+            return classes;
         }
 
         @Override

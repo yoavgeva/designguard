@@ -1,6 +1,6 @@
 package io.github.yoavgeva.designguard.model;
 
-/** Java features some rules recommend, and the release that introduced each. */
+/** Java features rules recommend or recognize, and the release that introduced each. */
 public enum JavaFeature {
 
     /** {@code switch} expressions, which the compiler checks for exhaustiveness. */
@@ -16,7 +16,10 @@ public enum JavaFeature {
     SWITCH_ON_TYPES(21, "switch on types"),
 
     /** Virtual threads. */
-    VIRTUAL_THREADS(21, "virtual threads");
+    VIRTUAL_THREADS(21, "virtual threads"),
+
+    /** {@code main} methods that are instance methods or take no arguments, which the launcher runs too. */
+    INSTANCE_MAIN_METHODS(25, "instance main methods");
 
     private final int firstRelease;
     private final String name;
