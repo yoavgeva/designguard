@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.service;
 
-import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.PackageMatcher;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -56,14 +55,13 @@ public final class LayerCheck {
 
     private Stream<Violation> violations(ProjectClasses classes, JavaClass origin, Layer originLayer) {
         Set<String> allowed = mayUse.getOrDefault(originLayer.name(), Set.of());
-        Map<JavaClass, Integer> forbidden = origin.getDirectDependenciesFromSelf().stream()
-                .filter(dependency -> classes.isProject(dependency.getTargetClass())
-                        && !Hierarchy.isSelfOrNested(origin, dependency.getTargetClass()))
-                .filter(dependency -> layerOf(dependency.getTargetClass())
+        Map<JavaClass, Integer> forbidden = classes.bytecode().dependenciesFrom(origin)
+                .filter(dependency -> classes.isProject(dependency.target())
+                        && !Hierarchy.isSelfOrNested(origin, dependency.target()))
+                .filter(dependency -> layerOf(dependency.target())
                         .filter(target -> !target.name().equals(originLayer.name()) && !allowed.contains(target.name()))
                         .isPresent())
-                .collect(Collectors.toMap(Dependency::getTargetClass,
-                        dependency -> dependency.getSourceCodeLocation().getLineNumber(), Math::min, LinkedHashMap::new));
+                .collect(Collectors.toMap(ClassDependency::target, ClassDependency::line, Math::min, LinkedHashMap::new));
         return forbidden.entrySet().stream().map(entry -> {
             Layer targetLayer = layerOf(entry.getKey()).orElseThrow();
             return classes.violation(rule, origin, entry.getValue(),

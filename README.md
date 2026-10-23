@@ -81,9 +81,8 @@ If designguard finds no compiled classes in the packages, rules that read classe
 nothing checked. That also happens when the classes target a newer Java than its ArchUnit version reads: ArchUnit
 1.5.1 reads up to Java 27.
 
-Known gap: a class used only as a `switch` pattern whose variable is unused, as in `case Circle c -> "circle"`,
-is invisible to dependency rules. The compiled code names it only in a form ArchUnit doesn't import yet
-([ArchUnit #1762](https://github.com/TNG/ArchUnit/pull/1762)).
+Dependency rules also see classes that ArchUnit doesn't import: those a `switch` only matches on, as in
+`case Circle c -> "circle"` or `case Suit.CLUBS`, which designguard reads from the class files with ASM.
 
 ## Rules
 

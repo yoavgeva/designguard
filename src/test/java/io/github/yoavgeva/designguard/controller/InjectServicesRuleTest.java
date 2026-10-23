@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.yoavgeva.designguard.CompiledProject;
 import io.github.yoavgeva.designguard.model.Violation;
@@ -157,6 +158,40 @@ class InjectServicesRuleTest {
                 .guard(SHOP);
 
         assertThat(guard.dependencies().injectServices().evaluate()).isEmpty();
+    }
+
+    @Test
+    void creatingTheSuperclassInAConstructorIsCreatingAService() {
+        var guard = new CompiledProject(directory).release(release)
+                .add("Gateway", """
+                        package shop;
+
+                        public class Gateway {
+                            public long now() {
+                                return System.currentTimeMillis();
+                            }
+                        }
+                        """)
+                .add("CachingGateway", """
+                        package shop;
+
+                        public final class CachingGateway extends Gateway {
+                            private final Gateway fallback;
+
+                            public CachingGateway() {
+                                super();
+                                this.fallback = new Gateway();
+                            }
+
+                            public long fallbackNow() {
+                                return fallback.now();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().injectServices().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(tuple(8, "CachingGateway creates service-like Gateway with new"));
     }
 
     @Test

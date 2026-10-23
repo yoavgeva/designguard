@@ -9,25 +9,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
-/** The project's compiled classes, and how to point a violation at a class's source file. */
+/** The project's compiled classes, what their code uses, and how to point a violation at a class's source file. */
 final class ProjectClasses {
 
     private final JavaClasses classes;
     private final Map<String, String> sourceFiles;
+    private final Bytecode compiledCode;
 
     /**
      * Wraps imported classes.
      *
      * @param classes     the classes
      * @param sourceFiles where each {@link #relativeSourcePath(JavaClass) relative source path} was found
+     * @param bytecode    what the classes' code uses and creates
      */
-    ProjectClasses(JavaClasses classes, Map<String, String> sourceFiles) {
+    ProjectClasses(JavaClasses classes, Map<String, String> sourceFiles, Bytecode bytecode) {
         this.classes = classes;
         this.sourceFiles = Map.copyOf(sourceFiles);
-    }
-
-    JavaClasses all() {
-        return classes;
+        this.compiledCode = bytecode;
     }
 
     Stream<JavaClass> stream() {
@@ -36,6 +35,10 @@ final class ProjectClasses {
 
     boolean isProject(JavaClass javaClass) {
         return classes.contain(javaClass.getName());
+    }
+
+    Bytecode bytecode() {
+        return compiledCode;
     }
 
     boolean selected(ClassFilter filter, JavaClass javaClass) {

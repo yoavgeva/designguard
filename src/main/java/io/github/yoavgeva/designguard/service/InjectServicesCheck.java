@@ -1,8 +1,6 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaClass;
-import com.tngtech.archunit.core.domain.JavaConstructor;
-import com.tngtech.archunit.core.domain.JavaConstructorCall;
 import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -41,17 +39,15 @@ public final class InjectServicesCheck {
     }
 
     private static Stream<Violation> creations(ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass dependent) {
-        return dependent.getConstructorCallsFromSelf().stream()
-                .filter(call -> classes.isProject(call.getTargetOwner()) && serviceLike.isEffectful(call.getTargetOwner())
-                        && !Hierarchy.isSelfOrNested(dependent, call.getTargetOwner())
-                        && !isSuperConstructorCall(dependent, call))
-                .collect(Collectors.toMap(call -> call.getTargetOwner().getName(), call -> call,
-                        (first, second) -> first.getLineNumber() <= second.getLineNumber() ? first : second,
-                        LinkedHashMap::new))
+        return classes.bytecode().creationsIn(dependent)
+                .filter(creation -> serviceLike.isEffectful(creation.target())
+                        && !Hierarchy.isSelfOrNested(dependent, creation.target()))
+                .collect(Collectors.toMap(creation -> creation.target().getName(), creation -> creation,
+                        (first, second) -> first.line() <= second.line() ? first : second, LinkedHashMap::new))
                 .values().stream()
-                .map(call -> {
-                    String target = ProjectClasses.nameOf(call.getTargetOwner());
-                    return classes.violation(RULE, dependent, call.getLineNumber(),
+                .map(creation -> {
+                    String target = ProjectClasses.nameOf(creation.target());
+                    return classes.violation(RULE, dependent, creation.line(),
                             ProjectClasses.nameOf(dependent) + " creates service-like " + target + " with new",
                             "take " + target + " as a constructor parameter, and create it only in wiring code");
                 });
@@ -71,12 +67,6 @@ public final class InjectServicesCheck {
                                     + target + "." + call.getName() + "()",
                             "take " + target + " as a constructor parameter instead");
                 });
-    }
-
-    /** {@code super(...)}: a constructor calling its direct superclass's constructor, which creates nothing. */
-    private static boolean isSuperConstructorCall(JavaClass dependent, JavaConstructorCall call) {
-        return call.getOrigin() instanceof JavaConstructor
-                && dependent.getRawSuperclass().filter(superclass -> superclass.equals(call.getTargetOwner())).isPresent();
     }
 
     private static boolean isForeignService(

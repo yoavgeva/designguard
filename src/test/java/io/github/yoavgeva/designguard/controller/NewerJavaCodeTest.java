@@ -52,10 +52,38 @@ class NewerJavaCodeTest {
                         package shop.persistence;
 
                         public class Sizes {
-                            public double size(Object shape) {
+                            public String size(Object shape) {
                                 return switch (shape) {
-                                    case shop.web.Circle circle -> circle.radius();
-                                    case shop.web.Square(double side) -> side;
+                                    case shop.web.Circle circle -> "round";
+                                    case shop.web.Square(double side) -> "side " + side;
+                                    default -> "unknown";
+                                };
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.architecture().layered().layer("Web", "..web..").layer("Persistence", "..persistence..")
+                .evaluate()).extracting(Violation::line, Violation::message).containsExactly(
+                        tuple(5, "Sizes (layer Persistence) depends on Circle (layer Web), which Persistence may not use"),
+                        tuple(5, "Sizes (layer Persistence) depends on Square (layer Web), which Persistence may not use"));
+    }
+
+    @Test
+    @EnabledForJreRange(minVersion = 21)
+    void layersSeeEnumsASwitchMatchesByConstant() {
+        var guard = new CompiledProject(directory).release(21)
+                .add("Card", "package shop.web;\n\npublic sealed interface Card permits Suit, Joker {\n}\n")
+                .add("Suit", "package shop.web;\n\npublic enum Suit implements Card { CLUBS, HEARTS }\n")
+                .add("Joker", "package shop.web;\n\npublic record Joker() implements Card {\n}\n")
+                .add("Scores", """
+                        package shop.persistence;
+
+                        public class Scores {
+                            public int score(Object card) {
+                                return switch (card) {
+                                    case shop.web.Suit.CLUBS -> 1;
+                                    case shop.web.Joker joker -> 3;
                                     default -> 0;
                                 };
                             }
@@ -64,9 +92,74 @@ class NewerJavaCodeTest {
                 .guard(SHOP);
 
         assertThat(guard.architecture().layered().layer("Web", "..web..").layer("Persistence", "..persistence..")
-                .evaluate()).extracting(Violation::message).containsExactly(
-                        "Sizes (layer Persistence) depends on Circle (layer Web), which Persistence may not use",
-                        "Sizes (layer Persistence) depends on Square (layer Web), which Persistence may not use");
+                .evaluate()).extracting(Violation::line, Violation::message).containsExactly(
+                        tuple(5, "Scores (layer Persistence) depends on Joker (layer Web), which Persistence may not use"),
+                        tuple(5, "Scores (layer Persistence) depends on Suit (layer Web), which Persistence may not use"));
+    }
+
+    @Test
+    @EnabledForJreRange(minVersion = 21)
+    void publicTypesASwitchMatchesAreUsed() {
+        var guard = new CompiledProject(directory).release(21)
+                .add("Shape", "package shop.shapes;\n\npublic sealed interface Shape permits Circle, Square {\n}\n")
+                .add("Circle", "package shop.shapes;\n\npublic record Circle(double radius) implements Shape {\n}\n")
+                .add("Square", "package shop.shapes;\n\npublic record Square(double side) implements Shape {\n}\n")
+                .add("Shapes", """
+                        package shop.shapes;
+
+                        public final class Shapes {
+                            private Shapes() {
+                            }
+
+                            public static Shape unit() {
+                                return new Circle(1);
+                            }
+                        }
+                        """)
+                .add("Labels", """
+                        package shop.report;
+
+                        public class Labels {
+                            public String label(shop.shapes.Shape shape) {
+                                return switch (shape) {
+                                    case shop.shapes.Circle circle -> "circle";
+                                    case shop.shapes.Square square -> "square";
+                                };
+                            }
+
+                            public String unitLabel() {
+                                return label(shop.shapes.Shapes.unit());
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.api().minimalVisibility().evaluate()).isEmpty();
+        assertThat(guard.guardrails().noUnusedPublicCode().evaluate()).extracting(Violation::message)
+                .containsExactly("Labels is public, but nothing uses it");
+    }
+
+    @Test
+    @EnabledForJreRange(minVersion = 21)
+    void infrastructureExceptionsASwitchMatchesStayOutOfTheDomain() {
+        var guard = new CompiledProject(directory).release(21)
+                .add("Failures", """
+                        package shop.domain;
+
+                        public class Failures {
+                            public String kind(Exception failure) {
+                                return switch (failure) {
+                                    case java.sql.SQLException database -> "database";
+                                    default -> "other";
+                                };
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().infrastructureExceptionsStayOutOf("..domain..").evaluate())
+                .extracting(Violation::line, Violation::message)
+                .containsExactly(tuple(5, "Failures uses the infrastructure exception SQLException"));
     }
 
     @Test

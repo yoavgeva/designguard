@@ -33,12 +33,12 @@ public final class StableDependenciesCheck {
         ProjectClasses classes = code.projectClasses();
         Slices slices = Slices.belowEach(code.settings().packages());
         List<Crossing> crossings = classes.stream()
-                .flatMap(origin -> origin.getDirectDependenciesFromSelf().stream())
-                .filter(dependency -> classes.isProject(dependency.getTargetClass()))
-                .map(dependency -> new Crossing(dependency.getOriginClass(),
-                        slices.sliceOf(dependency.getOriginClass().getPackageName()),
-                        slices.sliceOf(dependency.getTargetClass().getPackageName()),
-                        dependency.getSourceCodeLocation().getLineNumber()))
+                .flatMap(classes.bytecode()::dependenciesFrom)
+                .filter(dependency -> classes.isProject(dependency.target()))
+                .map(dependency -> new Crossing(dependency.origin(),
+                        slices.sliceOf(dependency.origin().getPackageName()),
+                        slices.sliceOf(dependency.target().getPackageName()),
+                        dependency.line()))
                 .filter(crossing -> !crossing.from().isEmpty() && !crossing.to().isEmpty()
                         && !crossing.from().equals(crossing.to()))
                 .toList();
