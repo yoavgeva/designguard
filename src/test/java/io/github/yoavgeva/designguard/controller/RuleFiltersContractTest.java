@@ -75,6 +75,7 @@ class RuleFiltersContractTest {
                 rule("noCheckedExceptions", g -> g.api().noCheckedExceptions()),
                 rule("noEffectfulStaticMethods", g -> g.api().noEffectfulStaticMethods()),
                 rule("typedApis", g -> g.api().typedApis()),
+                rule("noStringlyTypedChoices", g -> g.api().noStringlyTypedChoices()),
                 rule("accessorsChangeNothing", g -> g.api().accessorsChangeNothing()),
                 rule("minimalVisibility", g -> g.api().minimalVisibility()),
                 rule("noStubs", g -> g.guardrails().noStubs()),

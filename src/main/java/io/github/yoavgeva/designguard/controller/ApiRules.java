@@ -9,6 +9,7 @@ import io.github.yoavgeva.designguard.service.FlagArgumentCheck;
 import io.github.yoavgeva.designguard.service.MinimalVisibilityCheck;
 import io.github.yoavgeva.designguard.service.NullMarkedCheck;
 import io.github.yoavgeva.designguard.service.OptionalUsageCheck;
+import io.github.yoavgeva.designguard.service.StringlyTypedChoicesCheck;
 import io.github.yoavgeva.designguard.service.UntypedApiCheck;
 
 /** Rules about the shape of methods and types other code calls: parameters, nullness, exceptions, visibility. */
@@ -90,6 +91,18 @@ public final class ApiRules {
      */
     public BasicRule accessorsChangeNothing() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new AccessorSideEffectsCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on choices between strings that should be an enum: a {@code switch} over three or more string literals,
+     * or an {@code if} chain comparing one value with three or more strings. Converters such as {@code parse} or
+     * {@code from} are exempt.
+     *
+     * @return the rule
+     */
+    public BasicRule noStringlyTypedChoices() {
+        return new BasicRule(code, ClassFilter.ALL,
+                (codeBase, filter) -> new StringlyTypedChoicesCheck().check(codeBase.sources(), filter));
     }
 
     /**

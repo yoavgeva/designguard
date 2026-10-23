@@ -130,6 +130,11 @@ class MemberIgnoringContractTest {
                                 + "        if (items == 0) {\n            return \"empty\";\n        }\n"
                                 + "        if (member) {\n            return \"member\";\n        }\n"
                                 + "        return items > 10 ? \"bulk\" : \"regular\";\n    }\n}\n"), List.of()),
+                member("noStringlyTypedChoices", g -> g.api().noStringlyTypedChoices(), List.of(
+                        PACKAGE + "public class Fees {\n    @Legacy\n    public int fee(String delivery) {\n"
+                                + "        return switch (delivery) {\n            case \"express\" -> 10;\n"
+                                + "            case \"pickup\" -> 0;\n            case \"standard\" -> 5;\n"
+                                + "            default -> -1;\n        };\n    }\n}\n"), List.of()),
                 member("noStubs", g -> g.guardrails().noStubs(), List.of(PACKAGE
                         + "public class Cart {\n    @Legacy\n    public int total() {\n        // TODO apply discounts\n"
                         + "        return 0;\n    }\n}\n"), List.of()),
