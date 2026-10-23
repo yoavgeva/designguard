@@ -87,7 +87,7 @@ public abstract sealed class DesignRule<T extends DesignRule<T>>
      * @throws IllegalArgumentException if the name isn't a plain file name
      */
     public FrozenRule frozen(String name) {
-        return new FrozenRule(this, codeBase.frozenViolations(name));
+        return new FrozenRule(this::evaluate, codeBase.frozenViolations(name));
     }
 
     abstract List<Violation> violations(CodeBase code, ClassFilter filter);

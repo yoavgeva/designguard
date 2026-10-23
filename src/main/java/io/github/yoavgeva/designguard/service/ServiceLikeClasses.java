@@ -72,7 +72,7 @@ final class ServiceLikeClasses {
     }
 
     static boolean canBeServiceLike(JavaClass javaClass) {
-        return !javaClass.isAnnotation() && !javaClass.isAssignableTo(Throwable.class);
+        return Effects.canHaveEffects(javaClass);
     }
 
     private Set<String> serviceLike(List<JavaClass> candidates) {

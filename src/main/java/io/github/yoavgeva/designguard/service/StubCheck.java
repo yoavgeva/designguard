@@ -10,7 +10,7 @@ public final class StubCheck {
     static final String RULE = "no-stubs";
 
     private static final List<SourceFinder> FINDERS =
-            List.of(new TodoComments(), new PlaceholderThrows(), new EmptyMethods());
+            List.of(new TodoComments(RULE), new PlaceholderThrows(RULE), new EmptyMethods(RULE));
 
     /**
      * Finds stubs in the sources the filter selects.

@@ -16,6 +16,17 @@ final class TodoComments implements SourceFinder {
     private static final Pattern TODO_OR_FIXME = Pattern.compile("^(TODO|FIXME)\\b");
     private static final int MAX_QUOTE = 80;
 
+    private final String rule;
+
+    /**
+     * Configures the finder.
+     *
+     * @param rule the rule id its violations carry
+     */
+    TodoComments(String rule) {
+        this.rule = rule;
+    }
+
     @Override
     public Stream<Violation> find(ParsedFile file, ClassFilter filter) {
         return file.unit().getAllComments().stream()
@@ -23,7 +34,7 @@ final class TodoComments implements SourceFinder {
                 .flatMap(comment -> violation(file, comment).stream());
     }
 
-    private static Optional<Violation> violation(ParsedFile file, Comment comment) {
+    private Optional<Violation> violation(ParsedFile file, Comment comment) {
         return lines(comment.getContent())
                 .filter(line -> TODO_OR_FIXME.matcher(line).find())
                 .findFirst()
@@ -31,7 +42,7 @@ final class TodoComments implements SourceFinder {
                     Matcher matcher = TODO_OR_FIXME.matcher(line);
                     String marker = matcher.find() ? matcher.group(1) : "TODO";
                     String quote = line.length() > MAX_QUOTE ? line.substring(0, MAX_QUOTE) + "..." : line;
-                    return Scopes.violation(StubCheck.RULE, file, comment, marker + " left in the code: " + quote,
+                    return Scopes.violation(rule, file, comment, marker + " left in the code: " + quote,
                             "finish the work now, or track it in an issue instead of a comment");
                 });
     }

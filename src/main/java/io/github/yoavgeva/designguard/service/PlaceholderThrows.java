@@ -16,12 +16,23 @@ final class PlaceholderThrows implements SourceFinder {
 
     private static final Pattern NOT_IMPLEMENTED = Pattern.compile("(?i)not (yet )?implemented|\\btodo\\b");
 
+    private final String rule;
+
+    /**
+     * Configures the finder.
+     *
+     * @param rule the rule id its violations carry
+     */
+    PlaceholderThrows(String rule) {
+        this.rule = rule;
+    }
+
     @Override
     public Stream<Violation> find(ParsedFile file, ClassFilter filter) {
         return file.unit().findAll(ThrowStmt.class).stream()
                 .filter(PlaceholderThrows::isPlaceholder)
                 .filter(stmt -> Scopes.selected(filter, file, stmt))
-                .map(stmt -> Scopes.violation(StubCheck.RULE, file, stmt,
+                .map(stmt -> Scopes.violation(rule, file, stmt,
                         ownerName(stmt) + " is a stub: it throws UnsupportedOperationException",
                         "implement it, or delete the method until it is needed"));
     }

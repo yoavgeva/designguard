@@ -209,6 +209,10 @@ final class LegacyShop {
                             }
                         }
                         """)
+                .add("Keeper", "package shop.legacy.zoo;\n\npublic class Keeper {\n    private Zoo zoo;\n\n"
+                        + "    public String zoo() {\n        return String.valueOf(zoo);\n    }\n}\n")
+                .add("Zoo", "package shop.legacy.zoo;\n\npublic class Zoo {\n    private Keeper keeper;\n\n"
+                        + "    public String keeper() {\n        return String.valueOf(keeper);\n    }\n}\n")
                 .add("Animal", "package shop.legacy.zoo;\n\npublic interface Animal {\n}\n")
                 .add("Cat", "package shop.legacy.zoo;\n\npublic record Cat() implements Animal {\n}\n")
                 .add("Dog", "package shop.legacy.zoo;\n\npublic record Dog() implements Animal {\n}\n")

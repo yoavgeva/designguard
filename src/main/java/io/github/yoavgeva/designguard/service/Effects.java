@@ -43,10 +43,15 @@ final class Effects {
         this.extraImpurePackages = extraImpurePackages.stream().map(PackageMatcher::of).toList();
     }
 
+    /** Whether the class can be effectful at all: annotations and exceptions never are, they only carry data. */
+    static boolean canHaveEffects(JavaClass javaClass) {
+        return !javaClass.isAnnotation() && !javaClass.isAssignableTo(Throwable.class);
+    }
+
     /** Whether using this type at all means touching the outside world, like {@code HttpClient} or {@code Random}. */
     boolean isImpureType(JavaClass type) {
         String packageName = type.getPackageName();
-        return ServiceLikeClasses.canBeServiceLike(type) && !IO_ON_VALUE_TYPES.containsKey(type.getName())
+        return canHaveEffects(type) && !IO_ON_VALUE_TYPES.containsKey(type.getName())
                 && (IMPURE_PACKAGES.contains(packageName)
                         || IMPURE_TYPES.contains(type.getName())
                         || extraImpurePackages.stream().anyMatch(matcher -> matcher.matches(packageName)));
@@ -109,7 +114,7 @@ final class Effects {
     boolean isImpure(CodeUnitAccessTarget target) {
         JavaClass owner = target.getOwner();
         String name = owner.getName();
-        if (!ServiceLikeClasses.canBeServiceLike(owner)) {
+        if (!canHaveEffects(owner)) {
             return false;
         }
         if (IO_ON_VALUE_TYPES.containsKey(name)) {
