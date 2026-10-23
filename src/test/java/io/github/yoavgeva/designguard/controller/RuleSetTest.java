@@ -3,6 +3,7 @@ package io.github.yoavgeva.designguard.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import io.github.yoavgeva.designguard.CompiledProject;
 import io.github.yoavgeva.designguard.model.Violation;
@@ -97,6 +98,15 @@ class RuleSetTest {
         assertThatThrownBy(() -> guard.recommended().check())
                 .isInstanceOf(AssertionError.class)
                 .hasMessageStartingWith(violations + " design violations:\n");
+    }
+
+    @Test
+    void violationsFoundEarlierAreCheckedTheSameWay() {
+        List<Violation> found = guard.recommended().evaluate();
+
+        assertThatThrownBy(() -> Checkable.check(found))
+                .isInstanceOf(AssertionError.class)
+                .hasMessage(catchThrowable(() -> guard.recommended().check()).getMessage());
     }
 
     @Test
