@@ -137,6 +137,32 @@ GUARD.recommended().warningOn("no-suppressions", "tests-have-no-logic").check();
 - A frozen warning rule logs its new violations instead of failing.
 - `Checkable` is what rules, rule sets and frozen rules have in common: `evaluate()` and `check()`.
 
+## Reports for tools
+
+`SarifReport` and `JsonReport` render violations for machines. SARIF 2.1.0 is what GitHub code scanning shows as
+annotations on pull requests; the JSON lists each violation's rule, severity, file, line, message, fix and identity.
+To write a report and fail with one run of the rules, check what `evaluate()` found:
+
+```java
+@Test
+void recommended() throws IOException {
+    List<Violation> found = GUARD.recommended().evaluate();
+    Files.createDirectories(Path.of("target"));
+    Files.writeString(Path.of("target/designguard.sarif"), new SarifReport().render(found));
+    Checkable.check(found);
+}
+```
+
+```yaml
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: target/designguard.sarif
+```
+
+Paths relative to the repository root stay relative, as code scanning expects. Each result's fingerprint is its file,
+rule and identity, so an alert keeps its history as the code around it moves.
+
 ## Java versions
 
 designguard runs on Java 17 and later, and checks code compiled for any Java version. It reads the version the
