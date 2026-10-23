@@ -1,0 +1,137 @@
+package io.github.yoavgeva.designguard.service;
+
+import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.expr.Expression;
+import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.nodeTypes.NodeWithSimpleName;
+import io.github.yoavgeva.designguard.model.ClassFilter;
+import io.github.yoavgeva.designguard.model.Violation;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Stream;
+
+/**
+ * Finds test code that gives different results on different runs or machines: it reads the system clock, uses
+ * unseeded randomness, reads environment variables or system properties, or sleeps. Seeded {@code new Random(42)},
+ * {@code Clock.fixed(...)} and {@code now(clock)} are fine. Test methods, helpers and field initializers are all
+ * checked; fixture code inside strings isn't code.
+ */
+public final class NondeterministicTestsCheck {
+
+    private static final String RULE = "tests-are-deterministic";
+    private static final Set<String> TIME_TYPES = Set.of("Instant", "LocalDate", "LocalDateTime", "LocalTime",
+            "ZonedDateTime", "OffsetDateTime", "OffsetTime", "Year", "YearMonth", "MonthDay");
+    private static final Set<String> TIME_UNITS = Set.of("NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS",
+            "MINUTES", "HOURS", "DAYS");
+    private static final String SYSTEM = "System";
+    private static final List<Call> CALLS = List.of(
+            new Call(TIME_TYPES, "now", Arguments.NONE, Kind.CLOCK),
+            new Call(Set.of(SYSTEM), "currentTimeMillis", Arguments.ANY, Kind.CLOCK),
+            new Call(Set.of(SYSTEM), "nanoTime", Arguments.ANY, Kind.CLOCK),
+            new Call(Set.of("Clock"), "systemUTC", Arguments.ANY, Kind.CLOCK),
+            new Call(Set.of("Clock"), "systemDefaultZone", Arguments.ANY, Kind.CLOCK),
+            new Call(Set.of("Calendar"), "getInstance", Arguments.ANY, Kind.CLOCK),
+            new Call(Set.of("Math"), "random", Arguments.ANY, Kind.RANDOMNESS),
+            new Call(Set.of("UUID"), "randomUUID", Arguments.ANY, Kind.RANDOMNESS),
+            new Call(Set.of("ThreadLocalRandom"), "current", Arguments.ANY, Kind.RANDOMNESS),
+            new Call(Set.of(SYSTEM), "getenv", Arguments.ANY, Kind.ENVIRONMENT),
+            new Call(Set.of(SYSTEM), "getProperty", Arguments.ANY, Kind.ENVIRONMENT),
+            new Call(Set.of("Thread"), "sleep", Arguments.ANY, Kind.SLEEP),
+            new Call(TIME_UNITS, "sleep", Arguments.ANY, Kind.SLEEP));
+    private static final List<Call> CREATIONS = List.of(
+            new Call(Set.of(), "Random", Arguments.NONE, Kind.RANDOMNESS),
+            new Call(Set.of(), "SecureRandom", Arguments.NONE, Kind.RANDOMNESS),
+            new Call(Set.of(), "Date", Arguments.NONE, Kind.CLOCK));
+
+    /**
+     * Finds violations in the test sources the filter selects.
+     *
+     * @param sources the parsed test sources
+     * @param filter  which classes to check
+     * @return violations ordered by file and line
+     */
+    public List<Violation> check(JavaSources sources, ClassFilter filter) {
+        return sources.files().stream()
+                .flatMap(file -> Stream.concat(
+                        file.unit().findAll(MethodCallExpr.class).stream().flatMap(call -> called(call).stream()),
+                        file.unit().findAll(ObjectCreationExpr.class).stream().flatMap(creation -> created(creation).stream()))
+                        .filter(found -> Scopes.selected(filter, file, found.node()))
+                        .map(found -> found.violation(file)))
+                .sorted(Scopes.BY_LOCATION)
+                .toList();
+    }
+
+    private static Optional<Found> called(MethodCallExpr call) {
+        String scope = call.getScope().flatMap(NondeterministicTestsCheck::lastName).orElse("");
+        return CALLS.stream()
+                .filter(known -> known.scopes().contains(scope) && known.name().equals(call.getNameAsString())
+                        && known.arguments().allows(call.getArguments().size()))
+                .findFirst()
+                .map(known -> new Found(call, call.getScope().map(Expression::toString).orElse("") + "."
+                        + call.getNameAsString() + "()", known.kind()));
+    }
+
+    private static Optional<Found> created(ObjectCreationExpr creation) {
+        String type = creation.getType().getNameAsString();
+        return CREATIONS.stream()
+                .filter(known -> known.name().equals(type) && known.arguments().allows(creation.getArguments().size()))
+                .findFirst()
+                .map(known -> new Found(creation, "new " + type + "()", known.kind()));
+    }
+
+    /** The last name in a scope such as {@code java.time.Instant} or {@code TimeUnit.SECONDS}. */
+    private static Optional<String> lastName(Expression scope) {
+        if (scope instanceof NodeWithSimpleName<?> named) {
+            return Optional.of(named.getNameAsString());
+        }
+        return Optional.empty();
+    }
+
+    /** What a nondeterministic call does, and how to make the test fixed. */
+    private enum Kind {
+        CLOCK("reads the system clock", "pass a fixed Clock, such as Clock.fixed(...), to the code under test"),
+        RANDOMNESS("uses unseeded randomness", "use fixed data, or a Random with a fixed seed"),
+        ENVIRONMENT("reads the environment", "pass the value in, so the test doesn't depend on the machine it runs on"),
+        SLEEP("sleeps", "wait for the condition instead, for example with Awaitility, or make time injectable");
+
+        private final String verb;
+        private final String fix;
+
+        Kind(String verb, String fix) {
+            this.verb = verb;
+            this.fix = fix;
+        }
+    }
+
+    /** Which argument counts make a known call nondeterministic: {@code new Random(42)} is seeded. */
+    private enum Arguments {
+        NONE, ANY;
+
+        boolean allows(int count) {
+            return this == ANY || count == 0;
+        }
+    }
+
+    /** A known nondeterministic call or creation: on any of these scopes, by name, with these arguments. */
+    private record Call(Set<String> scopes, String name, Arguments arguments, Kind kind) {
+
+        Call {
+            scopes = Set.copyOf(scopes);
+        }
+    }
+
+    /** A nondeterministic call found in a test file, described as written. */
+    private record Found(Node node, String described, Kind kind) {
+
+        Violation violation(ParsedFile file) {
+            String where = Scopes.enclosingCallable(node)
+                    .map(callable -> callable instanceof MethodDeclaration method && UnitTestMethods.isTest(method)
+                            ? "test " + Scopes.describe(callable) : Scopes.describe(callable))
+                    .orElseGet(() -> Scopes.enclosingType(node).map(type -> type.getNameAsString()).orElse("a test"));
+            return Scopes.violation(RULE, file, node, where + " " + kind.verb + " through " + described, kind.fix);
+        }
+    }
+}

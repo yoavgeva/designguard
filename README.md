@@ -167,6 +167,7 @@ implementation. Everything else is a **value**.
 | `tests()` | `testsAssertMeaningfully()` | tests asserting nothing, on constants, or a value against itself |
 | | `noDisabledTests()` (`.allowingWithReason()`) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` |
 | | `testsHaveNoLogic()` | `if` or `switch` in test methods, or loops around assertions |
+| | `testsAreDeterministic()` | tests reading the system clock or the environment, using unseeded randomness, or sleeping |
 | | `testsCheckResults()` | `verify(mock).query()` on methods that return a value, instead of stubbing them and asserting on the result |
 | | `testsUseTheirSubject()` | `OrderServiceTest` never using `OrderService`, or only mocking it |
 | | `testsDontMockValues()` | mocks of records, enums, other values, and interfaces whose implementations are all values |

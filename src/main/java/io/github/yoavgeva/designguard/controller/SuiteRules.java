@@ -5,6 +5,7 @@ import io.github.yoavgeva.designguard.service.BranchingTestsCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.MeaningfulTestsCheck;
 import io.github.yoavgeva.designguard.service.MockedValuesCheck;
+import io.github.yoavgeva.designguard.service.NondeterministicTestsCheck;
 import io.github.yoavgeva.designguard.service.QueryVerificationCheck;
 import io.github.yoavgeva.designguard.service.ServiceTestsCheck;
 import io.github.yoavgeva.designguard.service.SubjectUsageCheck;
@@ -88,5 +89,16 @@ public final class SuiteRules {
     public BasicRule testsHaveNoLogic() {
         return new BasicRule(code, ClassFilter.ALL,
                 (codeBase, filter) -> new BranchingTestsCheck().check(codeBase.testSources(), filter));
+    }
+
+    /**
+     * Fails on test code that gives different results on different runs or machines: it reads the system clock, uses
+     * unseeded randomness, reads environment variables or system properties, or sleeps.
+     *
+     * @return the rule
+     */
+    public BasicRule testsAreDeterministic() {
+        return new BasicRule(code, ClassFilter.ALL,
+                (codeBase, filter) -> new NondeterministicTestsCheck().check(codeBase.testSources(), filter));
     }
 }
