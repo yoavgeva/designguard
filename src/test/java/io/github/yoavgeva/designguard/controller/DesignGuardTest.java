@@ -1,6 +1,6 @@
 package io.github.yoavgeva.designguard.controller;
 
-import static io.github.yoavgeva.designguard.controller.DesignRule.annotatedWith;
+import static io.github.yoavgeva.designguard.model.AnnotationName.annotatedWith;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

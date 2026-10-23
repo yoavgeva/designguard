@@ -6,12 +6,15 @@ import io.github.yoavgeva.designguard.model.ProjectSettings;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * The code under check: compiled classes for dependency rules, sources for code-shape rules. Rules depend on this
  * abstraction, not on how the code is read.
  */
 public abstract sealed class CodeBase {
+
+    private static final Pattern FROZEN_RULE_NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*");
 
     /**
      * Describes the code to check, read from disk. Nothing is read until a rule needs it.
@@ -60,6 +63,21 @@ public abstract sealed class CodeBase {
                     + feature.release() + " or later. designguard reads the Java version from the class files;"
                     + " forJava(...) overrides it.");
         }
+    }
+
+    /**
+     * Where a frozen rule records the violations it accepts: {@code <name>.txt} in the frozen-violations directory.
+     *
+     * @param name the frozen rule's name, unique among the project's frozen rules, e.g. {@code layers}
+     * @return the store
+     * @throws IllegalArgumentException if the name isn't a plain file name
+     */
+    public final ViolationStore frozenViolations(String name) {
+        if (!FROZEN_RULE_NAME.matcher(name).matches()) {
+            throw new IllegalArgumentException("name a frozen rule with letters, digits, '.', '_' and '-', starting with"
+                    + " a letter or digit; was " + name);
+        }
+        return ViolationStore.inFile(settings().frozenViolations().resolve(name + ".txt"));
     }
 
     abstract ProjectSettings settings();

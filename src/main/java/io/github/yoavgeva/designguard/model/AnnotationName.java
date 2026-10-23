@@ -1,5 +1,6 @@
 package io.github.yoavgeva.designguard.model;
 
+import java.lang.annotation.Annotation;
 import java.util.Objects;
 
 /**
@@ -18,6 +19,16 @@ public record AnnotationName(String simpleName, String qualifiedName) {
     public AnnotationName {
         Objects.requireNonNull(simpleName, "simpleName");
         Objects.requireNonNull(qualifiedName, "qualifiedName");
+    }
+
+    /**
+     * Names an annotation, for a rule's {@code ignoring(...)}.
+     *
+     * @param annotation the annotation type
+     * @return its name, matched simply or qualified against the code
+     */
+    public static AnnotationName annotatedWith(Class<? extends Annotation> annotation) {
+        return new AnnotationName(annotation.getSimpleName(), annotation.getCanonicalName());
     }
 
     /**

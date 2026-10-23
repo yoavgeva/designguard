@@ -1,0 +1,53 @@
+package io.github.yoavgeva.designguard.controller;
+
+import io.github.yoavgeva.designguard.model.FreezeResult;
+import io.github.yoavgeva.designguard.model.Violation;
+import io.github.yoavgeva.designguard.service.ViolationStore;
+import io.github.yoavgeva.designguard.view.TextReport;
+import java.util.List;
+
+/**
+ * A rule adopted on code that already breaks it: the violations it had when frozen are recorded in a file, and only
+ * new ones fail. Fixed violations drop out of the file, so it only shrinks. Create one with
+ * {@link DesignRule#frozen(String)}.
+ */
+public final class FrozenRule {
+
+    private final DesignRule<?> rule;
+    private final ViolationStore store;
+
+    FrozenRule(DesignRule<?> rule, ViolationStore store) {
+        this.rule = rule;
+        this.store = store;
+    }
+
+    /**
+     * Runs the rule and updates the record: creates it on the first run, and drops fixed violations later.
+     *
+     * @return the violations that fail: on the first run every violation, as they were just recorded; later, those
+     *         the record doesn't list
+     */
+    public List<Violation> evaluate() {
+        return store.freeze(rule.evaluate()).failing();
+    }
+
+    /**
+     * Runs the rule, updates the record, and fails if any violation fails.
+     *
+     * @throws AssertionError on the first run if there are violations, so the new record gets committed; later, if a
+     *                        violation isn't recorded
+     */
+    public void check() {
+        FreezeResult result = store.freeze(rule.evaluate());
+        List<Violation> failing = result.failing();
+        if (failing.isEmpty()) {
+            return;
+        }
+        String violations = failing.size() == 1 ? " design violation" : " design violations";
+        String header = result.outcome() == FreezeResult.Outcome.RECORDED
+                ? "Recorded " + failing.size() + violations + " in " + result.record() + ". Commit the file: from now"
+                        + " on, only new violations fail.\n"
+                : failing.size() + " new" + violations + " (" + result.frozen() + " frozen in " + result.record() + "):\n";
+        throw new AssertionError(header + new TextReport().render(failing));
+    }
+}
