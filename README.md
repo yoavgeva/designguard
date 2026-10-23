@@ -122,6 +122,21 @@ void layers() {
   of overwriting it.
 - A rule set such as `recommended()` freezes all its rules in one file.
 
+## Warnings
+
+`asWarning()` makes a rule report without failing:
+
+```java
+GUARD.api().typedApis().asWarning().check();                          // logs, passes
+GUARD.recommended().warningOn("no-suppressions", "tests-have-no-logic").check(); // those two warn, the rest fail
+```
+
+- Warnings are logged at `WARNING` through `System.Logger`, the JDK's logging facade. They reach the project's
+  logging backend if one is bridged to it, and standard error if not.
+- `evaluate()` returns them with `Severity.WARNING`, and the report marks each line `warning`.
+- A frozen warning rule logs its new violations instead of failing.
+- `Checkable` is what rules, rule sets and frozen rules have in common: `evaluate()` and `check()`.
+
 ## Java versions
 
 designguard runs on Java 17 and later, and checks code compiled for any Java version. It reads the version the

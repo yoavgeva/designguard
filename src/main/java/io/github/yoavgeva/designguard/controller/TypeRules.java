@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.controller;
 
-import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.InheritancePolicy;
 import io.github.yoavgeva.designguard.model.JavaFeature;
 import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
@@ -32,7 +31,7 @@ public final class TypeRules {
      * @see TypeDispatchRule
      */
     public TypeDispatchRule typeDispatch(TypeDispatchPolicy policy) {
-        return new TypeDispatchRule(code, ClassFilter.ALL, policy);
+        return new TypeDispatchRule(code, RuleScope.DEFAULT, policy);
     }
 
     /**
@@ -42,7 +41,7 @@ public final class TypeRules {
      * @return the rule
      */
     public BasicRule recordsAreImmutable() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> new RecordImmutabilityCheck().check(codeBase.sources(), filter));
     }
 
@@ -53,7 +52,7 @@ public final class TypeRules {
      * @return the rule
      */
     public BasicRule dataClassesAreRecords() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> {
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> {
             codeBase.requires(JavaFeature.RECORDS, "dataClassesAreRecords()");
             return new DataClassCheck().check(codeBase.sources(), filter);
         });
@@ -66,7 +65,7 @@ public final class TypeRules {
      * @return the rule
      */
     public BasicRule valueTypesAreImmutable() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ValueImmutabilityCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new ValueImmutabilityCheck().check(codeBase, filter));
     }
 
     /**
@@ -76,7 +75,7 @@ public final class TypeRules {
      * @return the rule
      */
     public BasicRule servicesAreStateless() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new StatelessServicesCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new StatelessServicesCheck().check(codeBase, filter));
     }
 
     /**
@@ -88,7 +87,7 @@ public final class TypeRules {
      * @return the rule
      */
     public BasicRule typedIdentifiers(String... domainPackages) {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> new RawIdentifiersCheck(List.of(domainPackages)).check(codeBase.sources(), filter));
     }
 
@@ -99,7 +98,7 @@ public final class TypeRules {
      * @return the rule
      */
     public BasicRule interfacesAreFocused() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new FatInterfaceCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new FatInterfaceCheck().check(codeBase, filter));
     }
 
     /**
@@ -109,7 +108,7 @@ public final class TypeRules {
      * @return the rule
      */
     public BasicRule enumsOverConstants() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> new EnumLikeConstantsCheck().check(codeBase.sources(), filter));
     }
 
@@ -121,7 +120,7 @@ public final class TypeRules {
      * @return the rule
      */
     public BasicRule closedHierarchiesAreSealed() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> {
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> {
             codeBase.requires(JavaFeature.SEALED_TYPES, "closedHierarchiesAreSealed()");
             return new SealedHierarchyCheck().check(codeBase, filter);
         });
@@ -134,6 +133,6 @@ public final class TypeRules {
      * @return the rule
      */
     public InheritanceRule inheritance(InheritancePolicy policy) {
-        return new InheritanceRule(code, ClassFilter.ALL, policy, Integer.MAX_VALUE);
+        return new InheritanceRule(code, RuleScope.DEFAULT, policy, Integer.MAX_VALUE);
     }
 }

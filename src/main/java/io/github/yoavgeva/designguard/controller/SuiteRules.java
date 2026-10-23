@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.controller;
 
-import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.service.BranchingTestsCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.MeaningfulTestsCheck;
@@ -25,7 +24,7 @@ public final class SuiteRules {
      * @return the rule
      */
     public BasicRule testsAssertMeaningfully() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> new MeaningfulTestsCheck().check(codeBase.testSources(), filter));
     }
 
@@ -36,7 +35,7 @@ public final class SuiteRules {
      * @see NoDisabledTestsRule
      */
     public NoDisabledTestsRule noDisabledTests() {
-        return new NoDisabledTestsRule(code, ClassFilter.ALL, false);
+        return new NoDisabledTestsRule(code, RuleScope.DEFAULT, false);
     }
 
     /**
@@ -46,7 +45,7 @@ public final class SuiteRules {
      * @return the rule
      */
     public BasicRule testsCheckResults() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new QueryVerificationCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new QueryVerificationCheck().check(codeBase, filter));
     }
 
     /**
@@ -56,7 +55,7 @@ public final class SuiteRules {
      * @return the rule
      */
     public BasicRule testsUseTheirSubject() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new SubjectUsageCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new SubjectUsageCheck().check(codeBase, filter));
     }
 
     /**
@@ -66,7 +65,7 @@ public final class SuiteRules {
      * @return the rule
      */
     public BasicRule testsDontMockValues() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new MockedValuesCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new MockedValuesCheck().check(codeBase, filter));
     }
 
     /**
@@ -76,7 +75,7 @@ public final class SuiteRules {
      * @return the rule
      */
     public BasicRule testsHaveNoLogic() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> new BranchingTestsCheck().check(codeBase.testSources(), filter));
     }
 
@@ -87,7 +86,7 @@ public final class SuiteRules {
      * @return the rule
      */
     public BasicRule testsUseAFixedClock() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> NondeterministicTestsCheck.clock().check(codeBase.testSources(), filter));
     }
 
@@ -98,7 +97,7 @@ public final class SuiteRules {
      * @return the rule
      */
     public BasicRule testsUseSeededRandomness() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> NondeterministicTestsCheck.randomness().check(codeBase.testSources(), filter));
     }
 
@@ -108,7 +107,7 @@ public final class SuiteRules {
      * @return the rule
      */
     public BasicRule testsDontReadTheEnvironment() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> NondeterministicTestsCheck.environment().check(codeBase.testSources(), filter));
     }
 
@@ -118,7 +117,7 @@ public final class SuiteRules {
      * @return the rule
      */
     public BasicRule testsDontSleep() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> NondeterministicTestsCheck.sleep().check(codeBase.testSources(), filter));
     }
 }

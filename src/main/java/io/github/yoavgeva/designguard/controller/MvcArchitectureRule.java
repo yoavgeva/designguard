@@ -25,8 +25,8 @@ public final class MvcArchitectureRule extends DesignRule<MvcArchitectureRule> {
 
     private final Map<String, List<String>> packages;
 
-    MvcArchitectureRule(CodeBase code, ClassFilter filter, Map<String, List<String>> packages) {
-        super(code, filter);
+    MvcArchitectureRule(CodeBase code, RuleScope scope, Map<String, List<String>> packages) {
+        super(code, scope);
         this.packages = Map.copyOf(packages);
     }
 
@@ -86,8 +86,8 @@ public final class MvcArchitectureRule extends DesignRule<MvcArchitectureRule> {
     }
 
     @Override
-    MvcArchitectureRule withFilter(ClassFilter filter) {
-        return new MvcArchitectureRule(code(), filter, packages);
+    MvcArchitectureRule withScope(RuleScope scope) {
+        return new MvcArchitectureRule(code(), scope, packages);
     }
 
     private MvcArchitectureRule with(String layer, String... patterns) {
@@ -95,6 +95,6 @@ public final class MvcArchitectureRule extends DesignRule<MvcArchitectureRule> {
                         packages.entrySet().stream().filter(entry -> !entry.getKey().equals(layer)),
                         Stream.of(Map.entry(layer, List.of(patterns))))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-        return new MvcArchitectureRule(code(), filter(), changed);
+        return new MvcArchitectureRule(code(), scope(), changed);
     }
 }

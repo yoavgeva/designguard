@@ -4,7 +4,6 @@ import io.github.yoavgeva.designguard.model.AnnotationName;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import io.github.yoavgeva.designguard.service.CodeBase;
-import io.github.yoavgeva.designguard.view.TextReport;
 import java.util.List;
 import java.util.Objects;
 
@@ -13,17 +12,17 @@ import java.util.Objects;
  *
  * @param <T> the concrete rule type, so configuration methods keep returning it
  */
-public abstract sealed class DesignRule<T extends DesignRule<T>>
+public abstract sealed class DesignRule<T extends DesignRule<T>> implements Checkable
         permits BasicRule, FeatureSlicesRule, HexagonalArchitectureRule, InheritanceRule, InterfacePolicyRule,
         LayeredArchitectureRule, MvcArchitectureRule, NoDisabledTestsRule, NoSuppressionsRule, OnionArchitectureRule,
         TypeDispatchRule {
 
     private final CodeBase codeBase;
-    private final ClassFilter classFilter;
+    private final RuleScope ruleScope;
 
-    DesignRule(CodeBase code, ClassFilter filter) {
+    DesignRule(CodeBase code, RuleScope scope) {
         this.codeBase = Objects.requireNonNull(code, "code");
-        this.classFilter = Objects.requireNonNull(filter, "filter");
+        this.ruleScope = Objects.requireNonNull(scope, "scope");
     }
 
     /**
@@ -32,7 +31,7 @@ public abstract sealed class DesignRule<T extends DesignRule<T>>
      * @return a selector whose methods return the narrowed rule
      */
     public ClassSelector<T> that() {
-        return new ClassSelector<>(this::withFilter, classFilter);
+        return new ClassSelector<>(filter -> withScope(ruleScope.withFilter(filter)), ruleScope.filter());
     }
 
     /**
@@ -42,7 +41,7 @@ public abstract sealed class DesignRule<T extends DesignRule<T>>
      * @return the narrowed rule
      */
     public T excluding(String... patterns) {
-        return withFilter(classFilter.excluding(patterns));
+        return withScope(ruleScope.withFilter(ruleScope.filter().excluding(patterns)));
     }
 
     /**
@@ -52,28 +51,25 @@ public abstract sealed class DesignRule<T extends DesignRule<T>>
      * @return the narrowed rule
      */
     public T ignoring(AnnotationName annotation) {
-        return withFilter(classFilter.ignoring(annotation));
+        return withScope(ruleScope.withFilter(ruleScope.filter().ignoring(annotation)));
     }
 
     /**
-     * Runs the rule.
+     * Makes the rule warn instead of fail: its violations get {@link Violation.Severity#WARNING}, and
+     * {@link #check()} logs them at {@code WARNING} through {@link System.Logger} and passes. Configuring the rule
+     * further keeps it a warning.
      *
-     * @return every violation, ordered by file and line
+     * @return the rule, warning
      */
+    public T asWarning() {
+        return withScope(ruleScope.asWarning());
+    }
+
+    @Override
     public List<Violation> evaluate() {
-        return violations(codeBase, classFilter);
-    }
-
-    /**
-     * Runs the rule and fails if anything violates it.
-     *
-     * @throws AssertionError listing every violation, one actionable line each
-     */
-    public void check() {
-        List<Violation> violations = evaluate();
-        if (!violations.isEmpty()) {
-            throw new AssertionError(new TextReport().renderFailure(violations));
-        }
+        return violations(codeBase, ruleScope.filter()).stream()
+                .map(violation -> violation.withSeverity(ruleScope.severity()))
+                .toList();
     }
 
     /**
@@ -91,13 +87,13 @@ public abstract sealed class DesignRule<T extends DesignRule<T>>
 
     abstract List<Violation> violations(CodeBase code, ClassFilter filter);
 
-    abstract T withFilter(ClassFilter filter);
+    abstract T withScope(RuleScope scope);
 
     CodeBase code() {
         return codeBase;
     }
 
-    ClassFilter filter() {
-        return classFilter;
+    RuleScope scope() {
+        return ruleScope;
     }
 }

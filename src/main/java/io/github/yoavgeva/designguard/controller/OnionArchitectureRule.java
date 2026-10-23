@@ -26,8 +26,8 @@ public final class OnionArchitectureRule extends DesignRule<OnionArchitectureRul
     private final List<Layer> rings;
     private final List<Layer> adapters;
 
-    OnionArchitectureRule(CodeBase code, ClassFilter filter, List<Layer> rings, List<Layer> adapters) {
-        super(code, filter);
+    OnionArchitectureRule(CodeBase code, RuleScope scope, List<Layer> rings, List<Layer> adapters) {
+        super(code, scope);
         this.rings = List.copyOf(rings);
         this.adapters = List.copyOf(adapters);
     }
@@ -78,7 +78,7 @@ public final class OnionArchitectureRule extends DesignRule<OnionArchitectureRul
     public OnionArchitectureRule adapter(String name, String... patterns) {
         List<Layer> withAdapter = Stream.concat(adapters.stream(),
                 Stream.of(new Layer("Adapter " + name, List.of(patterns)))).toList();
-        return new OnionArchitectureRule(code(), filter(), rings, withAdapter);
+        return new OnionArchitectureRule(code(), scope(), rings, withAdapter);
     }
 
     @Override
@@ -95,13 +95,13 @@ public final class OnionArchitectureRule extends DesignRule<OnionArchitectureRul
     }
 
     @Override
-    OnionArchitectureRule withFilter(ClassFilter filter) {
-        return new OnionArchitectureRule(code(), filter, rings, adapters);
+    OnionArchitectureRule withScope(RuleScope scope) {
+        return new OnionArchitectureRule(code(), scope, rings, adapters);
     }
 
     private OnionArchitectureRule withRing(int index, String... patterns) {
         List<Layer> changed = new ArrayList<>(rings);
         changed.set(index, new Layer(rings.get(index).name(), List.of(patterns)));
-        return new OnionArchitectureRule(code(), filter(), changed, adapters);
+        return new OnionArchitectureRule(code(), scope(), changed, adapters);
     }
 }

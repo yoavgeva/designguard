@@ -31,6 +31,17 @@ public final class TextReport {
     }
 
     /**
+     * Renders what a rule that warns found: how many warnings there are, then one line each.
+     *
+     * @param warnings the warnings, in order; at least one
+     * @return the report, lines separated by {@code \n}
+     */
+    public String renderWarnings(List<Violation> warnings) {
+        String header = warnings.size() == 1 ? "1 design warning:\n" : warnings.size() + " design warnings:\n";
+        return header + render(warnings);
+    }
+
+    /**
      * Renders what a frozen rule found: a header saying whether the violations were just recorded or are new, then
      * one line per failing violation.
      *

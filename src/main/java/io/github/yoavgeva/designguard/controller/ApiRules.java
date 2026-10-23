@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.controller;
 
-import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.service.AccessorSideEffectsCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.CheckedExceptionCheck;
@@ -28,7 +27,7 @@ public final class ApiRules {
      * @return the rule
      */
     public BasicRule noFlagArguments() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> new FlagArgumentCheck().check(codeBase.sources(), filter));
     }
 
@@ -38,7 +37,7 @@ public final class ApiRules {
      * @return the rule
      */
     public BasicRule packagesAreNullMarked() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> new NullMarkedCheck().check(codeBase.sources(), filter));
     }
 
@@ -49,7 +48,7 @@ public final class ApiRules {
      * @return the rule
      */
     public BasicRule optionalUsage() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new OptionalUsageCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new OptionalUsageCheck().check(codeBase, filter));
     }
 
     /**
@@ -59,7 +58,7 @@ public final class ApiRules {
      * @return the rule
      */
     public BasicRule noCheckedExceptions() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new CheckedExceptionCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new CheckedExceptionCheck().check(codeBase, filter));
     }
 
     /**
@@ -70,7 +69,7 @@ public final class ApiRules {
      * @return the rule
      */
     public BasicRule noEffectfulStaticMethods() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new EffectfulStaticsCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new EffectfulStaticsCheck().check(codeBase, filter));
     }
 
     /**
@@ -80,7 +79,7 @@ public final class ApiRules {
      * @return the rule
      */
     public BasicRule typedApis() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new UntypedApiCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new UntypedApiCheck().check(codeBase, filter));
     }
 
     /**
@@ -90,7 +89,7 @@ public final class ApiRules {
      * @return the rule
      */
     public BasicRule accessorsChangeNothing() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new AccessorSideEffectsCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new AccessorSideEffectsCheck().check(codeBase, filter));
     }
 
     /**
@@ -101,7 +100,7 @@ public final class ApiRules {
      * @return the rule
      */
     public BasicRule noStringlyTypedChoices() {
-        return new BasicRule(code, ClassFilter.ALL,
+        return new BasicRule(code, RuleScope.DEFAULT,
                 (codeBase, filter) -> new StringlyTypedChoicesCheck().check(codeBase.sources(), filter));
     }
 
@@ -111,6 +110,6 @@ public final class ApiRules {
      * @return the rule
      */
     public BasicRule minimalVisibility() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new MinimalVisibilityCheck().check(codeBase, filter));
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new MinimalVisibilityCheck().check(codeBase, filter));
     }
 }

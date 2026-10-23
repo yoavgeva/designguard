@@ -27,12 +27,12 @@ public final class TypeDispatchRule extends DesignRule<TypeDispatchRule> {
     private final TypeDispatchPolicy policy;
     private final int maxPlaces;
 
-    TypeDispatchRule(CodeBase code, ClassFilter filter, TypeDispatchPolicy policy) {
-        this(code, filter, policy, DEFAULT_MAX_PLACES_PER_TYPE);
+    TypeDispatchRule(CodeBase code, RuleScope scope, TypeDispatchPolicy policy) {
+        this(code, scope, policy, DEFAULT_MAX_PLACES_PER_TYPE);
     }
 
-    private TypeDispatchRule(CodeBase code, ClassFilter filter, TypeDispatchPolicy policy, int maxPlaces) {
-        super(code, filter);
+    private TypeDispatchRule(CodeBase code, RuleScope scope, TypeDispatchPolicy policy, int maxPlaces) {
+        super(code, scope);
         this.policy = policy;
         this.maxPlaces = maxPlaces;
     }
@@ -48,7 +48,7 @@ public final class TypeDispatchRule extends DesignRule<TypeDispatchRule> {
         if (max < 0) {
             throw new IllegalArgumentException("maxPlacesPerType must be >= 0, was " + max);
         }
-        return new TypeDispatchRule(code(), filter(), policy, max);
+        return new TypeDispatchRule(code(), scope(), policy, max);
     }
 
     @Override
@@ -60,7 +60,7 @@ public final class TypeDispatchRule extends DesignRule<TypeDispatchRule> {
     }
 
     @Override
-    TypeDispatchRule withFilter(ClassFilter filter) {
-        return new TypeDispatchRule(code(), filter, policy, maxPlaces);
+    TypeDispatchRule withScope(RuleScope scope) {
+        return new TypeDispatchRule(code(), scope, policy, maxPlaces);
     }
 }

@@ -16,8 +16,8 @@ public final class InheritanceRule extends DesignRule<InheritanceRule> {
     private final InheritancePolicy policy;
     private final int depthLimit;
 
-    InheritanceRule(CodeBase code, ClassFilter filter, InheritancePolicy policy, int depthLimit) {
-        super(code, filter);
+    InheritanceRule(CodeBase code, RuleScope scope, InheritancePolicy policy, int depthLimit) {
+        super(code, scope);
         this.policy = policy;
         this.depthLimit = depthLimit;
     }
@@ -33,7 +33,7 @@ public final class InheritanceRule extends DesignRule<InheritanceRule> {
         if (depth < 0) {
             throw new IllegalArgumentException("maxDepth must be >= 0, was " + depth);
         }
-        return new InheritanceRule(code(), filter(), policy, depth);
+        return new InheritanceRule(code(), scope(), policy, depth);
     }
 
     @Override
@@ -42,7 +42,7 @@ public final class InheritanceRule extends DesignRule<InheritanceRule> {
     }
 
     @Override
-    InheritanceRule withFilter(ClassFilter filter) {
-        return new InheritanceRule(code(), filter, policy, depthLimit);
+    InheritanceRule withScope(RuleScope scope) {
+        return new InheritanceRule(code(), scope, policy, depthLimit);
     }
 }

@@ -18,8 +18,8 @@ public final class NoSuppressionsRule extends DesignRule<NoSuppressionsRule> {
 
     private final Set<String> allowed;
 
-    NoSuppressionsRule(CodeBase code, ClassFilter filter, Set<String> allowed) {
-        super(code, filter);
+    NoSuppressionsRule(CodeBase code, RuleScope scope, Set<String> allowed) {
+        super(code, scope);
         this.allowed = Set.copyOf(allowed);
     }
 
@@ -30,7 +30,7 @@ public final class NoSuppressionsRule extends DesignRule<NoSuppressionsRule> {
      * @return the reconfigured rule
      */
     public NoSuppressionsRule allowing(String... names) {
-        return new NoSuppressionsRule(code(), filter(),
+        return new NoSuppressionsRule(code(), scope(),
                 Stream.concat(allowed.stream(), Stream.of(names)).collect(Collectors.toSet()));
     }
 
@@ -40,7 +40,7 @@ public final class NoSuppressionsRule extends DesignRule<NoSuppressionsRule> {
     }
 
     @Override
-    NoSuppressionsRule withFilter(ClassFilter filter) {
-        return new NoSuppressionsRule(code(), filter, allowed);
+    NoSuppressionsRule withScope(RuleScope scope) {
+        return new NoSuppressionsRule(code(), scope, allowed);
     }
 }
