@@ -86,6 +86,47 @@ class InjectServicesRuleTest {
     }
 
     @Test
+    void flagsServicesLookedUpInsteadOfInjected() {
+        var guard = new CompiledProject(directory).release(release)
+                .add("ApplicationContext", "package org.springframework.context;\n\npublic interface ApplicationContext {\n"
+                        + "    <T> T getBean(Class<T> type);\n}\n")
+                .add("Mailer", "package shop;\n\npublic interface Mailer {\n    void send(String to);\n}\n")
+                .add("Checkout", """
+                        package shop;
+
+                        public class Checkout {
+                            private final org.springframework.context.ApplicationContext context;
+
+                            public Checkout(org.springframework.context.ApplicationContext context) {
+                                this.context = context;
+                            }
+
+                            public void pay() {
+                                context.getBean(Mailer.class).send("ada@example.com");
+                                java.util.ServiceLoader.load(Mailer.class).findFirst().ifPresent(mailer -> mailer.send("x"));
+                            }
+                        }
+                        """)
+                .add("App", """
+                        package shop;
+
+                        public final class App {
+                            public static void main(String[] args) {
+                                java.util.ServiceLoader.load(Mailer.class).forEach(mailer -> mailer.send("started"));
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().injectServices().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(
+                        tuple(11, "Checkout looks up a service through ApplicationContext.getBean()"),
+                        tuple(12, "Checkout looks up a service through ServiceLoader.load()"));
+        assertThat(guard.dependencies().injectServices().evaluate().get(0).fix())
+                .isEqualTo("take the service as a constructor parameter instead of looking it up");
+    }
+
+    @Test
     void creatingPureObjectsAndCallingFactoriesIsFine() {
         var guard = new CompiledProject(directory).release(release)
                 .add("Sources", """
