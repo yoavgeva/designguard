@@ -33,6 +33,10 @@ final class LegacyShop {
                 .add("OrderPage", "package shop.legacy.web;\n\npublic class OrderPage {\n"
                         + "    public String render(shop.legacy.persistence.OrderEntity entity) {\n"
                         + "        return entity.toString();\n    }\n}\n")
+                .add("CheckoutPage", "package shop.legacy.web;\n\npublic class CheckoutPage {\n"
+                        + "    public String show(int items, boolean member) {\n        if (items == 0) {\n            return \"empty\";\n"
+                        + "        }\n        if (member) {\n            return \"member\";\n        }\n"
+                        + "        return items > 10 ? \"bulk\" : \"regular\";\n    }\n}\n")
                 .add("InvoiceController", "package shop.legacy.controller;\n\npublic class InvoiceController {\n}\n")
                 .add("Invoice", "package shop.legacy.model;\n\npublic class Invoice {\n"
                         + "    public String link(shop.legacy.controller.InvoiceController controller) {\n"

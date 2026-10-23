@@ -19,6 +19,7 @@ class ArchitectureRulesTest {
 
     private static final String SHOP = "shop";
     private static final String ORDER = "Order";
+    private static final String WEB = "..web..";
 
     @Parameter
     private int release;
@@ -31,7 +32,7 @@ class ArchitectureRulesTest {
         DesignGuard guard = layeredShop().guard(SHOP);
 
         assertThat(guard.architecture().layered()
-                .layer("Web", "..web..").layer("Service", "..service..").layer("Persistence", "..persistence..")
+                .layer("Web", WEB).layer("Service", "..service..").layer("Persistence", "..persistence..")
                 .evaluate()).singleElement().satisfies(violation -> {
                     assertThat(violation.rule()).isEqualTo("layered-architecture");
                     assertThat(violation.file()).endsWith("shop/persistence/OrderRepository.java");
@@ -47,7 +48,7 @@ class ArchitectureRulesTest {
         DesignGuard guard = layeredShop().guard(SHOP);
 
         assertThat(guard.architecture().layered().strict()
-                .layer("Web", "..web..").layer("Service", "..service..").layer("Persistence", "..persistence..")
+                .layer("Web", WEB).layer("Service", "..service..").layer("Persistence", "..persistence..")
                 .evaluate()).extracting(Violation::message).containsExactly(
                         "OrderRepository (layer Persistence) depends on OrderController (layer Web),"
                                 + " which Persistence may not use",
@@ -71,7 +72,7 @@ class ArchitectureRulesTest {
                         """)
                 .guard(SHOP);
 
-        assertThat(guard.architecture().layered().layer("Web", "..web..").layer("Persistence", "..persistence..")
+        assertThat(guard.architecture().layered().layer("Web", WEB).layer("Persistence", "..persistence..")
                 .evaluate()).extracting(Violation::line, Violation::message).containsExactly(tuple(0,
                         "OrderRepository (layer Persistence) depends on Limits (layer Web), which Persistence may not use"));
     }
@@ -100,6 +101,57 @@ class ArchitectureRulesTest {
                 "Invoice, Payment and Receipt depend on each other in a cycle");
         assertThat(guard.architecture().classesHaveNoCycles().evaluate().get(0).fix()).isEqualTo("break the cycle:"
                 + " move what they share into a class of its own, or let one side depend on an interface it owns");
+    }
+
+    @Test
+    void adaptersTranslateAndDelegateWithoutDeciding() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("OrderController", """
+                        package shop.web;
+
+                        public class OrderController {
+                            public String place(String type, int quantity) {
+                                if (quantity <= 0) {
+                                    return "invalid";
+                                }
+                                if (type.equals("express")) {
+                                    return "fast";
+                                } else if (type.equals("pickup")) {
+                                    return "store";
+                                }
+                                return "standard";
+                            }
+
+                            public String get(String id) {
+                                if (id.isBlank()) {
+                                    return "missing";
+                                }
+                                return id;
+                            }
+                        }
+                        """)
+                .add("Pricing", """
+                        package shop.domain;
+
+                        public class Pricing {
+                            public int fee(String type, int quantity) {
+                                if (quantity > 10) {
+                                    return 0;
+                                }
+                                if (type.equals("express")) {
+                                    return 10;
+                                }
+                                return type.equals("pickup") ? 0 : 5;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.architecture().adaptersStayThin(WEB).evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(tuple(4, "OrderController.place() makes 3 decisions; an adapter should only translate"
+                        + " and delegate"));
+        assertThat(guard.architecture().adaptersStayThin(WEB).evaluate().get(0).fix())
+                .isEqualTo("move the decisions into the application or domain layer, and call it from here");
     }
 
     @Test

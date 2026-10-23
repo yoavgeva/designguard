@@ -40,15 +40,8 @@ public final class FrozenRule {
      */
     public void check() {
         FreezeResult result = store.freeze(rule.get());
-        List<Violation> failing = result.failing();
-        if (failing.isEmpty()) {
-            return;
+        if (!result.failing().isEmpty()) {
+            throw new AssertionError(new TextReport().renderFrozen(result));
         }
-        String violations = failing.size() == 1 ? " design violation" : " design violations";
-        String header = result.outcome() == FreezeResult.Outcome.RECORDED
-                ? "Recorded " + failing.size() + violations + " in " + result.record() + ". Commit the file: from now"
-                        + " on, only new violations fail.\n"
-                : failing.size() + " new" + violations + " (" + result.frozen() + " frozen in " + result.record() + "):\n";
-        throw new AssertionError(header + new TextReport().render(failing));
     }
 }

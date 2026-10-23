@@ -1,5 +1,6 @@
 package io.github.yoavgeva.designguard.view;
 
+import io.github.yoavgeva.designguard.model.FreezeResult;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
 import java.util.Locale;
@@ -16,6 +17,23 @@ public final class TextReport {
      */
     public String render(List<Violation> violations) {
         return violations.stream().map(this::line).collect(Collectors.joining("\n"));
+    }
+
+    /**
+     * Renders what a frozen rule found: a header saying whether the violations were just recorded or are new, then
+     * one line per failing violation.
+     *
+     * @param result the frozen rule's result
+     * @return the report, lines separated by {@code \n}
+     */
+    public String renderFrozen(FreezeResult result) {
+        List<Violation> failing = result.failing();
+        String violations = failing.size() == 1 ? " design violation" : " design violations";
+        String header = result.outcome() == FreezeResult.Outcome.RECORDED
+                ? "Recorded " + failing.size() + violations + " in " + result.record() + ". Commit the file: from now"
+                        + " on, only new violations fail.\n"
+                : failing.size() + " new" + violations + " (" + result.frozen() + " frozen in " + result.record() + "):\n";
+        return header + render(failing);
     }
 
     /**

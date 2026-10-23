@@ -125,6 +125,11 @@ class MemberIgnoringContractTest {
                 member("accessorsChangeNothing", g -> g.api().accessorsChangeNothing(), List.of(PACKAGE
                         + "public class Counter {\n    private int count;\n\n    @Legacy\n    public int getNext() {\n"
                         + "        return count++;\n    }\n}\n"), List.of()),
+                member("adaptersStayThin", g -> g.architecture().adaptersStayThin("shop.."), List.of(
+                        PACKAGE + "public class CheckoutPage {\n    @Legacy\n    public String show(int items, boolean member) {\n"
+                                + "        if (items == 0) {\n            return \"empty\";\n        }\n"
+                                + "        if (member) {\n            return \"member\";\n        }\n"
+                                + "        return items > 10 ? \"bulk\" : \"regular\";\n    }\n}\n"), List.of()),
                 member("noStubs", g -> g.guardrails().noStubs(), List.of(PACKAGE
                         + "public class Cart {\n    @Legacy\n    public int total() {\n        // TODO apply discounts\n"
                         + "        return 0;\n    }\n}\n"), List.of()),
