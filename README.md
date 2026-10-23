@@ -119,7 +119,8 @@ Rules also see classes that ArchUnit doesn't import, which designguard reads fro
 ## Rules
 
 A class is **effectful** if its code touches the outside world: I/O, the clock, randomness, the environment, threads,
-or an impure package. That holds directly, through a field holding such a resource, or by calling project code that
+or an impure package. For threads and executors, starting, configuring or running work on one counts; holding one,
+or reading the current thread, doesn't. That holds directly, through a field holding such a resource, or by calling project code that
 is effectful. It is **service-like** if it is effectful, holds a service, or is an interface with a service-like
 implementation. Everything else is a **value**.
 

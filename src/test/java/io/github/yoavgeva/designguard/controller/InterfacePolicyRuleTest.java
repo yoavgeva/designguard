@@ -77,6 +77,18 @@ class InterfacePolicyRuleTest {
     }
 
     @Test
+    void portsPolicyLeavesClassesOutsideEverySliceAlone(@TempDir Path other) {
+        var root = new CompiledProject(other).release(release)
+                .add("StripeClient", "package shop.payments;\n\npublic class StripeClient {\n"
+                        + "    public String charge() {\n        return System.getenv(\"STRIPE_KEY\");\n    }\n}\n")
+                .add("Shop", "package shop;\n\npublic class Shop {\n    public String pay(shop.payments.StripeClient client) {\n"
+                        + "        return client.charge();\n    }\n}\n")
+                .guard("shop");
+
+        assertThat(root.dependencies().interfacePolicy(InterfacePolicy.PORTS).evaluate()).isEmpty();
+    }
+
+    @Test
     void slicedByUsesArchUnitCaptureGroups() {
         assertThat(guard.dependencies().interfacePolicy(InterfacePolicy.PORTS).slicedBy("(*)..").evaluate()).isEmpty();
     }

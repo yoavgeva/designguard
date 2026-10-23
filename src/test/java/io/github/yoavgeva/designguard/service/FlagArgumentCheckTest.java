@@ -96,6 +96,25 @@ class FlagArgumentCheckTest {
     }
 
     @Test
+    void allowsPreconditionsThatOnlyThrowOnTheirBoolean() {
+        assertThat(violations("""
+                package shop;
+
+                class Preconditions {
+                    static void checkArgument(boolean condition, String message) {
+                        if (!condition) {
+                            throw new IllegalArgumentException(message);
+                        }
+                    }
+
+                    static void checkState(boolean valid) {
+                        if (!valid) throw new IllegalStateException();
+                    }
+                }
+                """)).isEmpty();
+    }
+
+    @Test
     void allowsOverridesWhoseSignatureIsInherited() {
         assertThat(violations("""
                 package shop;

@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -47,14 +48,16 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * @param nullGuardedReads for each method and constructor that compares anything with {@code null}, as lazy
  *                         initialization does, by name and descriptor, the fields it reads
  * @param loops            the calls each method makes once per item: in a loop, or in a lambda it gives a stream
+ * @param writesOnThis     for each {@code get}, {@code is} or {@code has} method, the fields it writes on {@code this}
+ *                         or statically, not on other objects such as a copy it builds
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
         List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> nullGuardedReads,
-        Loops loops) {
+        Loops loops, Map<String, Set<String>> writesOnThis) {
 
     /** For a class without a class file to read. */
     static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of(),
-            new Loops(Map.of(), Map.of(), Map.of()));
+            new Loops(Map.of(), Map.of(), Map.of()), Map.of());
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
@@ -62,6 +65,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
     private static final String SWITCH_BOOTSTRAPS = "java/lang/runtime/SwitchBootstraps";
     private static final String CLASS_DESC = "java/lang/constant/ClassDesc";
     private static final String LAMBDA_METAFACTORY = "java/lang/invoke/LambdaMetafactory";
+    private static final Pattern ACCESSOR = Pattern.compile("(get|is|has)[A-Z].*");
     private static final int CONSTANT_CLASS = 7;
 
     ClassFileFacts {
@@ -70,6 +74,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         namedClasses = List.copyOf(namedClasses);
         directCalls = Map.copyOf(directCalls);
         nullGuardedReads = Map.copyOf(nullGuardedReads);
+        writesOnThis = Map.copyOf(writesOnThis);
     }
 
     /**
@@ -98,8 +103,10 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         int release = reader.readUnsignedShort(MAJOR_VERSION_OFFSET) - CLASS_FILE_VERSION_OFFSET;
         return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
                 byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::nullGuardedReads),
-                new Loops(byMethod(node, Loops::callsInLoops), byMethod(node, Loops::iteratedLambdas),
-                        byMethod(node, Loops::lambdaBodyCalls)));
+                new Loops(byMethod(node, method -> Loops.callsInLoops(node.name, method)),
+                        byMethod(node, method -> Loops.iteratedLambdas(node.name, method)),
+                        byMethod(node, method -> Loops.lambdaBodyCalls(node.name, method))),
+                byMethod(node, method -> writesOnThis(node.name, method)));
     }
 
     /** The facts of the methods that have any, by name and descriptor. */
@@ -133,6 +140,20 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             }
         }
         return Set.copyOf(calls);
+    }
+
+    /** The fields an accessor writes on {@code this} or statically; none for other methods. */
+    private static Set<String> writesOnThis(String owner, MethodNode method) {
+        if (!ACCESSOR.matcher(method.name).matches()) {
+            return Set.of();
+        }
+        Receivers receivers = Receivers.of(owner, method);
+        return StreamSupport.stream(method.instructions.spliterator(), false)
+                .filter(instruction -> instruction instanceof FieldInsnNode write && owner.equals(write.owner)
+                        && (write.getOpcode() == Opcodes.PUTFIELD || write.getOpcode() == Opcodes.PUTSTATIC)
+                        && receivers.writesThis(write))
+                .map(instruction -> ((FieldInsnNode) instruction).name)
+                .collect(Collectors.toSet());
     }
 
     /** The fields the method reads, if it compares anything with {@code null}; else none. */
@@ -233,6 +254,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         private static final Set<String> PER_ITEM_OWNERS = Set.of("java/util/stream/Stream", "java/util/stream/IntStream",
                 "java/util/stream/LongStream", "java/util/stream/DoubleStream", "java/lang/Iterable",
                 "java/util/Collection", "java/util/List", "java/util/Set", "java/util/Map", "java/util/Iterator");
+        private static final String LAMBDA_PREFIX = "lambda$";
         private static final Set<String> PER_ITEM_METHODS = Set.of("forEach", "forEachOrdered", "forEachRemaining", "map",
                 "mapToObj", "mapToInt", "mapToLong", "mapToDouble", "flatMap", "filter", "peek", "anyMatch", "allMatch",
                 "noneMatch", "takeWhile", "dropWhile", "removeIf", "replaceAll");
@@ -243,8 +265,8 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             lambdaBodies = Map.copyOf(lambdaBodies);
         }
 
-        /** The instance calls between a backward jump and its target. */
-        static Set<String> callsInLoops(MethodNode method) {
+        /** The calls on collaborators, fields of {@code this}, between a backward jump and its target. */
+        static Set<String> callsInLoops(String owner, MethodNode method) {
             List<AbstractInsnNode> instructions = instructionsOf(method);
             int[] lines = linesOf(instructions);
             List<int[]> loops = IntStream.range(0, instructions.size())
@@ -252,35 +274,54 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                             && method.instructions.indexOf(jump.label) < index)
                     .mapToObj(index -> new int[] {method.instructions.indexOf(((JumpInsnNode) instructions.get(index)).label), index})
                     .toList();
+            if (loops.isEmpty()) {
+                return Set.of();
+            }
+            Receivers receivers = Receivers.of(owner, method);
             return IntStream.range(0, instructions.size())
                     .filter(index -> isInstanceCall(instructions.get(index))
-                            && loops.stream().anyMatch(loop -> loop[0] <= index && index <= loop[1]))
+                            && loops.stream().anyMatch(loop -> loop[0] <= index && index <= loop[1])
+                            && receivers.callsFieldOfThis((MethodInsnNode) instructions.get(index)))
                     .mapToObj(index -> keyOf((MethodInsnNode) instructions.get(index), lines[index]))
                     .collect(Collectors.toSet());
         }
 
-        /** The lambdas and method references passed straight on to a per-item method such as {@code map}. */
-        static Set<String> iteratedLambdas(MethodNode method) {
+        /**
+         * The lambdas, and method references bound to a collaborator such as {@code repository::find}, passed straight
+         * on to a per-item method such as {@code map}.
+         */
+        static Set<String> iteratedLambdas(String owner, MethodNode method) {
             List<AbstractInsnNode> instructions = instructionsOf(method);
-            return IntStream.range(0, instructions.size())
+            List<InvokeDynamicInsnNode> lambdas = IntStream.range(0, instructions.size())
                     .filter(index -> instructions.get(index) instanceof InvokeDynamicInsnNode call
                             && LAMBDA_METAFACTORY.equals(call.bsm.getOwner()) && call.bsmArgs.length > 1
                             && call.bsmArgs[1] instanceof Handle && takesItems(instructions, index))
-                    .mapToObj(index -> (Handle) ((InvokeDynamicInsnNode) instructions.get(index)).bsmArgs[1])
+                    .mapToObj(index -> (InvokeDynamicInsnNode) instructions.get(index))
+                    .toList();
+            if (lambdas.isEmpty()) {
+                return Set.of();
+            }
+            Receivers receivers = Receivers.of(owner, method);
+            return lambdas.stream()
+                    .filter(lambda -> ((Handle) lambda.bsmArgs[1]).getName().startsWith(LAMBDA_PREFIX)
+                            || receivers.capturesFieldOfThis(lambda))
+                    .map(lambda -> (Handle) lambda.bsmArgs[1])
                     .map(handle -> Type.getObjectType(handle.getOwner()).getClassName() + "." + handle.getName()
                             + handle.getDesc())
                     .collect(Collectors.toSet());
         }
 
-        /** The instance calls of a lambda body; none for other methods. */
-        static Set<String> lambdaBodyCalls(MethodNode method) {
-            if (!method.name.startsWith("lambda$")) {
+        /** The calls on collaborators, fields of {@code this}, in a lambda body; none for other methods. */
+        static Set<String> lambdaBodyCalls(String owner, MethodNode method) {
+            if (!method.name.startsWith(LAMBDA_PREFIX)) {
                 return Set.of();
             }
             List<AbstractInsnNode> instructions = instructionsOf(method);
             int[] lines = linesOf(instructions);
+            Receivers receivers = Receivers.of(owner, method);
             return IntStream.range(0, instructions.size())
-                    .filter(index -> isInstanceCall(instructions.get(index)))
+                    .filter(index -> isInstanceCall(instructions.get(index))
+                            && receivers.callsFieldOfThis((MethodInsnNode) instructions.get(index)))
                     .mapToObj(index -> keyOf((MethodInsnNode) instructions.get(index), lines[index]))
                     .collect(Collectors.toSet());
         }

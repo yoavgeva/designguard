@@ -71,6 +71,11 @@
       <artifactId>asm-tree</artifactId>
       <version>${asm.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.ow2.asm</groupId>
+      <artifactId>asm-analysis</artifactId>
+      <version>${asm.version}</version>
+    </dependency>
     <!-- Reads and resolves source, for checks bytecode can't see (e.g. switches on types). -->
     <dependency>
       <groupId>com.github.javaparser</groupId>

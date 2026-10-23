@@ -17,6 +17,9 @@ import org.junit.jupiter.params.provider.MethodSource;
 @MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class TestSubjectRuleTest {
 
+    private static final String REPORT = "Report";
+    private static final String REPORT_TEST = "ReportTest";
+
     @Parameter
     private int release;
 
@@ -31,7 +34,7 @@ class TestSubjectRuleTest {
                 .add("Prices", "package shop;\n\npublic final class Prices {\n    private Prices() {\n    }\n\n"
                         + "    public static long total(long cents) {\n        return cents;\n    }\n}\n")
                 .add("Checkout", "package shop;\n\npublic class Checkout {\n    public void pay() {\n    }\n}\n")
-                .add("Report", "package shop;\n\npublic class Report {\n}\n")
+                .add(REPORT, "package shop;\n\npublic class Report {\n}\n")
                 .addTest("OrderServiceTest", """
                         package shop;
 
@@ -67,7 +70,7 @@ class TestSubjectRuleTest {
                             }
                         }
                         """)
-                .addTest("ReportTest", """
+                .addTest(REPORT_TEST, """
                         package shop;
 
                         class ReportTest {
@@ -122,14 +125,27 @@ class TestSubjectRuleTest {
     }
 
     @Test
+    void callsTheSymbolSolverFindsAmbiguousDontStopTheCheck() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add(REPORT, "package shop;\n\npublic class Report {\n}\n")
+                .addTest(REPORT_TEST, "package shop;\n\nclass ReportTest {\n    @org.junit.jupiter.api.Test\n"
+                        + "    void compares() {\n        org.junit.jupiter.api.Assertions.assertArrayEquals(null, null);\n"
+                        + "    }\n}\n")
+                .guard("shop");
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("ReportTest never uses Report, the class it's named after");
+    }
+
+    @Test
     void testsWithTheSameNameInDifferentPackagesAreEachChecked() {
         String test = "class ReportTest {\n    @org.junit.jupiter.api.Test\n    void adds() {\n"
                 + "        org.assertj.core.api.Assertions.assertThat(1 + 1).isEqualTo(2);\n    }\n}\n";
         DesignGuard guard = new CompiledProject(directory).release(release)
-                .add("Report", "package shop.sales;\n\npublic class Report {\n}\n")
-                .addTest("ReportTest", "package shop.sales;\n\n" + test)
-                .add("Report", "package shop.billing;\n\npublic class Report {\n}\n")
-                .addTest("ReportTest", "package shop.billing;\n\n" + test)
+                .add(REPORT, "package shop.sales;\n\npublic class Report {\n}\n")
+                .addTest(REPORT_TEST, "package shop.sales;\n\n" + test)
+                .add(REPORT, "package shop.billing;\n\npublic class Report {\n}\n")
+                .addTest(REPORT_TEST, "package shop.billing;\n\n" + test)
                 .guard("shop");
 
         assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::file)

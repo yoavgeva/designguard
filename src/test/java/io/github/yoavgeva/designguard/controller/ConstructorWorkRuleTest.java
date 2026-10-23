@@ -97,6 +97,30 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
+                .add("Regions", """
+                        package shop;
+
+                        public final class Regions {
+                            private final String region = System.getenv("REGION");
+                            private final int size;
+
+                            public Regions() {
+                                this(1);
+                            }
+
+                            public Regions(int size, String name) {
+                                this.size = size + name.length();
+                            }
+
+                            public Regions(int size) {
+                                this.size = size;
+                            }
+
+                            public String region() {
+                                return region + size;
+                            }
+                        }
+                        """)
                 .add("Config", """
                         package shop;
 
@@ -115,6 +139,7 @@ class ConstructorWorkRuleTest {
                         tuple(12, "Catalog does work in its constructor through Files.readAllLines()"),
                         tuple(4, "Config does work in its static initializer through System.getenv()"),
                         tuple(9, "PriceCache does work in its constructor through Storage.load()"),
+                        tuple(4, "Regions does work in its constructor through System.getenv()"),
                         tuple(5, "Reports does work in its constructor through Reports.refresh()"));
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate().get(0).fix()).isEqualTo(
                 "pass in what Files.readAllLines() produces, or call it from a method when it's needed");
@@ -138,6 +163,7 @@ class ConstructorWorkRuleTest {
                             private final Supplier<List<String>> reload;
                             private final List<String> audit = new java.util.ArrayList<>();
                             private final Runnable report = () -> System.out.println("orders");
+                            private final ClassLoader loader = Thread.currentThread().getContextClassLoader();
 
                             public Orders(Storage storage, Clock clock) {
                                 this.storage = Objects.requireNonNull(storage, "storage");
