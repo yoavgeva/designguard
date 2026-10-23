@@ -36,6 +36,7 @@ class DesignGuardSelfTest {
                 Arguments.of("no checked exceptions", GUARD.api().noCheckedExceptions()),
                 Arguments.of("packages are null-marked", GUARD.api().packagesAreNullMarked()),
                 Arguments.of("optional only as a return type", GUARD.api().optionalUsage()),
+                Arguments.of("no effectful static methods", GUARD.api().noEffectfulStaticMethods()),
                 Arguments.of("no stubs", GUARD.guardrails().noStubs()),
                 Arguments.of("no suppressions", GUARD.guardrails().noSuppressions()),
                 Arguments.of("tests assert meaningfully", GUARD.guardrails().testsAssertMeaningfully()),
