@@ -3,7 +3,10 @@ package io.github.yoavgeva.designguard.service;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.objectweb.asm.ClassReader;
@@ -15,6 +18,7 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LineNumberNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 
@@ -25,18 +29,21 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * {@code case Suit.CLUBS} names {@code Suit} only inside a constant {@code EnumDesc}. Reading
  * {@code Limits.PAGE_SIZE} copies the constant's value into the code, and {@code Order.Status} names
  * {@code Order} only as the outer class, so the class file keeps {@code Limits} and {@code Order} only in its
- * constant pool. ArchUnit sees no dependency on any of them.
+ * constant pool. ArchUnit sees no dependency on any of them. ArchUnit also counts the calls in a lambda's body as
+ * calls of the method that creates the lambda; the class file keeps them apart.
  *
  * @param release      the Java version the class was compiled for, e.g. 17; 0 if unread
  * @param creations    each {@code new}, in code order
  * @param switchLabels each class a {@code switch} matches on, at the line of the {@code switch}, in code order
  * @param namedClasses each class the constant pool names, at line 0: the class file doesn't say where
+ * @param directCalls  for each method and constructor, by name and descriptor such as {@code <init>(I)V}, the
+ *                     {@link #callKey(String, String, int) calls} it makes itself, not those in its lambdas
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
-        List<Reference> namedClasses) {
+        List<Reference> namedClasses, Map<String, Set<String>> directCalls) {
 
     /** For a class without a class file to read. */
-    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of());
+    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of());
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
@@ -49,6 +56,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         creations = List.copyOf(creations);
         switchLabels = List.copyOf(switchLabels);
         namedClasses = List.copyOf(namedClasses);
+        directCalls = Map.copyOf(directCalls);
     }
 
     /**
@@ -64,6 +72,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         reader.accept(node, ClassReader.SKIP_FRAMES);
         List<Reference> creations = new ArrayList<>();
         List<Reference> switchLabels = new ArrayList<>();
+        List<Map.Entry<String, String>> directCalls = new ArrayList<>();
         for (MethodNode method : node.methods) {
             int line = 0;
             for (AbstractInsnNode instruction : method.instructions) {
@@ -72,10 +81,13 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                 }
                 creation(instruction, line).ifPresent(creations::add);
                 switchLabels(instruction, line).forEach(switchLabels::add);
+                directCall(method, instruction, line).ifPresent(directCalls::add);
             }
         }
         int release = reader.readUnsignedShort(MAJOR_VERSION_OFFSET) - CLASS_FILE_VERSION_OFFSET;
-        return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader));
+        return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
+                directCalls.stream().collect(Collectors.groupingBy(Map.Entry::getKey,
+                        Collectors.mapping(Map.Entry::getValue, Collectors.toSet()))));
     }
 
     /** The classes of the constant pool's class entries; a long or double takes two slots, the second one empty. */
@@ -86,6 +98,27 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                 .filter(offset -> offset > 0 && reader.readByte(offset - 1) == CONSTANT_CLASS)
                 .mapToObj(offset -> Type.getObjectType(reader.readUTF8(offset, buffer)));
         return referencesTo(named, 0).toList();
+    }
+
+    /** A call the method makes, keyed by the method's name and descriptor. */
+    private static Optional<Map.Entry<String, String>> directCall(MethodNode method, AbstractInsnNode instruction, int line) {
+        if (instruction instanceof MethodInsnNode call) {
+            return Optional.of(Map.entry(method.name + method.desc,
+                    callKey(Type.getObjectType(call.owner).getClassName(), call.name, line)));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Identifies a call within a method.
+     *
+     * @param owner the class named in the call, e.g. {@code java.nio.file.Files}
+     * @param name  the method's name, {@code <init>} for a constructor
+     * @param line  the source line
+     * @return the key, e.g. {@code java.nio.file.Files.readAllLines:12}
+     */
+    static String callKey(String owner, String name, int line) {
+        return owner + "." + name + ":" + line;
     }
 
     private static Optional<Reference> creation(AbstractInsnNode instruction, int line) {

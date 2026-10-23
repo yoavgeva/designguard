@@ -1,12 +1,15 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.Dependency;
+import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -67,6 +70,18 @@ final class Bytecode {
     Stream<ClassDependency> creationsIn(JavaClass origin) {
         return references(origin, factsOf(origin).creations())
                 .filter(creation -> classes.contain(creation.target().getName()));
+    }
+
+    /**
+     * The calls a method or constructor makes itself. ArchUnit also counts the calls in the body of a lambda it
+     * creates, which run only when the lambda does.
+     */
+    Stream<JavaCall<?>> callsMadeBy(JavaCodeUnit unit) {
+        Set<String> made = factsOf(unit.getOwner()).directCalls()
+                .getOrDefault(unit.getName() + unit.getDescriptor(), Set.of());
+        return unit.getCallsFromSelf().stream()
+                .filter(call -> made.contains(ClassFileFacts.callKey(
+                        call.getTargetOwner().getName(), call.getName(), call.getLineNumber())));
     }
 
     /** The oldest Java version the top-level classes were compiled for; empty if none was read. */
