@@ -82,6 +82,7 @@ class RuleFiltersContractTest {
                 rule("serviceLikeClassesHaveTests", g -> g.tests().serviceLikeClassesHaveTests()),
                 rule("noWidenedForTests", g -> g.guardrails().noWidenedForTests()),
                 rule("testsCheckResults", g -> g.tests().testsCheckResults()),
+                rule("testsHaveNoLogic", g -> g.tests().testsHaveNoLogic()),
                 rule("testsUseTheirSubject", g -> g.tests().testsUseTheirSubject()),
                 rule("testsDontMockValues", g -> g.tests().testsDontMockValues()),
                 rule("noUnusedPublicCode", g -> g.guardrails().noUnusedPublicCode()));

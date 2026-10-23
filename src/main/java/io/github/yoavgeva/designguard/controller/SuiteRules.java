@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.controller;
 
 import io.github.yoavgeva.designguard.model.ClassFilter;
+import io.github.yoavgeva.designguard.service.BranchingTestsCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.MeaningfulTestsCheck;
 import io.github.yoavgeva.designguard.service.MockedValuesCheck;
@@ -76,5 +77,16 @@ public final class SuiteRules {
      */
     public BasicRule testsDontMockValues() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new MockedValuesCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on tests with logic: an {@code if}, a {@code switch} or a loop in a test method. Split the cases into
+     * tests, or make them parameters of a {@code @ParameterizedTest}.
+     *
+     * @return the rule
+     */
+    public BasicRule testsHaveNoLogic() {
+        return new BasicRule(code, ClassFilter.ALL,
+                (codeBase, filter) -> new BranchingTestsCheck().check(codeBase.testSources(), filter));
     }
 }

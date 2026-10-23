@@ -257,6 +257,15 @@ final class LegacyShop {
                                 new Tally().add(1);
                             }
 
+                            @org.junit.jupiter.api.Test
+                            void addsTwice() {
+                                Tally tally = new Tally();
+                                for (int round = 0; round < 2; round++) {
+                                    tally.add(round);
+                                    org.assertj.core.api.Assertions.assertThat(tally.getNext()).isPositive();
+                                }
+                            }
+
                             @org.junit.jupiter.api.Disabled
                             @org.junit.jupiter.api.Test
                             void later() {

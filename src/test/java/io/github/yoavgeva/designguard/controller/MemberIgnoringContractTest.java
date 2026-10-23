@@ -135,6 +135,10 @@ class MemberIgnoringContractTest {
                 member("testsAssertMeaningfully", g -> g.tests().testsAssertMeaningfully(), List.of(), List.of(
                         "package shop;\n\nclass CartTest {\n    @Legacy\n    @org.junit.jupiter.api.Test\n"
                                 + "    void totals() {\n        new Object();\n    }\n}\n")),
+                member("testsHaveNoLogic", g -> g.tests().testsHaveNoLogic(), List.of(), List.of(
+                        PACKAGE + "class CartTest {\n    @Legacy\n    @org.junit.jupiter.api.Test\n    void totals() {\n"
+                                + "        if (Math.abs(-1) > 0) {\n            org.assertj.core.api.Assertions.assertThat(1).isOne();\n"
+                                + "        }\n    }\n}\n")),
                 member("noDisabledTests", g -> g.tests().noDisabledTests(), List.of(), List.of(
                         "package shop;\n\nclass CartTest {\n    @Legacy\n    @org.junit.jupiter.api.Disabled\n"
                                 + "    @org.junit.jupiter.api.Test\n    void totals() {\n"

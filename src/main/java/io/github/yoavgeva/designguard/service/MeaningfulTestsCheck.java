@@ -22,9 +22,6 @@ public final class MeaningfulTestsCheck {
     private static final String RULE = "meaningful-tests";
     private static final String NEVER_FAILS = ", which can never fail";
     private static final String ASSERT_RESULT = "assert on the result of the code under test";
-    private static final Set<String> ASSERTION_PREFIXES = Set.of("assert", "verify", "expect", "fail");
-    private static final Set<String> ASSERTION_NAMES = Set.of("then", "thenThrownBy", "thenCode", "andExpect",
-            "andExpectAll", "check", "checkAll", "until", "untilAsserted");
     private static final Set<String> EQUALITY_CHECKS = Set.of("isEqualTo", "isSameAs", "isEqualByComparingTo");
 
     /**
@@ -50,7 +47,7 @@ public final class MeaningfulTestsCheck {
         boolean expectsException = UnitTestMethods.annotation(test, "Test")
                 .flatMap(annotation -> AnnotationValues.attribute(annotation, "expected"))
                 .isPresent();
-        if (calls.stream().noneMatch(MeaningfulTestsCheck::isAssertion) && !expectsException) {
+        if (calls.stream().noneMatch(UnitTestMethods::isAssertion) && !expectsException) {
             return Stream.of(Scopes.violation(RULE, file, test.getName(), name + " asserts nothing", ASSERT_RESULT));
         }
         return calls.stream().flatMap(call -> weakAssertion(file, name, call).stream());
@@ -91,8 +88,4 @@ public final class MeaningfulTestsCheck {
         return !(first instanceof LiteralExpr) && first.toString().equals(second.toString());
     }
 
-    private static boolean isAssertion(MethodCallExpr call) {
-        String name = call.getNameAsString();
-        return ASSERTION_NAMES.contains(name) || ASSERTION_PREFIXES.stream().anyMatch(name::startsWith);
-    }
 }

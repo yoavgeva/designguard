@@ -166,6 +166,7 @@ implementation. Everything else is a **value**.
 | | `noUnusedPublicCode()` | public types and methods nothing uses (applications) |
 | `tests()` | `testsAssertMeaningfully()` | tests asserting nothing, on constants, or a value against itself |
 | | `noDisabledTests()` (`.allowingWithReason()`) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` |
+| | `testsHaveNoLogic()` | `if` or `switch` in test methods, or loops around assertions |
 | | `testsCheckResults()` | `verify(mock).query()` on methods that return a value, instead of stubbing them and asserting on the result |
 | | `testsUseTheirSubject()` | `OrderServiceTest` never using `OrderService`, or only mocking it |
 | | `testsDontMockValues()` | mocks of records, enums, other values, and interfaces whose implementations are all values |
