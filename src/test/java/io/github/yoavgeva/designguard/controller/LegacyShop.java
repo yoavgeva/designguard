@@ -250,6 +250,7 @@ final class LegacyShop {
                             @org.junit.jupiter.api.Test
                             void recounts() {
                                 org.assertj.core.api.Assertions.assertThat(new Tally().recount()).isZero();
+                                org.assertj.core.api.Assertions.assertThat(java.time.LocalDate.now()).isNotNull();
                             }
 
                             @org.junit.jupiter.api.Test
