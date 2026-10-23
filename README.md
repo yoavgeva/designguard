@@ -15,6 +15,34 @@ src/main/java/shop/Checkout.java:7: error [inject-services] Checkout creates ser
 
 ## Use it
 
+Start with the recommended rules. They need no configuration:
+
+```java
+class DesignTest {
+
+    private static final DesignGuard GUARD = new DesignGuard("com.shop");
+
+    @Test
+    void recommended() {
+        GUARD.recommended().check();
+    }
+}
+```
+
+They cover three kinds of problem:
+
+- AI shortcuts: stubs, suppressions, and code widened for tests.
+- Tests that can't fail or don't repeat: no assertions, mocked values, logic in tests, the system clock, unseeded
+  randomness, the environment, sleeping.
+- Design faults: class cycles, queries in loops, work in constructors, accessors that change state, flag arguments,
+  choices between strings, misused `Optional`, `int` constants for cases, mutable records, fat interfaces and raw
+  threads.
+
+`recommended().rules()` lists their ids, and `without("no-suppressions")` leaves one out. On existing code, adopt
+them with `GUARD.recommended().frozen("recommended").check()` (see below). A new designguard version may add rules.
+
+Architecture styles and opinionated rules are a choice, so pick them as tests of their own:
+
 ```java
 class DesignTest {
 
@@ -92,6 +120,7 @@ void layers() {
   delete the file and run the rule.
 - Give each frozen rule its own name: the name is the file's. A rule run against another rule's file fails instead
   of overwriting it.
+- A rule set such as `recommended()` freezes all its rules in one file.
 
 ## Java versions
 
