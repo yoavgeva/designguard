@@ -55,6 +55,24 @@ public final class DesignGuard {
     }
 
     /**
+     * The rules worth holding any project to, run as one: they need no configuration, and stay quiet on code that
+     * follows them. They cover AI shortcuts (stubs, suppressions, code opened up for tests),
+     * tests that can't fail or don't repeat, and design faults such as class cycles, queries in loops, work in
+     * constructors and flag arguments. Adopt them on existing code with {@link RuleSet#frozen(String)}:
+     *
+     * <pre>{@code
+     * GUARD.recommended().frozen("recommended").check();
+     * }</pre>
+     *
+     * <p>{@link RuleSet#rules()} lists them; a new designguard version may add rules.
+     *
+     * @return the recommended rules
+     */
+    public RuleSet recommended() {
+        return RecommendedRules.of(code);
+    }
+
+    /**
      * Architecture presets: layered, MVC, hexagonal, onion, package by feature.
      *
      * @return the architecture rules

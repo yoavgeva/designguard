@@ -72,8 +72,7 @@ public abstract sealed class DesignRule<T extends DesignRule<T>>
     public void check() {
         List<Violation> violations = evaluate();
         if (!violations.isEmpty()) {
-            String header = violations.size() == 1 ? "1 design violation:\n" : violations.size() + " design violations:\n";
-            throw new AssertionError(header + new TextReport().render(violations));
+            throw new AssertionError(new TextReport().renderFailure(violations));
         }
     }
 

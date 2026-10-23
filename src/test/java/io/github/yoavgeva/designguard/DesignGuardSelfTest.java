@@ -6,6 +6,7 @@ import io.github.yoavgeva.designguard.model.InheritancePolicy;
 import io.github.yoavgeva.designguard.model.InterfacePolicy;
 import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -67,5 +68,10 @@ class DesignGuardSelfTest {
     @MethodSource("rules")
     void holds(String name, DesignRule<?> rule) {
         rule.check();
+    }
+
+    @Test
+    void holdsTheRecommendedRules() {
+        GUARD.recommended().check();
     }
 }

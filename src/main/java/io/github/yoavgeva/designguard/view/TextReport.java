@@ -20,6 +20,17 @@ public final class TextReport {
     }
 
     /**
+     * Renders why a check failed: how many violations there are, then one line each.
+     *
+     * @param violations the violations, in order; at least one
+     * @return the report, lines separated by {@code \n}
+     */
+    public String renderFailure(List<Violation> violations) {
+        String header = violations.size() == 1 ? "1 design violation:\n" : violations.size() + " design violations:\n";
+        return header + render(violations);
+    }
+
+    /**
      * Renders what a frozen rule found: a header saying whether the violations were just recorded or are new, then
      * one line per failing violation.
      *
