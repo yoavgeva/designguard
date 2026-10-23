@@ -5,12 +5,9 @@ import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
 import com.tngtech.archunit.core.domain.PackageMatcher;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -55,9 +52,22 @@ final class Effects {
                         || extraImpurePackages.stream().anyMatch(matcher -> matcher.matches(packageName)));
     }
 
-    /** Names of the classes with at least one effectful method, constructor or lambda. */
-    Set<String> effectfulClasses(ProjectClasses classes, List<JavaClass> candidates) {
-        return effectful(classes, candidates, Effects::implementations);
+    /** Full names of the effectful methods, constructors and lambdas; a call may run any override of its target. */
+    Set<String> effectfulCodeUnits(ProjectClasses classes, List<JavaClass> candidates) {
+        return CallGraph.reaching(CallGraph.unitsOf(candidates),
+                unit -> CallGraph.projectCallees(classes, accesses(unit), CallGraph::implementations),
+                this::isDirectlyEffectful);
+    }
+
+    /**
+     * Full names of the methods and constructors that touch the outside world when they run, through the calls they
+     * make themselves. Calls in the lambdas they create, and methods they only reference, run later if at all.
+     */
+    Set<String> effectfulWhenRun(ProjectClasses classes, List<JavaClass> candidates) {
+        Bytecode bytecode = classes.bytecode();
+        return CallGraph.reaching(CallGraph.unitsOf(candidates),
+                unit -> CallGraph.projectCallees(classes, bytecode.callsMadeBy(unit), CallGraph::implementations),
+                unit -> bytecode.callsMadeBy(unit).anyMatch(call -> isImpure(call.getTarget())));
     }
 
     /**
@@ -65,46 +75,9 @@ final class Effects {
      * overrides. Effects of an implementation the class is given, behind an interface or abstract method, don't count.
      */
     Set<String> effectfulOnTheirOwn(ProjectClasses classes, List<JavaClass> candidates) {
-        return effectful(classes, candidates, target -> Stream.of(target.getFullName()));
-    }
-
-    private Set<String> effectful(ProjectClasses classes, List<JavaClass> candidates,
-            Function<CodeUnitAccessTarget, Stream<String>> dispatch) {
-        List<JavaCodeUnit> units = candidates.stream().flatMap(type -> type.getCodeUnits().stream()).toList();
-        Map<String, Set<String>> callees = units.stream().collect(Collectors.toMap(JavaCodeUnit::getFullName,
-                unit -> projectCallees(classes, unit, dispatch), (first, second) -> first));
-        Set<String> effectful = units.stream().filter(this::isDirectlyEffectful).map(JavaCodeUnit::getFullName)
-                .collect(Collectors.toCollection(HashSet::new));
-        boolean changed = true;
-        while (changed) {
-            List<String> reached = callees.entrySet().stream()
-                    .filter(entry -> !effectful.contains(entry.getKey())
-                            && entry.getValue().stream().anyMatch(effectful::contains))
-                    .map(Map.Entry::getKey)
-                    .toList();
-            changed = effectful.addAll(reached);
-        }
-        return units.stream().filter(unit -> effectful.contains(unit.getFullName()))
-                .map(unit -> unit.getOwner().getName()).collect(Collectors.toSet());
-    }
-
-    private static Set<String> projectCallees(ProjectClasses classes, JavaCodeUnit unit,
-            Function<CodeUnitAccessTarget, Stream<String>> dispatch) {
-        return accesses(unit)
-                .map(JavaCodeUnitAccess::getTarget)
-                .filter(target -> classes.isProject(target.getOwner()))
-                .flatMap(dispatch)
-                .collect(Collectors.toSet());
-    }
-
-    /** The target itself, plus every override in a project subclass: a call may dispatch to any of them. */
-    private static Stream<String> implementations(CodeUnitAccessTarget target) {
-        Stream<String> overrides = target.getOwner().getAllSubclasses().stream()
-                .flatMap(subclass -> subclass.getMethods().stream())
-                .filter(method -> method.getName().equals(target.getName())
-                        && method.getRawParameterTypes().equals(target.getRawParameterTypes()))
-                .map(JavaCodeUnit::getFullName);
-        return Stream.concat(Stream.of(target.getFullName()), overrides);
+        return CallGraph.ownersOf(candidates, CallGraph.reaching(CallGraph.unitsOf(candidates),
+                unit -> CallGraph.projectCallees(classes, accesses(unit), target -> Stream.of(target.getFullName())),
+                this::isDirectlyEffectful));
     }
 
     private boolean isDirectlyEffectful(JavaCodeUnit unit) {
@@ -120,7 +93,8 @@ final class Effects {
         return Stream.concat(unit.getCallsFromSelf().stream(), unit.getCodeUnitReferencesFromSelf().stream());
     }
 
-    private boolean isImpure(CodeUnitAccessTarget target) {
+    /** Whether calling the target uses an outside-world API: I/O, the clock, randomness, the environment, threads. */
+    boolean isImpure(CodeUnitAccessTarget target) {
         JavaClass owner = target.getOwner();
         String name = owner.getName();
         if (!ServiceLikeClasses.canBeServiceLike(owner)) {

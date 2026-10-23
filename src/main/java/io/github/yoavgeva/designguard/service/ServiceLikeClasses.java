@@ -1,5 +1,6 @@
 package io.github.yoavgeva.designguard.service;
 
+import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import java.util.HashSet;
@@ -18,13 +19,16 @@ final class ServiceLikeClasses {
 
     private final Effects effects;
     private final Set<String> effectfulNames;
+    private final Set<String> effectfulWhenRun;
     private final Set<String> effectfulOnTheirOwnNames;
     private final Set<String> serviceLikeNames;
 
     ServiceLikeClasses(ProjectClasses classes, List<String> extraImpurePackages) {
         this.effects = new Effects(extraImpurePackages);
         List<JavaClass> candidates = classes.stream().filter(ServiceLikeClasses::canBeServiceLike).toList();
-        this.effectfulNames = Set.copyOf(withAbstractions(candidates, effects.effectfulClasses(classes, candidates)));
+        this.effectfulNames = Set.copyOf(withAbstractions(candidates,
+                CallGraph.ownersOf(candidates, effects.effectfulCodeUnits(classes, candidates))));
+        this.effectfulWhenRun = effects.effectfulWhenRun(classes, candidates);
         this.effectfulOnTheirOwnNames = Set.copyOf(effects.effectfulOnTheirOwn(classes, candidates));
         this.serviceLikeNames = Set.copyOf(serviceLike(candidates));
     }
@@ -45,6 +49,14 @@ final class ServiceLikeClasses {
      */
     boolean isEffectfulOnItsOwn(JavaClass javaClass) {
         return effectfulOnTheirOwnNames.contains(javaClass.getName());
+    }
+
+    /**
+     * Whether making the call touches the outside world right away: it calls an outside-world API, or project code,
+     * any override of it included, whose own calls do. Lambdas the code creates don't count until they run.
+     */
+    boolean runsEffects(CodeUnitAccessTarget target) {
+        return effects.isImpure(target) || CallGraph.implementations(target).anyMatch(effectfulWhenRun::contains);
     }
 
     static boolean canBeServiceLike(JavaClass javaClass) {

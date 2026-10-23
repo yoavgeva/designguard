@@ -4,6 +4,7 @@ import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.InterfacePolicy;
 import io.github.yoavgeva.designguard.service.BoundaryCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
+import io.github.yoavgeva.designguard.service.ConstructorWorkCheck;
 import io.github.yoavgeva.designguard.service.FunctionalCoreChecks;
 import io.github.yoavgeva.designguard.service.InjectServicesCheck;
 import io.github.yoavgeva.designguard.service.InterfacePolicyCheck;
@@ -79,6 +80,16 @@ public final class DependencyRules {
     public BasicRule noRawThreads() {
         return new BasicRule(code, ClassFilter.ALL,
                 (codeBase, filter) -> FunctionalCoreChecks.rawThreads(codeBase.javaRelease()).check(codeBase, filter));
+    }
+
+    /**
+     * Fails when a constructor or static initializer outside wiring code does work: calls I/O, the clock, an injected
+     * collaborator or other effectful code, instead of only storing what it is given.
+     *
+     * @return the rule
+     */
+    public BasicRule constructorsDoNoWork() {
+        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ConstructorWorkCheck().check(codeBase, filter));
     }
 
     /**
