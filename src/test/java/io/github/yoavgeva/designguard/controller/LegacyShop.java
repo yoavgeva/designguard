@@ -277,6 +277,13 @@ final class LegacyShop {
                             }
 
                             @org.junit.jupiter.api.Test
+                            void waitsForTheTally() throws InterruptedException {
+                                Thread.sleep(10);
+                                int start = new java.util.Random().nextInt(5) + System.getenv().size();
+                                org.assertj.core.api.Assertions.assertThat(new Tally().recount() + start).isNotNegative();
+                            }
+
+                            @org.junit.jupiter.api.Test
                             void adds() {
                                 new Tally().add(1);
                             }

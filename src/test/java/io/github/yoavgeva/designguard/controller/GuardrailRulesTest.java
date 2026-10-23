@@ -37,7 +37,7 @@ class GuardrailRulesTest {
                 .addTest("StripeClientTest", "package shop;\n\nclass StripeClientTest {\n}\n")
                 .guard(SHOP);
 
-        assertThat(guard.tests().serviceLikeClassesHaveTests().evaluate()).singleElement().satisfies(violation -> {
+        assertThat(guard.guardrails().serviceLikeClassesHaveTests().evaluate()).singleElement().satisfies(violation -> {
             assertThat(violation.rule()).isEqualTo("services-have-tests");
             assertThat(violation.message())
                     .isEqualTo("OrderService is service-like, but has no test class (looked for OrderServiceTest)");

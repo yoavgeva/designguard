@@ -7,7 +7,6 @@ import io.github.yoavgeva.designguard.service.MeaningfulTestsCheck;
 import io.github.yoavgeva.designguard.service.MockedValuesCheck;
 import io.github.yoavgeva.designguard.service.NondeterministicTestsCheck;
 import io.github.yoavgeva.designguard.service.QueryVerificationCheck;
-import io.github.yoavgeva.designguard.service.ServiceTestsCheck;
 import io.github.yoavgeva.designguard.service.SubjectUsageCheck;
 
 /** Rules about the test suite: tests assert something, use real values and their subject, and take one path. */
@@ -38,16 +37,6 @@ public final class SuiteRules {
      */
     public NoDisabledTestsRule noDisabledTests() {
         return new NoDisabledTestsRule(code, ClassFilter.ALL, false);
-    }
-
-    /**
-     * Fails when a service-like class has no test class named {@code <Name>Test}, {@code <Name>Tests} or
-     * {@code <Name>IT} in the test sources.
-     *
-     * @return the rule
-     */
-    public BasicRule serviceLikeClassesHaveTests() {
-        return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ServiceTestsCheck().check(codeBase, filter));
     }
 
     /**
@@ -92,13 +81,44 @@ public final class SuiteRules {
     }
 
     /**
-     * Fails on test code that gives different results on different runs or machines: it reads the system clock, uses
-     * unseeded randomness, reads environment variables or system properties, or sleeps.
+     * Fails on test code that reads the system clock: {@code now()} without a {@code Clock},
+     * {@code System.currentTimeMillis()}, {@code nanoTime()}, {@code new Date()}, {@code Calendar.getInstance()}.
      *
      * @return the rule
      */
-    public BasicRule testsAreDeterministic() {
+    public BasicRule testsUseAFixedClock() {
         return new BasicRule(code, ClassFilter.ALL,
-                (codeBase, filter) -> new NondeterministicTestsCheck().check(codeBase.testSources(), filter));
+                (codeBase, filter) -> NondeterministicTestsCheck.clock().check(codeBase.testSources(), filter));
+    }
+
+    /**
+     * Fails on test code using unseeded randomness: {@code new Random()}, {@code Math.random()},
+     * {@code UUID.randomUUID()}, {@code ThreadLocalRandom.current()}.
+     *
+     * @return the rule
+     */
+    public BasicRule testsUseSeededRandomness() {
+        return new BasicRule(code, ClassFilter.ALL,
+                (codeBase, filter) -> NondeterministicTestsCheck.randomness().check(codeBase.testSources(), filter));
+    }
+
+    /**
+     * Fails on test code reading environment variables or system properties.
+     *
+     * @return the rule
+     */
+    public BasicRule testsDontReadTheEnvironment() {
+        return new BasicRule(code, ClassFilter.ALL,
+                (codeBase, filter) -> NondeterministicTestsCheck.environment().check(codeBase.testSources(), filter));
+    }
+
+    /**
+     * Fails on test code that sleeps: {@code Thread.sleep} or {@code TimeUnit.X.sleep}.
+     *
+     * @return the rule
+     */
+    public BasicRule testsDontSleep() {
+        return new BasicRule(code, ClassFilter.ALL,
+                (codeBase, filter) -> NondeterministicTestsCheck.sleep().check(codeBase.testSources(), filter));
     }
 }
