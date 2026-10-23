@@ -5,6 +5,7 @@ import io.github.yoavgeva.designguard.service.BoundaryCheck;
 import io.github.yoavgeva.designguard.service.ClassCycleCheck;
 import io.github.yoavgeva.designguard.service.CodeBase;
 import io.github.yoavgeva.designguard.service.FeatureSliceCheck;
+import io.github.yoavgeva.designguard.service.ThickAdapterCheck;
 import java.util.List;
 
 /**
@@ -74,6 +75,19 @@ public final class ArchitectureRules {
      */
     public BasicRule classesHaveNoCycles() {
         return new BasicRule(code, ClassFilter.ALL, (codeBase, filter) -> new ClassCycleCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on adapter methods that make more than two decisions ({@code if}s, ternaries, {@code switch} cases or
+     * loops): an adapter such as a web controller translates and delegates, and the decisions belong in the
+     * application or domain layer.
+     *
+     * @param adapterPackages ArchUnit package patterns of the adapters, e.g. {@code ..web..}
+     * @return the rule
+     */
+    public BasicRule adaptersStayThin(String... adapterPackages) {
+        return new BasicRule(code, ClassFilter.ALL,
+                (codeBase, filter) -> new ThickAdapterCheck(List.of(adapterPackages)).check(codeBase.sources(), filter));
     }
 
     /**

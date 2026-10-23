@@ -46,6 +46,7 @@ class RuleFiltersContractTest {
                 rule("onion", g -> g.architecture().onion()),
                 rule("featureSlices", g -> g.architecture().featureSlices()),
                 rule("classesHaveNoCycles", g -> g.architecture().classesHaveNoCycles()),
+                rule("adaptersStayThin", g -> g.architecture().adaptersStayThin(WEB)),
                 rule("frameworksStayOutOf", g -> g.architecture().frameworksStayOutOf(DOMAIN)),
                 rule("interfacePolicy", g -> g.dependencies().interfacePolicy(InterfacePolicy.SERVICES)),
                 rule("injectServices", g -> g.dependencies().injectServices()),

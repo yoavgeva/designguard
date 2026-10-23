@@ -130,6 +130,7 @@ implementation. Everything else is a **value**.
 | | `hexagonal().adapter(...)` | the domain using anything else; adapters using each other |
 | | `onion().adapter(...)` | rings depending outwards |
 | | `featureSlices()` | a feature using another's internals, or features in a cycle |
+| | `adaptersStayThin("..web..")` | adapter methods, such as controllers, making more than two decisions instead of delegating |
 | | `classesHaveNoCycles()` | classes that depend on each other, directly or around a loop |
 | | `frameworksStayOutOf("..domain..")` | Spring, Jakarta EE, Hibernate, Jackson, Guice, Micronaut, Quarkus... types or annotations in the domain |
 | | `infrastructureExceptionsStayOutOf("..domain..")` | `SQLException`, `IOException`, JPA or Spring data exceptions in the domain |
