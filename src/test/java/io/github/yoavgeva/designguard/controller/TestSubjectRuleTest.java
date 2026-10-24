@@ -389,6 +389,79 @@ class TestSubjectRuleTest {
     }
 
     @Test
+    void jaxRsResourcesAreUsedThroughRequestsAndTestsInheritTheirSuperclassesUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Path", "package jakarta.ws.rs;\n\n" + RUNTIME + "public @interface Path {\n    String value();\n}\n")
+                .add("FruitResource", "package shop;\n\n@jakarta.ws.rs.Path(\"/fruits\")\npublic class FruitResource {\n"
+                        + "    public String list() {\n        return \"fruits\";\n    }\n}\n")
+                .add("LegumeResource", "package shop;\n\n@jakarta.ws.rs.Path(\"/legumes\")\npublic class LegumeResource {\n"
+                        + "    public String list() {\n        return \"legumes\";\n    }\n}\n")
+                .addTest("FruitResourceTest", """
+                        package shop;
+
+                        import static io.restassured.RestAssured.given;
+
+                        @io.quarkus.test.junit.QuarkusTest
+                        class FruitResourceTest {
+                            @org.junit.jupiter.api.Test
+                            void lists() {
+                                given().when().get("/fruits").then().statusCode(200);
+                            }
+                        }
+                        """)
+                .addTest("FruitResourceIT", """
+                        package shop;
+
+                        @io.quarkus.test.junit.QuarkusIntegrationTest
+                        class FruitResourceIT extends FruitResourceTest {
+                        }
+                        """)
+                .add("ApplicationScoped", "package jakarta.enterprise.context;\n\n" + RUNTIME
+                        + "public @interface ApplicationScoped {\n}\n")
+                .add("FruitService", "package shop;\n\n@jakarta.enterprise.context.ApplicationScoped\npublic class FruitService {\n"
+                        + "    public String all() {\n        return \"fruits\";\n    }\n}\n")
+                .addTest("FruitServiceTest", """
+                        package shop;
+
+                        import static io.restassured.RestAssured.given;
+
+                        @io.quarkus.test.junit.QuarkusTest
+                        class FruitServiceTest {
+                            @org.junit.jupiter.api.Test
+                            void servesTheFruits() {
+                                given().when().get("/fruits").then().statusCode(200);
+                            }
+                        }
+                        """)
+                .addTest("BaseTest", """
+                        package shop;
+
+                        import static io.restassured.RestAssured.given;
+
+                        abstract class BaseTest {
+                            protected int status(String path) {
+                                return given().when().get(path).then().extract().statusCode();
+                            }
+                        }
+                        """)
+                .addTest("LegumeResourceTest", """
+                        package shop;
+
+                        @io.quarkus.test.junit.QuarkusTest
+                        class LegumeResourceTest extends BaseTest {
+                            @org.junit.jupiter.api.Test
+                            void counts() {
+                                org.assertj.core.api.Assertions.assertThat(java.util.List.of("pea")).hasSize(1);
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("LegumeResourceTest never uses LegumeResource, the class it's named after");
+    }
+
+    @Test
     void implementationsSpiesAndTheBootedApplicationAreUses() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("SpringBootApplication", "package org.springframework.boot.autoconfigure;\n\n"

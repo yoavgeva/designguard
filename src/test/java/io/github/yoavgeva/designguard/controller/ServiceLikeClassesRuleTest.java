@@ -327,6 +327,134 @@ class ServiceLikeClassesRuleTest {
     }
 
     @Test
+    void quarkusRepositoriesActiveRecordsAndRestClientsTouchTheOutsideWorld() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("PanacheRepositoryBase", """
+                        package io.quarkus.hibernate.orm.panache;
+
+                        public interface PanacheRepositoryBase<E, I> {
+                            default java.util.List<E> listAll() {
+                                throw new UnsupportedOperationException("enhanced at build time");
+                            }
+                        }
+                        """)
+                .add("PanacheRepository", "package io.quarkus.hibernate.orm.panache;\n\n"
+                        + "public interface PanacheRepository<E> extends PanacheRepositoryBase<E, Long> {\n}\n")
+                .add("PanacheEntityBase", """
+                        package io.quarkus.hibernate.orm.panache;
+
+                        public abstract class PanacheEntityBase {
+                            public static <T> java.util.List<T> listAll() {
+                                throw new UnsupportedOperationException("enhanced at build time");
+                            }
+
+                            public void persist() {
+                                throw new UnsupportedOperationException("enhanced at build time");
+                            }
+                        }
+                        """)
+                .add("RegisterRestClient", "package org.eclipse.microprofile.rest.client.inject;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface RegisterRestClient {\n}\n")
+                .add("Fruit", """
+                        package shop;
+
+                        public class Fruit extends io.quarkus.hibernate.orm.panache.PanacheEntityBase {
+                            public String name;
+
+                            public static java.util.List<Fruit> named(String name) {
+                                return Fruit.<Fruit>listAll().stream().filter(fruit -> fruit.name.equals(name)).toList();
+                            }
+
+                            public String label() {
+                                return name.toUpperCase(java.util.Locale.ROOT);
+                            }
+                        }
+                        """)
+                .add("FruitRepository", "package shop;\n\npublic class FruitRepository "
+                        + "implements io.quarkus.hibernate.orm.panache.PanacheRepository<Fruit> {\n}\n")
+                .add("ExtensionsService", "package shop;\n\n@org.eclipse.microprofile.rest.client.inject.RegisterRestClient\n"
+                        + "public interface ExtensionsService {\n    String byId(String id);\n}\n")
+                .add("FruitService", """
+                        package shop;
+
+                        public class FruitService {
+                            private final FruitRepository repository;
+                            private int calls;
+
+                            public FruitService(FruitRepository repository) {
+                                this.repository = repository;
+                            }
+
+                            public java.util.List<Fruit> all() {
+                                calls++;
+                                return repository.listAll();
+                            }
+                        }
+                        """)
+                .add("FruitCatalog", """
+                        package shop;
+
+                        public class FruitCatalog {
+                            private int calls;
+
+                            public java.util.List<Fruit> all() {
+                                calls++;
+                                return Fruit.listAll();
+                            }
+                        }
+                        """)
+                .add("FruitLabels", """
+                        package shop;
+
+                        public class FruitLabels {
+                            private int calls;
+
+                            public String label(Fruit fruit) {
+                                calls++;
+                                return fruit.label();
+                            }
+                        }
+                        """)
+                .add("Extensions", """
+                        package shop;
+
+                        public class Extensions {
+                            private final ExtensionsService client;
+                            private String last;
+
+                            public Extensions(ExtensionsService client) {
+                                this.client = client;
+                            }
+
+                            public String find(String id) {
+                                last = client.byId(id);
+                                return last;
+                            }
+                        }
+                        """)
+                .addTest("FruitServiceTest", """
+                        package shop;
+
+                        class FruitServiceTest {
+                            private final FruitRepository repository = org.mockito.Mockito.mock(FruitRepository.class);
+
+                            @org.junit.jupiter.api.Test
+                            void lists() {
+                                org.assertj.core.api.Assertions.assertThat(new FruitService(repository).all()).isEmpty();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
+                "Extensions is service-like, but its field 'last' isn't final",
+                "FruitCatalog is service-like, but its field 'calls' isn't final",
+                "FruitService is service-like, but its field 'calls' isn't final");
+        assertThat(guard.tests().testsDontMockValues().evaluate()).isEmpty();
+    }
+
+    @Test
     void aLibraryTypeTheProjectImplementsIsJudgedByThatCode() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("JdbcOperations", "package org.springframework.jdbc.core;\n\npublic interface JdbcOperations {\n"

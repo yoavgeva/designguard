@@ -20,7 +20,8 @@ import java.util.stream.Collectors;
  */
 final class ServiceLikeClasses {
 
-    private static final Set<String> PERSISTENT = Set.of("Entity", "Embeddable", "MappedSuperclass", "Document");
+    private static final Set<String> PERSISTENT = Set.of("Entity", "Embeddable", "MappedSuperclass", "Document",
+            "MongoEntity");
     private final Overrides overrides = new Overrides();
     private final Effects effects;
     private final EffectfulAbstractions abstractions;
@@ -91,9 +92,13 @@ final class ServiceLikeClasses {
         return JdkEffects.canHaveEffects(javaClass);
     }
 
-    /** Whether the class is persistent data: a JPA entity, embeddable or mapped superclass, or a document. */
+    /**
+     * Whether the class is persistent data: a JPA entity, embeddable or mapped superclass, a document, or an active
+     * record.
+     */
     static boolean isPersistent(JavaClass javaClass) {
-        return ProjectClasses.annotationNames(javaClass).stream().anyMatch(PERSISTENT::contains);
+        return ProjectClasses.annotationNames(javaClass).stream().anyMatch(PERSISTENT::contains)
+                || LibraryEffects.isActiveRecord(javaClass);
     }
 
     /**
@@ -111,7 +116,7 @@ final class ServiceLikeClasses {
                 this::holdsAResource));
         Set<String> inherited = namesAmong(services, effectfulOnTheirOwnNames.get());
         services.stream()
-                .filter(this::holdsAResource)
+                .filter(type -> holdsAResource(type) || effects.isImpureType(type))
                 .map(JavaClass::getName)
                 .forEach(name -> {
                     result.add(name);

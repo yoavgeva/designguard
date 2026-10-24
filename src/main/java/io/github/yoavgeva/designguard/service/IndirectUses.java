@@ -34,8 +34,13 @@ final class IndirectUses {
             "TestRestTemplate", "RestTestClient", "RestAssured", "RestAssuredMockMvc");
     private static final Set<String> INJECTIONS = Set.of("Autowired", "Inject", "Resource");
     private static final Set<String> COMPONENTS = Set.of("Component", "Service", "Repository", "Controller",
-            "RestController", "ControllerAdvice", "RestControllerAdvice", "Configuration");
-    private static final Set<String> BOOTED_TESTS = Set.of("SpringBootTest", "WebMvcTest", "WebFluxTest");
+            "RestController", "ControllerAdvice", "RestControllerAdvice", "Configuration", "ApplicationScoped",
+            "RequestScoped", "Singleton", "Dependent");
+    private static final Set<String> BOOTED_TESTS = Set.of("SpringBootTest", "WebMvcTest", "WebFluxTest", "QuarkusTest",
+            "QuarkusIntegrationTest", "MicronautTest");
+    /** JAX-RS resources and providers, such as exception mappers and filters, which serve requests. */
+    private static final List<String> JAX_RS = List.of("jakarta.ws.rs.Path", "javax.ws.rs.Path", "jakarta.ws.rs.ext.Provider",
+            "javax.ws.rs.ext.Provider");
 
     private final SourceTypes types;
     private final WiringCode wiring;
@@ -108,6 +113,7 @@ final class IndirectUses {
             return true;
         }
         boolean servesRequests = subjectAnnotations.stream().anyMatch(WEB_ENDPOINTS::contains)
+                || JAX_RS.stream().anyMatch(subject::isAnnotatedWith)
                 || WEB_COMPONENTS.stream().anyMatch(subject::isAssignableTo)
                 || boots && (subjectAnnotations.stream().anyMatch(COMPONENTS::contains) || isCreatedBy(subject, wiring::contains));
         return servesRequests && sendsRequests(file, test);

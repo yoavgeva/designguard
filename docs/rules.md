@@ -15,7 +15,7 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   JPA's `EntityManager`, Hibernate sessions, Spring's `JdbcTemplate`, `JdbcClient`, R2DBC `DatabaseClient`, Mongo,
   Redis, Elasticsearch and Cassandra templates and transaction templates, jOOQ's `DSLContext`, MyBatis `SqlSession`s
   and `@Mapper`s, `RestTemplate`, `RestClient`, `WebClient`, OkHttp, Apache HttpClient, OpenFeign `@FeignClient`s and
-  Spring HTTP interfaces, Kafka, AMQP and JMS templates and clients, and `MailSender`; creating one or its builder, as
+  Spring HTTP interfaces, MicroProfile `@RegisterRestClient`s, Kafka, AMQP and JMS templates and clients, reactive messaging `Emitter`s, `MailSender` and Quarkus mailers, and from Quarkus: Panache repositories, including the ones a project class implements, the persistence methods an active-record entity inherits from `PanacheEntityBase`, such as `listAll()` and `persist()`, Vert.x SQL and web clients, and Redis data sources; a class that is such a client is service-like; creating one or its builder, as
   `new RestTemplate()` or `WebClient.builder()` do, isn't an effect, calling it is. Code is effectful directly,
   through a field holding such a resource, or by calling effectful project code; a call through an interface is
   effectful if any implementation is, except a call on a parameter, which runs whatever implementation the caller
@@ -41,7 +41,7 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   randomness: a class whose fields hold only data and whose code does no I/O, such as a request that stamps a UUID on
   what it builds or a stopwatch. It's no shared service, so its state, creating it and depending on it are fine, and
   the clock and randomness rules report the read; tests may still mock it, to control what it reads. Persistent
-  classes aren't either: JPA `@Entity`, `@Embeddable` and `@MappedSuperclass` classes and `@Document`s are data a
+  classes aren't either: JPA `@Entity`, `@Embeddable` and `@MappedSuperclass` classes, `@Document`s and `@MongoEntity`s, and Panache active-record entities are data a
   store loads and saves, so an entity that stamps its creation date with `LocalDate.now()`, and the entities holding
   it, aren't services; the clock read is reported where it happens. **Value**: any other class.
 - **Collaborator**: an instance of another project type that a class holds in a field, as injected services are.
@@ -1303,13 +1303,15 @@ the test imports statically, as `encode(text)` after `import static shop.Base64U
 type resolves to it, such as `Streams.failableStream(list)`, in the test or in a test-source helper class it uses.
 Expressions resolve against the production sources too, so a factory's result counts even when its classes aren't on
 the test's class path. A field the test's container injects (`@Autowired`, `@Inject`, `@Resource`) typed as an
-interface or superclass of the class uses it, and so does a test of a web controller, controller advice or filter
-that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate` or REST Assured. A test named after an
-interface or abstract class uses it through an implementation, a spy runs the real class, a project class the test
-uses that creates it, as a template dialect creates its processors, or registers it by its class, as a Jackson module
-registers a mixin with `setMixInAnnotation(Money.class, MoneyMixin.class)`, uses it too, a `@SpringBootTest` boots
-the `@SpringBootApplication` class, and requests a booted test sends reach any Spring bean: a component, or a class
-the wiring code creates in a `@Bean` method. Tests named after no project class are skipped.
+interface or superclass of the class uses it, and so does a test of a web controller, controller advice, filter or
+JAX-RS resource or provider that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate` or REST
+Assured. A test named after an interface or abstract class uses it through an implementation, a spy runs the real
+class, a project class the test uses that creates it, as a template dialect creates its processors, or registers it
+by its class, as a Jackson module registers a mixin with `setMixInAnnotation(Money.class, MoneyMixin.class)`, uses it
+too, a `@SpringBootTest` boots the `@SpringBootApplication` class, and requests a booted test (`@SpringBootTest`,
+`@QuarkusTest`, `@MicronautTest`) sends reach any bean: a Spring component or CDI-scoped class, or a class the wiring
+code creates in a `@Bean` method. A test extending a class that declares tests runs them, so it uses what they use,
+as `FruitResourceIT extends FruitResourceTest` does. Tests named after no project class are skipped.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.
 
