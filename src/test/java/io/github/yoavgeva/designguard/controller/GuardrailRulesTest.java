@@ -74,8 +74,25 @@ class GuardrailRulesTest {
                         }
                         """)
                 .add("Unused", "package shop;\n\npublic class Unused {\n    public int size() {\n        return 0;\n    }\n}\n")
+                .add("QueueMXBean", "package shop;\n\npublic interface QueueMXBean {\n    int pending();\n\n    void pause();\n}\n")
+                .add("Queue", """
+                        package shop;
+
+                        public final class Queue implements QueueMXBean {
+                            @Override
+                            public int pending() {
+                                return 0;
+                            }
+
+                            @Override
+                            public void pause() {
+                                // nothing to pause: the queue is drained on every call
+                            }
+                        }
+                        """)
                 .add("App", "package shop;\n\npublic final class App {\n"
-                        + "    public static void main(String[] args) {\n        new Orders().place();\n    }\n}\n")
+                        + "    public static void main(String[] args) {\n        new Orders().place();\n"
+                        + "        QueueMXBean queue = new Queue();\n        System.out.println(queue);\n    }\n}\n")
                 .guard(SHOP);
 
         assertThat(guard.guardrails().noUnusedPublicCode().evaluate()).extracting(Violation::message, Violation::fix)

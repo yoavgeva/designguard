@@ -59,6 +59,49 @@ class BranchingTestsRuleTest {
                                 assertThat(new Cart().total()).isEqualTo(expected(1));
                             }
 
+                            @org.junit.jupiter.api.Test
+                            void totalsWithAFakeSupplier() {
+                                java.util.function.IntSupplier fake = new java.util.function.IntSupplier() {
+                                    @Override
+                                    public int getAsInt() {
+                                        if (System.nanoTime() > 0) {
+                                            return 3;
+                                        }
+                                        return 0;
+                                    }
+                                };
+                                class Fixed implements java.util.function.IntSupplier {
+                                    @Override
+                                    public int getAsInt() {
+                                        for (int round = 0; round < 3; round++) {
+                                            assertThat(round).isNotNegative();
+                                        }
+                                        return 3;
+                                    }
+                                }
+                                assertThat(fake.getAsInt() + new Fixed().getAsInt()).isEqualTo(6);
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void totalsWithAFakeFunction() {
+                                java.util.function.IntUnaryOperator fake = count -> {
+                                    if (count > 2) {
+                                        return 3;
+                                    }
+                                    return 0;
+                                };
+                                assertThat(fake.applyAsInt(3)).isEqualTo(3);
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void totalsOnlyPositives() {
+                                java.util.List.of(1, -1).forEach(count -> {
+                                    if (count > 0) {
+                                        assertThat(count).isPositive();
+                                    }
+                                });
+                            }
+
                             private int expected(int carts) {
                                 int sum = 0;
                                 for (int cart = 0; cart < carts; cart++) {
@@ -73,7 +116,8 @@ class BranchingTestsRuleTest {
         assertThat(guard.tests().testsHaveNoLogic().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
                         tuple(9, "test CartTest.totals() has an if: a test should take one path"),
-                        tuple(16, "test CartTest.totalsEachTime() has a for loop: a test should take one path"));
+                        tuple(16, "test CartTest.totalsEachTime() has a for loop: a test should take one path"),
+                        tuple(78, "test CartTest.totalsOnlyPositives() has an if: a test should take one path"));
         assertThat(guard.tests().testsHaveNoLogic().evaluate().get(0).fix())
                 .isEqualTo("split it into one test per case, or make the cases parameters of a @ParameterizedTest");
     }

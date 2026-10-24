@@ -48,7 +48,7 @@ public final class ConstructorWorkCheck {
             ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass type, JavaCodeUnit unit) {
         return classes.bytecode().callsMadeBy(unit)
                 .filter(call -> !(ForbiddenCall.CONSTRUCTOR.equals(call.getName()) && classes.isProject(call.getTargetOwner())))
-                .filter(call -> serviceLike.runsEffects(call.getTarget()))
+                .filter(serviceLike::runsEffects)
                 .min(Comparator.<JavaCall<?>>comparingInt(JavaAccess::getLineNumber)
                         .thenComparing(call -> ForbiddenCall.describe(call.getTarget())))
                 .map(call -> {

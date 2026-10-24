@@ -24,7 +24,10 @@ public final class SuppressionCheck {
     private static final String FIX = "fix what the tool reports instead of silencing it";
     private static final String SILENCES = " silences a warning instead of fixing it";
     private static final String SPOTBUGS = "SuppressFBWarnings";
-    private static final Pattern MARKER = Pattern.compile("^\\s*(?:(NOPMD|NOSONAR)|(noinspection)|((?i)CHECKSTYLE[:.]OFF))\\b");
+    /** A marker starting the comment; Sonar's variants such as {@code NOSONARLINT} count as {@code NOSONAR}. */
+    private static final Pattern MARKER =
+            Pattern.compile("^\\s*(?:((?:NOPMD|NOSONAR)\\w*)|(noinspection)|((?i)CHECKSTYLE[:.]OFF))\\b");
+    private static final Pattern VARIANT = Pattern.compile("(NOPMD|NOSONAR)\\w+");
 
     private final Set<String> allowed;
 
@@ -88,7 +91,8 @@ public final class SuppressionCheck {
             return Optional.empty();
         }
         return Stream.of(matcher.group(1), matcher.group(2), matcher.group(3))
-                .filter(group -> group != null && !allowed.contains(group))
+                .filter(group -> group != null && !allowed.contains(group)
+                        && !allowed.contains(VARIANT.matcher(group).replaceFirst("$1")))
                 .findFirst();
     }
 }

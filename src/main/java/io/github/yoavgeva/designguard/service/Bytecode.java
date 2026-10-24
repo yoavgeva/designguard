@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -85,29 +86,19 @@ final class Bytecode {
                 .orElseGet(calls::stream);
     }
 
-    /**
-     * The fields an accessor writes on {@code this} or statically, and those it reads while comparing something with
-     * {@code null}, as lazy initialization does.
-     */
-    FieldChanges fieldChangesIn(JavaCodeUnit unit) {
-        ClassFileFacts unitFacts = factsOf(unit.getOwner());
-        String key = unit.getName() + unit.getDescriptor();
-        return new FieldChanges(unitFacts.writesOnThis().getOrDefault(key, Set.of()),
-                unitFacts.nullGuardedReads().getOrDefault(key, Set.of()));
+    /** Whether the call is of the kind, as {@code super.describe()} is a {@link CallKind#SUPER} call. */
+    boolean isCall(CallKind kind, JavaCodeUnitAccess<?> access) {
+        JavaCodeUnit origin = access.getOrigin();
+        return kind.calls.apply(factsOf(origin.getOwner())).getOrDefault(origin.getName() + origin.getDescriptor(), Set.of())
+                .contains(ClassFileFacts.callKey(access.getTargetOwner().getName(), access.getName(), access.getLineNumber()));
     }
 
     /**
-     * What an accessor does to fields.
-     *
-     * @param writtenOnThis the fields it writes on {@code this} or statically
-     * @param nullGuarded   the fields it reads while comparing something with {@code null}
+     * The fields an accessor changes on {@code this} or statically, itself or through methods of its class, lazy
+     * initialization aside: the first change of each field, by line.
      */
-    record FieldChanges(Set<String> writtenOnThis, Set<String> nullGuarded) {
-
-        FieldChanges {
-            writtenOnThis = Set.copyOf(writtenOnThis);
-            nullGuarded = Set.copyOf(nullGuarded);
-        }
+    List<AccessorChanges.FieldChange> changesMadeBy(JavaCodeUnit unit) {
+        return factsOf(unit.getOwner()).accessorChanges().getOrDefault(unit.getName() + unit.getDescriptor(), List.of());
     }
 
     /**
@@ -145,19 +136,34 @@ final class Bytecode {
                 .min();
     }
 
+    /** Dependencies on the referenced classes that were imported, project classes or those switches match on. */
     private Stream<ClassDependency> references(JavaClass origin, List<ClassFileFacts.Reference> references) {
-        return references.stream().flatMap(reference -> classNamed(reference.className()).stream()
-                .map(target -> new ClassDependency(origin, target, reference.line())));
-    }
-
-    private Optional<JavaClass> classNamed(String name) {
-        if (classes.contain(name)) {
-            return Optional.of(classes.get(name));
-        }
-        return matchedOutside.contain(name) ? Optional.of(matchedOutside.get(name)) : Optional.empty();
+        return references.stream().flatMap(reference -> Stream.of(classes, matchedOutside)
+                .filter(imported -> imported.contain(reference.className()))
+                .findFirst()
+                .map(imported -> new ClassDependency(origin, imported.get(reference.className()), reference.line()))
+                .stream());
     }
 
     private ClassFileFacts factsOf(JavaClass javaClass) {
         return facts.getOrDefault(javaClass.getName(), ClassFileFacts.UNREAD);
+    }
+
+    /** Kinds of call that ArchUnit doesn't tell apart and the class file does. */
+    enum CallKind {
+        /** {@code super.describe()} or a private method: it runs exactly the method it names, not an override. */
+        SUPER(ClassFileFacts::superCalls),
+        /** {@code Thread.currentThread().interrupt()}: it only restores the current thread's interrupt flag. */
+        RESTORED_INTERRUPT(ClassFileFacts::restoredInterrupts),
+        /** {@code System.out.println(...)} and other calls on a console stream: they use the console. */
+        CONSOLE(ClassFileFacts::consoleCalls),
+        /** {@code storage.load()} on a parameter: it runs the implementation the caller passed. */
+        ON_PARAMETER(ClassFileFacts::parameterCalls);
+
+        private final Function<ClassFileFacts, Map<String, Set<String>>> calls;
+
+        CallKind(Function<ClassFileFacts, Map<String, Set<String>>> calls) {
+            this.calls = calls;
+        }
     }
 }

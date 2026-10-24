@@ -17,6 +17,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 @MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class TestSubjectRuleTest {
 
+    private static final String SHOP = "shop";
     private static final String REPORT = "Report";
     private static final String REPORT_TEST = "ReportTest";
 
@@ -113,7 +114,7 @@ class TestSubjectRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsUseTheirSubject().evaluate())
                 .extracting(Violation::message, Violation::fix)
@@ -131,10 +132,68 @@ class TestSubjectRuleTest {
                 .addTest(REPORT_TEST, "package shop;\n\nclass ReportTest {\n    @org.junit.jupiter.api.Test\n"
                         + "    void compares() {\n        org.junit.jupiter.api.Assertions.assertArrayEquals(null, null);\n"
                         + "    }\n}\n")
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
                 .containsExactly("ReportTest never uses Report, the class it's named after");
+    }
+
+    @Test
+    void annotationsAndObjectsMadeByFactoriesAreUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Label", "package shop;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Label {\n    String value();\n}\n")
+                .add("Streams", """
+                        package shop;
+
+                        public final class Streams {
+                            private Streams() {
+                            }
+
+                            public static Pipe pipe(String text) {
+                                return new Pipe(text);
+                            }
+
+                            public static final class Pipe {
+                                private final String text;
+
+                                Pipe(String text) {
+                                    this.text = text;
+                                }
+
+                                public String text() {
+                                    return text;
+                                }
+                            }
+                        }
+                        """)
+                .addTest("LabelTest", """
+                        package shop;
+
+                        class LabelTest {
+                            @Label("name")
+                            private String named;
+
+                            @org.junit.jupiter.api.Test
+                            void reads() throws Exception {
+                                org.assertj.core.api.Assertions.assertThat(getClass().getDeclaredField("named")
+                                        .getAnnotations()).hasSize(1);
+                            }
+                        }
+                        """)
+                .addTest("PipeTest", """
+                        package shop;
+
+                        class PipeTest {
+                            @org.junit.jupiter.api.Test
+                            void pipes() {
+                                org.assertj.core.api.Assertions.assertThat(Streams.pipe("a").text()).isEqualTo("a");
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).isEmpty();
     }
 
     @Test
@@ -146,7 +205,7 @@ class TestSubjectRuleTest {
                 .addTest(REPORT_TEST, "package shop.sales;\n\n" + test)
                 .add(REPORT, "package shop.billing;\n\npublic class Report {\n}\n")
                 .addTest(REPORT_TEST, "package shop.billing;\n\n" + test)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::file)
                 .hasSize(2).anyMatch(file -> file.endsWith("shop/sales/ReportTest.java"))

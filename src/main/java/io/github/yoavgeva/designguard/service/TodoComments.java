@@ -10,10 +10,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-/** Finds comments with a line starting with a {@code TODO} or {@code FIXME} marker; mentions in prose don't count. */
+/**
+ * Finds comments with a line starting with a {@code TODO} or {@code FIXME} marker, after any Javadoc tag, HTML tag or
+ * commented-out slashes, as in {@code @deprecated TODO} or {@code <p>TODO}; mentions in prose don't count.
+ */
 final class TodoComments implements SourceFinder {
 
-    private static final Pattern TODO_OR_FIXME = Pattern.compile("^(TODO|FIXME)\\b");
+    private static final Pattern TODO_OR_FIXME = Pattern.compile("^(?:(?:@\\w+|<[^>]*>|/{2,})\\s*)*(TODO|FIXME)\\b");
     private static final int MAX_QUOTE = 80;
 
     private final String rule;

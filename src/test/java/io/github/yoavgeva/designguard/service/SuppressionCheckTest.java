@@ -39,6 +39,10 @@ class SuppressionCheckTest {
                     List raw() {
                         return items;
                     }
+
+                    boolean same(Object other) {
+                        return this == other; // NOSONARLINT identity on purpose
+                    }
                 }
                 """);
     }
@@ -52,7 +56,8 @@ class SuppressionCheckTest {
                 tuple(10, "NOPMD silences a warning instead of fixing it"),
                 tuple(11, "NOSONAR silences a warning instead of fixing it"),
                 tuple(14, "noinspection silences a warning instead of fixing it"),
-                tuple(15, "@SuppressWarnings(\"rawtypes\") silences a warning instead of fixing it"));
+                tuple(15, "@SuppressWarnings(\"rawtypes\") silences a warning instead of fixing it"),
+                tuple(21, "NOSONARLINT silences a warning instead of fixing it"));
     }
 
     @Test

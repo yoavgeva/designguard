@@ -44,7 +44,7 @@ public final class UntypedApiCheck {
                         && !wiring.contains(type))
                 .flatMap(type -> type.getMethods().stream()
                         .filter(method -> isPublicApi(type, method) && classes.selected(filter, method))
-                        .flatMap(method -> untyped(method).map(found -> classes.violation(RULE, type,
+                        .flatMap(method -> untyped(classes, method).map(found -> classes.violation(RULE, type,
                                 method.getSourceCodeLocation().getLineNumber(),
                                 ProjectClasses.nameOf(type) + "." + method.getName() + "() " + found,
                                 "define a record with named, typed fields and use it instead"))))
@@ -58,23 +58,24 @@ public final class UntypedApiCheck {
                 && !modifiers.contains(JavaModifier.BRIDGE) && !Hierarchy.isInherited(type, method);
     }
 
-    private static Stream<String> untyped(JavaMethod method) {
+    private static Stream<String> untyped(ProjectClasses classes, JavaMethod method) {
         Stream<String> taken = method.getParameterTypes().stream()
-                .filter(UntypedApiCheck::isUntyped)
+                .filter(type -> isUntyped(classes, type))
                 .map(type -> "takes an untyped " + describe(type));
         Stream<String> returned = Stream.of(method.getReturnType())
-                .filter(UntypedApiCheck::isUntyped)
+                .filter(type -> isUntyped(classes, type))
                 .map(type -> "returns an untyped " + describe(type));
         return Stream.concat(taken, returned);
     }
 
-    private static boolean isUntyped(JavaType type) {
+    /** Whether the type is {@code Object}, a map to objects, or a JSON tree of a library the project uses, not its own. */
+    private static boolean isUntyped(ProjectClasses classes, JavaType type) {
         if (type instanceof JavaParameterizedType parameterized) {
             List<JavaType> arguments = parameterized.getActualTypeArguments();
             return parameterized.toErasure().isAssignableTo(Map.class) && arguments.size() == MAP_TYPE_ARGUMENTS
                     && isObject(arguments.get(1));
         }
-        return isObject(type) || JSON_TREES.contains(type.getName());
+        return isObject(type) || JSON_TREES.contains(type.getName()) && !classes.isProject(type.toErasure());
     }
 
     /** Exactly {@code Object}, not a type variable that erases to it. */

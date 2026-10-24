@@ -13,14 +13,15 @@ import java.util.stream.Stream;
 /**
  * Finds public code nothing in the project uses: public top-level types nothing depends on, and public methods
  * nothing calls or references. Meant for applications. Skipped as likely entry points: wiring code, annotated types
- * and methods, inherited signatures, record accessors, enum helpers and bean accessors ({@code get}/{@code set}/
- * {@code is}).
+ * and methods, inherited signatures, record accessors, enum helpers, bean accessors ({@code get}/{@code set}/
+ * {@code is}) and the methods of JMX interfaces.
  */
 public final class UnusedPublicCodeCheck {
 
     private static final String RULE = "no-unused-public-code";
     private static final Pattern BEAN_ACCESSOR = Pattern.compile("^(get|set|is)[A-Z].*");
     private static final Set<String> ENUM_HELPERS = Set.of("values", "valueOf");
+    private static final Pattern MANAGEMENT_INTERFACE = Pattern.compile(".+M(X)?Bean");
 
     /**
      * Finds unused public code among the classes the filter selects.
@@ -49,6 +50,9 @@ public final class UnusedPublicCodeCheck {
     }
 
     private static Stream<Violation> unusedMethods(ProjectClasses classes, JavaClass type) {
+        if (isManagementInterface(type)) {
+            return Stream.empty();
+        }
         return type.getMethods().stream()
                 .filter(method -> isPublicApi(type, method) && method.getAccessesToSelf().isEmpty())
                 .map(method -> classes.violation(RULE, type, method.getSourceCodeLocation().getLineNumber(),
@@ -66,6 +70,11 @@ public final class UnusedPublicCodeCheck {
                 && !(type.isEnum() && ENUM_HELPERS.contains(method.getName()))
                 && !isRecordAccessor(type, method)
                 && !Hierarchy.isInherited(type, method);
+    }
+
+    /** A JMX interface, named {@code ...MBean} or {@code ...MXBean}: management clients call its methods. */
+    private static boolean isManagementInterface(JavaClass type) {
+        return type.isInterface() && MANAGEMENT_INTERFACE.matcher(type.getSimpleName()).matches();
     }
 
     private static boolean isRecordAccessor(JavaClass type, JavaMethod method) {

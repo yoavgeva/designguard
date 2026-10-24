@@ -25,4 +25,16 @@ class CallGraphTest {
 
         assertThat(reached).hasSize(DEPTH + 1).contains("m0");
     }
+
+    @Test
+    void spreadsThroughACallOnlyOnceEveryUnitItMayRunIsReached() {
+        Map<String, Set<Set<String>>> calls = Map.of(
+                "usesAStrategy", Set.of(Set.of("pureStrategy", "effectfulStrategy")),
+                "usesStorage", Set.of(Set.of("diskStorage")),
+                "usesBoth", Set.of(Set.of("usesStorage"), Set.of("usesAStrategy")),
+                "usesNothing", Set.of(Set.of()));
+
+        assertThat(CallGraph.spreadThroughEvery(calls, Set.of("effectfulStrategy", "diskStorage")))
+                .containsExactlyInAnyOrder("effectfulStrategy", "diskStorage", "usesStorage", "usesBoth");
+    }
 }

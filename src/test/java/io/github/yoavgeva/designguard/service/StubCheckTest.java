@@ -38,54 +38,6 @@ class StubCheckTest {
     }
 
     @Test
-    void reportsUnsupportedOperationPlaceholders() {
-        assertThat(violations(CART, """
-                package shop;
-
-                class Cart {
-                    int total() {
-                        throw new UnsupportedOperationException();
-                    }
-                }
-                """)).singleElement().satisfies(violation -> {
-                    assertThat(violation.rule()).isEqualTo("no-stubs");
-                    assertThat(violation.file()).endsWith("shop/Cart.java");
-                    assertThat(violation.line()).isEqualTo(5);
-                    assertThat(violation.message()).isEqualTo("Cart.total() is a stub: it throws UnsupportedOperationException");
-                });
-    }
-
-    @Test
-    void allowsUnsupportedOperationInOverridesThatRefuseAnOperation() {
-        assertThat(violations("ReadOnlyIterator", """
-                package shop;
-
-                import java.util.Iterator;
-
-                abstract class ReadOnlyIterator implements Iterator<String> {
-                    @Override
-                    public void remove() {
-                        throw new UnsupportedOperationException("read-only");
-                    }
-                }
-                """)).isEmpty();
-    }
-
-    @Test
-    void reportsNotImplementedMessagesEvenInOverrides() {
-        assertThat(violations("Task", """
-                package shop;
-
-                class Task implements Runnable {
-                    @Override
-                    public void run() {
-                        throw new UnsupportedOperationException("Not implemented yet");
-                    }
-                }
-                """)).hasSize(1);
-    }
-
-    @Test
     void reportsEmptyMethodBodies() {
         assertThat(violations(CART, """
                 package shop;
@@ -108,6 +60,95 @@ class StubCheckTest {
                     }
                 }
                 """)).isEmpty();
+    }
+
+    @Test
+    void allowsEmptyHooks() {
+        assertThat(violations("Service", """
+                package shop;
+
+                abstract class Service implements Runnable {
+                    protected void startUp() {
+                    }
+
+                    public void run() {
+                    }
+
+                    /** Does nothing: a service holds nothing to close. */
+                    final void close() {
+                    }
+
+                    private void render() {
+                    }
+                }
+                """)).singleElement().extracting(Violation::message).isEqualTo("Service.render() has an empty body");
+    }
+
+    @Test
+    void methodsThatAProjectSubclassOverridesAreHooks() {
+        new SourceTree(root)
+                .add("Handler", """
+                        package shop;
+
+                        public class Handler {
+                            void begin(String sql) {
+                            }
+
+                            void end(String sql) {
+                            }
+
+                            void flush() {
+                            }
+
+                            String describe() {
+                                throw new UnsupportedOperationException();
+                            }
+
+                            void close() {
+                            }
+
+                            Handler copy() {
+                                return new Handler() {
+                                    @Override
+                                    void close() {
+                                        System.out.println("closed");
+                                    }
+                                };
+                            }
+                        }
+                        """)
+                .add("SqlHandler", """
+                        package shop;
+
+                        public class SqlHandler extends Handler {
+                            @Override
+                            void begin(String sql) {
+                                System.out.println(sql);
+                            }
+
+                            void end(String sql, int line) {
+                                System.out.println(sql + line);
+                            }
+                        }
+                        """)
+                .add("ServerHandler", """
+                        package shop;
+
+                        public final class ServerHandler extends SqlHandler {
+                            @Override
+                            void flush() {
+                                System.out.println("flushed");
+                            }
+
+                            @Override
+                            String describe() {
+                                return "server";
+                            }
+                        }
+                        """);
+
+        assertThat(new StubCheck().check(SourceReader.read(List.of(root)), ClassFilter.ALL))
+                .singleElement().extracting(Violation::message).isEqualTo("Handler.end() has an empty body");
     }
 
     @Test

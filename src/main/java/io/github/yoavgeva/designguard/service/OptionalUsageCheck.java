@@ -17,7 +17,8 @@ import java.util.stream.Stream;
 
 /**
  * Finds {@code Optional} used against its design: as a field, as a parameter, or returned as {@code null}.
- * {@code Optional} is meant only as a return type saying "there may be no result".
+ * {@code Optional} is meant only as a return type saying "there may be no result". A static method that only converts
+ * an Optional into something else, as {@code Streams.stream(Optional)} does, may take one.
  */
 public final class OptionalUsageCheck {
 
@@ -59,10 +60,20 @@ public final class OptionalUsageCheck {
     private static Stream<Violation> parameters(ProjectClasses classes, ClassFilter filter, JavaClass type) {
         return type.getCodeUnits().stream()
                 .filter(unit -> !unit.getModifiers().contains(JavaModifier.SYNTHETIC) && classes.selected(filter, unit)
-                        && unit.getRawParameterTypes().stream().anyMatch(parameter -> OPTIONALS.contains(parameter.getName())))
+                        && unit.getRawParameterTypes().stream().anyMatch(parameter -> OPTIONALS.contains(parameter.getName()))
+                        && !isConverter(unit))
                 .map(unit -> classes.violation(RULE, type, unit.getSourceCodeLocation().getLineNumber(),
                         describe(type, unit) + " takes an Optional parameter",
                         "take the value itself, or offer an overload without it"));
+    }
+
+    /**
+     * Whether the code unit converts an Optional into something else: a static method that takes only the Optional and
+     * returns a value, as {@code Streams.stream(Optional)} or {@code orElseNull(Optional)} do.
+     */
+    private static boolean isConverter(JavaCodeUnit unit) {
+        return unit.getModifiers().contains(JavaModifier.STATIC) && unit.getRawParameterTypes().size() == 1
+                && !unit.getRawReturnType().isEquivalentTo(void.class) && !(unit instanceof JavaConstructor);
     }
 
     private static String describe(JavaClass type, JavaCodeUnit unit) {

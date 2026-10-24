@@ -3,6 +3,7 @@ package io.github.yoavgeva.designguard.service;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
@@ -19,9 +20,9 @@ import java.util.stream.Stream;
 
 /**
  * Finds test classes that don't exercise the class they're named after: {@code OrderServiceTest} never uses
- * {@code OrderService}, or only mocks it. A use is the class's name in a type, a static call, or an expression whose
- * type the symbol solver resolves to it, such as {@code guard.api()}, in the test or in a test-source helper class it
- * uses. Tests named after no project class are skipped.
+ * {@code OrderService}, or only mocks it. A use is the class's name in a type, a static call or an annotation, or an
+ * expression whose type the symbol solver resolves to it, such as {@code guard.api()}, in the test or in a test-source
+ * helper class it uses. Tests named after no project class are skipped.
  */
 public final class SubjectUsageCheck {
 
@@ -102,7 +103,7 @@ public final class SubjectUsageCheck {
         return declaresMock || mocks.stream().anyMatch(mock -> mock.contains(use));
     }
 
-    /** Types and static-call scopes that name the subject. */
+    /** Types, static-call scopes and annotations that name the subject. */
     private static Stream<Node> namedUses(ParsedFile file, TypeDeclaration<?> test, JavaClass subject, SourceTypes types) {
         Stream<Node> typeNames = test.findAll(ClassOrInterfaceType.class).stream()
                 .filter(type -> types.resolve(file.unit(), type.getNameWithScope()).filter(subject::equals).isPresent())
@@ -110,7 +111,10 @@ public final class SubjectUsageCheck {
         Stream<Node> scopes = test.findAll(NameExpr.class).stream()
                 .filter(name -> types.resolve(file.unit(), name.getNameAsString()).filter(subject::equals).isPresent())
                 .map(name -> name);
-        return Stream.concat(typeNames, scopes);
+        Stream<Node> annotations = test.findAll(AnnotationExpr.class).stream()
+                .filter(annotation -> types.resolve(file.unit(), annotation.getNameAsString()).filter(subject::equals).isPresent())
+                .map(annotation -> annotation);
+        return Stream.of(typeNames, scopes, annotations).flatMap(uses -> uses);
     }
 
     /** Calls whose result the symbol solver types as the subject, as in {@code guard.api()}. */

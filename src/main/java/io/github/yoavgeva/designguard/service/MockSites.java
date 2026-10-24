@@ -6,15 +6,16 @@ import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.expr.ClassExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.nodeTypes.NodeWithAnnotations;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Where tests create mocks: Mockito's or EasyMock's {@code mock(Type.class)}, {@code spy(Type.class)} and
- * {@code createMock(Type.class)}, and fields and parameters annotated {@code @Mock}, {@code @Spy} or Spring's
- * mock-bean annotations.
+ * Where tests create mocks: Mockito's or EasyMock's {@code mock(Type.class)}, {@code spy(Type.class)},
+ * {@code spy(new Type(...))} and {@code createMock(Type.class)}, and fields and parameters annotated {@code @Mock},
+ * {@code @Spy} or Spring's mock-bean annotations.
  */
 final class MockSites {
 
@@ -29,7 +30,8 @@ final class MockSites {
     static Stream<MockSite> in(CompilationUnit unit) {
         Stream<MockSite> created = unit.findAll(MethodCallExpr.class).stream()
                 .filter(call -> MOCK_CALLS.contains(call.getNameAsString()) && !call.getArguments().isEmpty())
-                .flatMap(call -> call.getArgument(0).toClassExpr().map(ClassExpr::getType).stream()
+                .flatMap(call -> Stream.concat(call.getArgument(0).toClassExpr().map(ClassExpr::getType).stream(),
+                                call.getArgument(0).toObjectCreationExpr().map(ObjectCreationExpr::getType).stream())
                         .flatMap(type -> SourceTypes.named(type).stream())
                         .map(name -> new MockSite(call, name)));
         Stream<MockSite> fields = unit.findAll(FieldDeclaration.class).stream()

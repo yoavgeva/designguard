@@ -72,4 +72,48 @@ class DeterministicTestsRuleTest {
                 "pass the value in, so the test doesn't depend on the machine it runs on",
                 "wait for the condition instead, for example with Awaitility, or make time injectable");
     }
+
+    @Test
+    void clockReadingsOverwrittenBeforeUseAreFixed() {
+        DesignGuard guard = new CompiledProject(directory)
+                .add("Cart", "package shop;\n\npublic class Cart {\n    public int total() {\n        return 3;\n    }\n}\n")
+                .addTest("CartTest", """
+                        package shop;
+
+                        import java.util.Calendar;
+                        import java.util.Date;
+                        import java.util.GregorianCalendar;
+
+                        class CartTest {
+                            @org.junit.jupiter.api.Test
+                            void datesAreFixed() {
+                                Calendar day = Calendar.getInstance();
+                                day.clear();
+                                day.set(2026, Calendar.JANUARY, 1);
+                                Calendar epoch;
+                                epoch = Calendar.getInstance();
+                                epoch.setTimeInMillis(0);
+                                Date start = new Date();
+                                start.setTime(0);
+                                Calendar copy = new GregorianCalendar();
+                                copy.setTime(start);
+                                org.assertj.core.api.Assertions.assertThat(day.before(epoch) || copy.after(day)).isFalse();
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void datesKeepTheTimeOfDay() {
+                                Calendar day = Calendar.getInstance();
+                                day.set(2026, Calendar.JANUARY, 1);
+                                Calendar later = new GregorianCalendar();
+                                org.assertj.core.api.Assertions.assertThat(day.before(later)).isTrue();
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.tests().testsUseAFixedClock().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(
+                        tuple(25, "test CartTest.datesKeepTheTimeOfDay() reads the system clock through Calendar.getInstance()"),
+                        tuple(27, "test CartTest.datesKeepTheTimeOfDay() reads the system clock through new GregorianCalendar()"));
+    }
 }

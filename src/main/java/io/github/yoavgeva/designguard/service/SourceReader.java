@@ -36,8 +36,21 @@ final class SourceReader {
      * @throws DesignGuardException if a root is missing or a file does not parse
      */
     static JavaSources read(List<Path> roots) {
+        return read(roots, List.of());
+    }
+
+    /**
+     * Parses every Java file under the roots, resolving symbols in the other roots too, as tests do in the sources
+     * they test.
+     *
+     * @param roots       the source roots to read
+     * @param alsoResolve source roots whose types the files may use, such as the production sources of tests
+     * @return the parsed files
+     * @throws DesignGuardException if a root is missing or a file can't be read or parsed
+     */
+    static JavaSources read(List<Path> roots, List<Path> alsoResolve) {
         roots.forEach(SourceReader::requireDirectory);
-        JavaParser parser = parser(roots);
+        JavaParser parser = parser(Stream.concat(roots.stream(), alsoResolve.stream().filter(Files::isDirectory)).toList());
         return JavaSources.of(roots.stream()
                 .flatMap(SourceReader::javaFiles)
                 .map(file -> parse(parser, file))

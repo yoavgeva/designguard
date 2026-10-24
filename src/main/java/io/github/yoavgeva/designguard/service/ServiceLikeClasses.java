@@ -1,8 +1,8 @@
 package io.github.yoavgeva.designguard.service;
 
-import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
+import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import java.util.HashSet;
 import java.util.List;
@@ -19,19 +19,23 @@ import java.util.Set;
 final class ServiceLikeClasses {
 
     private final Overrides overrides = new Overrides();
+    private final ProjectClasses classes;
     private final Effects effects;
     private final Set<String> effectfulNames;
-    private final Memo<Set<String>> effectfulWhenRun;
+    private final Memo<Set<String>> withBodies;
+    private final Memo<Set<String>> surelyEffectfulWhenRun;
     private final Memo<Set<String>> ownEffectsWhenRun;
     private final Memo<Set<String>> effectfulOnTheirOwnNames;
     private final Set<String> serviceLikeNames;
 
     ServiceLikeClasses(ProjectClasses classes, List<String> extraImpurePackages) {
+        this.classes = classes;
         this.effects = new Effects(extraImpurePackages, overrides);
         List<JavaClass> candidates = classes.stream().filter(ServiceLikeClasses::canBeServiceLike).toList();
         this.effectfulNames = Set.copyOf(withAbstractions(candidates,
                 CallGraph.ownersOf(candidates, effects.effectfulCodeUnits(classes, candidates))));
-        this.effectfulWhenRun = new Memo<>(() -> effects.effectfulWhenRun(classes, candidates));
+        this.withBodies = new Memo<>(() -> CallGraph.withBodies(CallGraph.unitsOf(candidates)));
+        this.surelyEffectfulWhenRun = new Memo<>(() -> effects.surelyEffectfulWhenRun(classes, candidates));
         this.ownEffectsWhenRun = new Memo<>(() -> effects.ownEffectsWhenRun(classes, candidates));
         this.effectfulOnTheirOwnNames = new Memo<>(() -> Set.copyOf(effects.effectfulOnTheirOwn(classes, candidates)));
         this.serviceLikeNames = Set.copyOf(serviceLike(candidates));
@@ -56,12 +60,19 @@ final class ServiceLikeClasses {
     }
 
     /**
-     * Whether making the call touches the outside world right away: it calls an outside-world API, or project code,
-     * any override of it included, whose own calls do. Lambdas the code creates don't count until they run.
+     * Whether making the call surely touches the outside world right away: it calls an outside-world API, or project
+     * code whose every implementation's own calls do. A strategy with an implementation without effects doesn't, nor
+     * does a JDK interface such as {@code Iterator.hasNext()} that a project class implements with I/O. Lambdas the
+     * code creates don't count until they run.
      */
-    boolean runsEffects(CodeUnitAccessTarget target) {
-        Set<String> whenRun = effectfulWhenRun.get();
-        return effects.isImpure(target) || overrides.of(target).stream().anyMatch(whenRun::contains);
+    boolean runsEffects(JavaCodeUnitAccess<?> call) {
+        if (effects.isImpure(classes.bytecode(), call)) {
+            return true;
+        }
+        Set<String> implementations = classes.isProject(call.getTargetOwner())
+                ? overrides.implementationsOf(classes.bytecode(), call, withBodies.get())
+                : Set.of();
+        return !implementations.isEmpty() && surelyEffectfulWhenRun.get().containsAll(implementations);
     }
 
     /**
@@ -73,26 +84,42 @@ final class ServiceLikeClasses {
     }
 
     static boolean canBeServiceLike(JavaClass javaClass) {
-        return Effects.canHaveEffects(javaClass);
+        return JdkEffects.canHaveEffects(javaClass);
     }
 
+    /**
+     * The effectful classes, those holding an impure resource or a service-like class, and the subclasses of those
+     * whose own code or fields make them service-like, which inherit both, until none is added; then the interfaces and
+     * abstract classes with such a subclass. A class whose code is effectful only through overrides, as a base class
+     * calling its own abstract method is, passes nothing on to its subclasses.
+     */
     private Set<String> serviceLike(List<JavaClass> candidates) {
         Set<String> result = new HashSet<>(effectfulNames);
+        Set<String> inherited = new HashSet<>(effectfulOnTheirOwnNames.get());
         candidates.stream()
                 .filter(type -> type.getFields().stream()
                         .flatMap(field -> field.getAllInvolvedRawTypes().stream())
                         .anyMatch(effects::isImpureType))
                 .map(JavaClass::getName)
-                .forEach(result::add);
+                .forEach(name -> {
+                    result.add(name);
+                    inherited.add(name);
+                });
         boolean changed = true;
         while (changed) {
             List<String> reached = candidates.stream()
-                    .filter(type -> !result.contains(type.getName()) && holdsServiceLike(type, result))
+                    .filter(type -> !result.contains(type.getName())
+                            && (holdsServiceLike(type, result) || extendsServiceLike(type, inherited)))
                     .map(JavaClass::getName)
                     .toList();
+            inherited.addAll(reached);
             changed = result.addAll(reached);
         }
         return withAbstractions(candidates, result);
+    }
+
+    private static boolean extendsServiceLike(JavaClass type, Set<String> serviceLike) {
+        return type.getAllRawSuperclasses().stream().anyMatch(superclass -> serviceLike.contains(superclass.getName()));
     }
 
     private static boolean holdsServiceLike(JavaClass type, Set<String> serviceLike) {
@@ -101,10 +128,15 @@ final class ServiceLikeClasses {
                 .anyMatch(fieldType -> !fieldType.equals(type) && serviceLike.contains(fieldType.getName()));
     }
 
+    /**
+     * The classes, plus the interfaces and abstract classes one of them extends; a functional interface passes
+     * behaviour as data, so an effectful implementation doesn't make it service-like.
+     */
     private static Set<String> withAbstractions(List<JavaClass> candidates, Set<String> concrete) {
         Set<String> result = new HashSet<>(concrete);
         candidates.stream()
-                .filter(type -> type.isInterface() || type.getModifiers().contains(JavaModifier.ABSTRACT))
+                .filter(type -> (type.isInterface() || type.getModifiers().contains(JavaModifier.ABSTRACT))
+                        && !Hierarchy.isFunctionalInterface(type))
                 .filter(type -> type.getAllSubclasses().stream().anyMatch(subclass -> concrete.contains(subclass.getName())))
                 .map(JavaClass::getName)
                 .forEach(result::add);

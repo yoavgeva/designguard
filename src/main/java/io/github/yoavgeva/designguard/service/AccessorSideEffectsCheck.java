@@ -1,30 +1,30 @@
 package io.github.yoavgeva.designguard.service;
 
-import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
-import com.tngtech.archunit.core.domain.JavaFieldAccess;
 import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * Finds accessors that change state: {@code get}, {@code is} and {@code has} methods that assign a field of their
- * class. Callers read accessors as queries, so a hidden change surprises them (command-query separation). Lazy
- * initialization, assigning a field the method reads and checks for {@code null}, double-checked locking included, is
- * fine, and so are
- * {@code getAnd...} methods, which say they change something.
+ * class, change the collection or atomic it holds, or call a method of the class that does. Callers read accessors as
+ * queries, so a hidden change surprises them (command-query separation). Lazy initialization, a change made only while
+ * a field is still {@code null} or a flag still {@code false} that sets it, double-checked locking included, is fine,
+ * and so is a flag set only while the method runs. So are {@code getAnd...} methods, which say they change something,
+ * a cursor's {@code hasNext()}, which may read ahead, void methods, which are commands whatever their name, and methods
+ * implementing an interface from outside the project, which dictates their name.
  */
 public final class AccessorSideEffectsCheck {
 
     private static final String RULE = "accessors-change-nothing";
     private static final Pattern ACCESSOR = Pattern.compile("(get|is|has)[A-Z].*");
     private static final String CHANGING_GETTER = "getAnd";
+    private static final Set<String> READS_AHEAD = Set.of("hasNext", "hasPrevious", "hasMoreElements", "hasMoreTokens");
 
     /**
      * Finds violations in the classes the filter selects.
@@ -39,30 +39,35 @@ public final class AccessorSideEffectsCheck {
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && !wiring.contains(type))
                 .flatMap(type -> type.getMethods().stream()
-                        .filter(method -> isAccessor(method) && classes.selected(filter, method))
-                        .flatMap(method -> firstChange(classes, type, method).stream()
-                                .map(change -> classes.violation(RULE, type, change.getLineNumber(),
+                        .filter(method -> isAccessor(classes, type, method) && classes.selected(filter, method))
+                        .flatMap(method -> classes.bytecode().changesMadeBy(method).stream().limit(1)
+                                .map(change -> classes.violation(RULE, type, change.line(),
                                         ProjectClasses.nameOf(type) + "." + method.getName() + "() changes the field '"
-                                                + change.getName() + "'",
+                                                + change.field() + "'"
+                                                + (change.through().isEmpty() ? "" : " through " + change.through() + "()"),
                                         "keep get, is and has methods free of side effects: move the change into a"
                                                 + " command method, or compute the value without storing it"))))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
 
-    private static boolean isAccessor(JavaMethod method) {
+    private static boolean isAccessor(ProjectClasses classes, JavaClass type, JavaMethod method) {
         Set<JavaModifier> modifiers = method.getModifiers();
         return ACCESSOR.matcher(method.getName()).matches() && !method.getName().startsWith(CHANGING_GETTER)
-                && !modifiers.contains(JavaModifier.STATIC) && !modifiers.contains(JavaModifier.SYNTHETIC);
+                && !READS_AHEAD.contains(method.getName()) && !method.getRawReturnType().isEquivalentTo(void.class)
+                && !modifiers.contains(JavaModifier.STATIC) && !modifiers.contains(JavaModifier.SYNTHETIC)
+                && !implementsOutsideApi(classes, type, method);
     }
 
-    /** The first assignment, by line and then by field, to a field of the class that isn't lazy initialization. */
-    private static Optional<JavaFieldAccess> firstChange(ProjectClasses classes, JavaClass type, JavaMethod method) {
-        Bytecode.FieldChanges changes = classes.bytecode().fieldChangesIn(method);
-        return method.getFieldAccesses().stream()
-                .filter(access -> access.getAccessType() == JavaFieldAccess.AccessType.SET
-                        && access.getTargetOwner().equals(type) && changes.writtenOnThis().contains(access.getName())
-                        && !changes.nullGuarded().contains(access.getName()))
-                .min(Comparator.<JavaFieldAccess>comparingInt(JavaAccess::getLineNumber).thenComparing(JavaFieldAccess::getName));
+    /**
+     * Whether the method implements one that a supertype from outside the project declares, such as JDBC's
+     * {@code Statement.getResultSet()}: its name, and what callers expect of it, come from there.
+     */
+    private static boolean implementsOutsideApi(ProjectClasses classes, JavaClass type, JavaMethod method) {
+        return Stream.concat(type.getAllRawSuperclasses().stream(), type.getAllRawInterfaces().stream())
+                .filter(supertype -> !classes.isProject(supertype))
+                .flatMap(supertype -> supertype.getMethods().stream())
+                .anyMatch(declared -> declared.getName().equals(method.getName())
+                        && declared.getRawParameterTypes().equals(method.getRawParameterTypes()));
     }
 }

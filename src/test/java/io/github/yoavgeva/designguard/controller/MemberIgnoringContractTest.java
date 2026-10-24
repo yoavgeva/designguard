@@ -66,10 +66,12 @@ class MemberIgnoringContractTest {
                 member("noRawThreads", g -> g.dependencies().noRawThreads(), List.of(PACKAGE
                         + "public class Jobs {\n    @Legacy\n    public void run(Runnable job) {\n"
                         + "        new Thread(job).start();\n    }\n}\n"), List.of()),
-                member("noQueriesInLoops", g -> g.dependencies().noQueriesInLoops(), List.of(STRIPE_CLIENT,
-                        PACKAGE + "public class Checkout {\n    private final StripeClient client = null;\n\n    @Legacy\n"
+                member("noQueriesInLoops", g -> g.dependencies().noQueriesInLoops(), List.of(PACKAGE
+                                + "public class Prices {\n    public String priceOf(String item) {\n"
+                                + "        return System.getenv(item);\n    }\n}\n",
+                        PACKAGE + "public class Checkout {\n    private final Prices prices = null;\n\n    @Legacy\n"
                                 + "    public String payAll(java.util.List<String> items) {\n        String all = \"\";\n"
-                                + "        for (String item : items) {\n            all += client.charge();\n        }\n"
+                                + "        for (String item : items) {\n            all += prices.priceOf(item);\n        }\n"
                                 + "        return all + item(items);\n    }\n\n"
                                 + "    private String item(java.util.List<String> items) {\n        return items.get(0);\n    }\n}\n"),
                         List.of()),

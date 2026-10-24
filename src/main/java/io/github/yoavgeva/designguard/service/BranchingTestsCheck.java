@@ -2,7 +2,9 @@ package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.SwitchExpr;
 import com.github.javaparser.ast.stmt.DoStmt;
 import com.github.javaparser.ast.stmt.ForEachStmt;
@@ -20,7 +22,8 @@ import java.util.Optional;
 /**
  * Finds tests with logic ("conditional test logic"): an {@code if} or a {@code switch} in a test method, which makes it
  * check different things on different runs, or a loop around an assertion, which hides which case failed. A loop
- * that only sets up data is fine, and so is logic in helper methods; the tests themselves take one path.
+ * that only sets up data is fine, and so is logic in helper methods, in classes a test declares, such as a fake, and
+ * in lambdas that assert nothing, which are fakes too; the tests themselves take one path.
  */
 public final class BranchingTestsCheck {
 
@@ -51,13 +54,27 @@ public final class BranchingTestsCheck {
                 .toList();
     }
 
-    /** The first branch, or loop around an assertion, in the test, and what kind it is. */
+    /**
+     * The first branch, or loop around an assertion, in the test, and what kind it is. Code of a class the test
+     * declares, such as a fake, runs when the code under test calls it, so it isn't the test's path.
+     */
     private static Optional<Map.Entry<Node, String>> firstLogic(MethodDeclaration test) {
         return test.findAll(Node.class).stream()
-                .filter(node -> LOOPS.stream().noneMatch(loop -> loop.isInstance(node))
-                        || node.findAll(MethodCallExpr.class).stream().anyMatch(UnitTestMethods::isAssertion))
                 .flatMap(node -> LOGIC.stream().filter(kind -> kind.getKey().isInstance(node))
                         .map(kind -> Map.entry(node, kind.getValue())))
+                .filter(found -> !inClassOf(test, found.getKey()))
+                .filter(found -> LOOPS.stream().noneMatch(loop -> loop.isInstance(found.getKey()))
+                        || found.getKey().findAll(MethodCallExpr.class).stream().anyMatch(UnitTestMethods::isAssertion))
                 .min(Comparator.comparingInt(found -> Scopes.line(found.getKey())));
+    }
+
+    /** Whether the node is in an anonymous or local class the test declares, or in a lambda that asserts nothing. */
+    private static boolean inClassOf(MethodDeclaration test, Node node) {
+        return Scopes.nearest(node, MethodDeclaration.class).filter(method -> !method.equals(test)).isPresent()
+                || Scopes.nearest(node, LambdaExpr.class).filter(lambda -> lambda.getBody().findAll(MethodCallExpr.class)
+                        .stream().noneMatch(UnitTestMethods::isAssertion)).isPresent()
+                || Scopes.nearest(node, ObjectCreationExpr.class).filter(creation -> creation.getAnonymousClassBody().isPresent()
+                        && creation.getAnonymousClassBody().get().stream().anyMatch(member -> member.isAncestorOf(node)))
+                        .isPresent();
     }
 }

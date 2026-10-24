@@ -16,8 +16,9 @@ import java.util.stream.Stream;
 /**
  * Finds test code that gives different results on different runs or machines, one subject per check: it reads the
  * system clock, uses unseeded randomness, reads environment variables or system properties, or sleeps. Seeded
- * {@code new Random(42)}, {@code Clock.fixed(...)} and {@code now(clock)} are fine. Test methods, helpers and field
- * initializers are all checked; fixture code inside strings isn't code.
+ * {@code new Random(42)}, {@code Clock.fixed(...)} and {@code now(clock)} are fine, and so is a clock reading the
+ * test overwrites before using it, see {@link OverwrittenTimes}. Test methods, helpers and field initializers are all
+ * checked; fixture code inside strings isn't code.
  */
 public final class NondeterministicTestsCheck {
 
@@ -43,7 +44,8 @@ public final class NondeterministicTestsCheck {
     private static final List<Call> CREATIONS = List.of(
             new Call(Set.of(), "Random", Arguments.NONE, Kind.RANDOMNESS),
             new Call(Set.of(), "SecureRandom", Arguments.NONE, Kind.RANDOMNESS),
-            new Call(Set.of(), "Date", Arguments.NONE, Kind.CLOCK));
+            new Call(Set.of(), "Date", Arguments.NONE, Kind.CLOCK),
+            new Call(Set.of(), "GregorianCalendar", Arguments.NONE, Kind.CLOCK));
 
     private final Kind kind;
 
@@ -53,7 +55,8 @@ public final class NondeterministicTestsCheck {
 
     /**
      * Forbids reading the system clock: {@code now()} without a {@code Clock}, {@code System.currentTimeMillis()},
-     * {@code nanoTime()}, {@code new Date()}, {@code Calendar.getInstance()} and the system {@code Clock}s.
+     * {@code nanoTime()}, {@code new Date()}, {@code new GregorianCalendar()}, {@code Calendar.getInstance()} and the
+     * system {@code Clock}s.
      *
      * @return the check
      */
@@ -101,7 +104,8 @@ public final class NondeterministicTestsCheck {
                 .flatMap(file -> Stream.concat(
                         file.unit().findAll(MethodCallExpr.class).stream().flatMap(call -> called(call).stream()),
                         file.unit().findAll(ObjectCreationExpr.class).stream().flatMap(creation -> created(creation).stream()))
-                        .filter(found -> found.kind() == kind && Scopes.selected(filter, file, found.node()))
+                        .filter(found -> found.kind() == kind && Scopes.selected(filter, file, found.node())
+                                && !(kind == Kind.CLOCK && OverwrittenTimes.isOverwritten(found.node())))
                         .map(found -> found.violation(file)))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();

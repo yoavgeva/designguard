@@ -19,15 +19,37 @@ final class Hierarchy {
                 || first.getName().startsWith(second.getName() + "$");
     }
 
-    /** Whether a supertype declares a method with this name and these parameters, so the signature is inherited. */
+    /**
+     * Whether a supertype declares a method with this name and these parameters, so the signature is inherited. An
+     * override of a generic method, such as {@code write(JsonWriter, Number)} for {@code write(JsonWriter, T)}, has
+     * other parameter types than the method it overrides, so the compiler adds a bridge method with the supertype's
+     * erased signature that calls it, and the bridge says the signature is inherited.
+     */
     static boolean isInherited(JavaClass type, JavaCodeUnit unit) {
         if (unit instanceof JavaConstructor) {
             return false;
         }
+        return declaredAbove(type, unit) || type.getMethods().stream()
+                .filter(method -> method.getModifiers().contains(JavaModifier.BRIDGE)
+                        && method.getCallsFromSelf().stream().anyMatch(call -> call.getTarget().getName().equals(unit.getName())
+                                && call.getTarget().getRawParameterTypes().equals(unit.getRawParameterTypes())))
+                .anyMatch(bridge -> declaredAbove(type, bridge));
+    }
+
+    private static boolean declaredAbove(JavaClass type, JavaCodeUnit unit) {
         return Stream.concat(type.getAllRawSuperclasses().stream(), type.getAllRawInterfaces().stream())
                 .flatMap(parent -> parent.getMethods().stream())
                 .anyMatch(method -> method.getName().equals(unit.getName())
                         && method.getRawParameterTypes().equals(unit.getRawParameterTypes()));
+    }
+
+    /**
+     * Whether the type is a project interface annotated {@code @FunctionalInterface}: like the interfaces of
+     * {@code java.util.function}, it passes behaviour as data, so what one implementation does says nothing about the
+     * code that calls or holds it.
+     */
+    static boolean isFunctionalInterface(JavaClass type) {
+        return type.isInterface() && type.isAnnotatedWith(FunctionalInterface.class);
     }
 
     /** Whether the class can be instantiated: not an interface and not abstract. */

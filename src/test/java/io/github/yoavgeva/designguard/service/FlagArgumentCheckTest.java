@@ -96,6 +96,57 @@ class FlagArgumentCheckTest {
     }
 
     @Test
+    void allowsBooleansThatOnlyPickAValue() {
+        assertThat(violations("""
+                package shop;
+
+                class Booleans {
+                    static int toInteger(boolean bool) {
+                        return bool ? 1 : 0;
+                    }
+
+                    static String toString(boolean bool, String yes, String no) {
+                        return bool ? yes : no;
+                    }
+
+                    void write(StringBuilder out, boolean value) {
+                        if (value) {
+                            out.append("true");
+                        } else {
+                            out.append("false");
+                        }
+                    }
+
+                    int setBoolean(int holder, boolean flag) {
+                        return flag ? holder | 1 : holder & ~1;
+                    }
+
+                    String label(boolean urgent) {
+                        if (urgent) {
+                            return send("now");
+                        } else {
+                            return queue("later");
+                        }
+                    }
+
+                    String load(String id, boolean eager) {
+                        return send(eager ? EAGER : LAZY) + id;
+                    }
+
+                    private String send(String when) {
+                        return when;
+                    }
+
+                    private String queue(String when) {
+                        return when;
+                    }
+                }
+                """)).extracting(Violation::message).containsExactly(
+                        "Booleans.label() branches on its boolean parameter 'urgent'",
+                        "Booleans.load() branches on its boolean parameter 'eager'");
+    }
+
+    @Test
     void allowsPreconditionsThatOnlyThrowOnTheirBoolean() {
         assertThat(violations("""
                 package shop;
@@ -129,6 +180,83 @@ class FlagArgumentCheckTest {
                     }
                 }
                 """)).isEmpty();
+    }
+
+    @Test
+    void allowsBooleansAnOverloadForOtherTypesTakesAsData() {
+        assertThat(violations("""
+                package shop;
+
+                class Text {
+                    private final StringBuilder out = new StringBuilder();
+
+                    public Text append(boolean value) {
+                        if (value) {
+                            out.append("yes");
+                        } else {
+                            out.append("no").append('!');
+                        }
+                        return this;
+                    }
+
+                    public Text append(int value) {
+                        out.append(value);
+                        return this;
+                    }
+
+                    public int compare(boolean left, boolean right) {
+                        if (left == right) {
+                            return 0;
+                        }
+                        return left ? 1 : -1;
+                    }
+
+                    public int compare(long left, long right) {
+                        return Long.compare(left, right);
+                    }
+
+                    public Text line(String text, boolean trim) {
+                        if (trim) {
+                            out.append(text.trim()).append('.');
+                        } else {
+                            out.append(text);
+                        }
+                        return this;
+                    }
+
+                    public Text line(String text) {
+                        return line(text, false);
+                    }
+
+                    public Text pad(String text, boolean wide) {
+                        return pad(text, wide ? Width.WIDE : Width.NARROW);
+                    }
+
+                    public Text pad(String text, Width width) {
+                        out.append(width == Width.WIDE ? "  " + text : text);
+                        return this;
+                    }
+
+                    public Text title(String text, boolean upper) {
+                        if (upper) {
+                            out.append(text.toUpperCase(java.util.Locale.ROOT));
+                        } else {
+                            out.append(text).append('.');
+                        }
+                        return this;
+                    }
+
+                    public Text title(StringBuilder text, String suffix) {
+                        out.append(text).append(suffix);
+                        return this;
+                    }
+
+                    enum Width { WIDE, NARROW }
+                }
+                """)).extracting(Violation::message).containsExactly(
+                        "Text.line() branches on its boolean parameter 'trim'",
+                        "Text.pad() branches on its boolean parameter 'wide'",
+                        "Text.title() branches on its boolean parameter 'upper'");
     }
 
     private List<Violation> violations(String source) {

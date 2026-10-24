@@ -8,11 +8,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ConstantDynamic;
 import org.objectweb.asm.Handle;
@@ -27,6 +27,7 @@ import org.objectweb.asm.tree.LineNumberNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 /**
  * What ArchUnit doesn't import from a class file: the Java version it was compiled for, the classes its code creates
@@ -45,19 +46,27 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * @param directCalls  for each method and constructor that creates lambdas, by name and descriptor such as
  *                     {@code <init>(I)V}, the {@link #callKey(String, String, int) calls} it makes itself, not those
  *                     in the lambdas; other methods make exactly the calls ArchUnit reports
- * @param nullGuardedReads for each method and constructor that compares anything with {@code null}, as lazy
- *                         initialization does, by name and descriptor, the fields it reads
+ * @param superCalls       for each method and constructor that calls a method with {@code invokespecial}, such as
+ *                         {@code super.describe()} or a private method, the {@link #callKey(String, String, int) calls}:
+ *                         they run exactly the method they name, not an override
+ * @param restoredInterrupts for each method and constructor that calls {@code Thread.currentThread().interrupt()},
+ *                         the {@link #callKey(String, String, int) calls} of {@code interrupt()}
+ * @param consoleCalls     for each method and constructor that uses {@code System.out}, {@code System.err} or
+ *                         {@code System.in}, the {@link ConsoleCalls calls} it makes on them
+ * @param parameterCalls   for each method and constructor, the {@link ParameterCalls calls} it makes on its parameters
  * @param loops            the calls each method makes once per item: in a loop, or in a lambda it gives a stream
- * @param writesOnThis     for each {@code get}, {@code is} or {@code has} method, the fields it writes on {@code this}
- *                         or statically, not on other objects such as a copy it builds
+ * @param accessorChanges  for each {@code get}, {@code is} or {@code has} method that changes fields of its class, by
+ *                         name and descriptor, the {@link AccessorChanges changes} it makes, lazy initialization aside
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
-        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> nullGuardedReads,
-        Loops loops, Map<String, Set<String>> writesOnThis) {
+        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> superCalls,
+        Map<String, Set<String>> restoredInterrupts, Map<String, Set<String>> consoleCalls,
+        Map<String, Set<String>> parameterCalls, Loops loops,
+        Map<String, List<AccessorChanges.FieldChange>> accessorChanges) {
 
     /** For a class without a class file to read. */
     static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of(),
-            new Loops(Map.of(), Map.of(), Map.of()), Map.of());
+            Map.of(), Map.of(), Map.of(), new Loops(Map.of(), Map.of(), Map.of()), Map.of());
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
@@ -65,7 +74,6 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
     private static final String SWITCH_BOOTSTRAPS = "java/lang/runtime/SwitchBootstraps";
     private static final String CLASS_DESC = "java/lang/constant/ClassDesc";
     private static final String LAMBDA_METAFACTORY = "java/lang/invoke/LambdaMetafactory";
-    private static final Pattern ACCESSOR = Pattern.compile("(get|is|has)[A-Z].*");
     private static final int CONSTANT_CLASS = 7;
 
     ClassFileFacts {
@@ -73,8 +81,11 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         switchLabels = List.copyOf(switchLabels);
         namedClasses = List.copyOf(namedClasses);
         directCalls = Map.copyOf(directCalls);
-        nullGuardedReads = Map.copyOf(nullGuardedReads);
-        writesOnThis = Map.copyOf(writesOnThis);
+        superCalls = Map.copyOf(superCalls);
+        restoredInterrupts = Map.copyOf(restoredInterrupts);
+        consoleCalls = Map.copyOf(consoleCalls);
+        parameterCalls = Map.copyOf(parameterCalls);
+        accessorChanges = Map.copyOf(accessorChanges);
     }
 
     /**
@@ -101,12 +112,57 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             }
         }
         int release = reader.readUnsignedShort(MAJOR_VERSION_OFFSET) - CLASS_FILE_VERSION_OFFSET;
+        Map<String, Integer> captured = Loops.capturedSlots(node);
+        Map<MethodNode, Memo<Receivers>> analyses = node.methods.stream().collect(Collectors.toMap(method -> method,
+                method -> new Memo<>(() -> Receivers.of(node.name, method))));
         return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
-                byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::nullGuardedReads),
-                new Loops(byMethod(node, method -> Loops.callsInLoops(node.name, method)),
-                        byMethod(node, method -> Loops.iteratedLambdas(node.name, method)),
-                        byMethod(node, method -> Loops.lambdaBodyCalls(node.name, method))),
-                byMethod(node, method -> writesOnThis(node.name, method)));
+                byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::superCalls),
+                byMethod(node, ClassFileFacts::restoredInterrupts),
+                byMethod(node, method -> ConsoleCalls.in(method, analyses.get(method))),
+                byMethod(node, method -> ParameterCalls.in(method, analyses.get(method))),
+                new Loops(byMethod(node, method -> Loops.callsInLoops(method, analyses.get(method))),
+                        byMethod(node, Loops::iteratedLambdas),
+                        byMethod(node, method -> Loops.lambdaBodyCalls(method, captured, analyses.get(method)))),
+                AccessorChanges.of(node));
+    }
+
+    /** The non-virtual calls of methods the method makes, keyed with their line: {@code super.m()} and private methods. */
+    private static Set<String> superCalls(MethodNode method) {
+        Set<String> calls = new LinkedHashSet<>();
+        int line = 0;
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof LineNumberNode number) {
+                line = number.line;
+            }
+            if (instruction instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL
+                    && !"<init>".equals(call.name)) {
+                calls.add(callKey(Type.getObjectType(call.owner).getClassName(), call.name, line));
+            }
+        }
+        return Set.copyOf(calls);
+    }
+
+    /** The calls of {@code Thread.currentThread().interrupt()}, keyed with their line. */
+    private static Set<String> restoredInterrupts(MethodNode method) {
+        Set<String> calls = new LinkedHashSet<>();
+        int line = 0;
+        AbstractInsnNode previous = null;
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof LineNumberNode number) {
+                line = number.line;
+            }
+            if (instruction.getOpcode() >= 0) {
+                if (isThreadCall(instruction, "interrupt") && isThreadCall(previous, "currentThread")) {
+                    calls.add(callKey("java.lang.Thread", "interrupt", line));
+                }
+                previous = instruction;
+            }
+        }
+        return Set.copyOf(calls);
+    }
+
+    private static boolean isThreadCall(@Nullable AbstractInsnNode instruction, String name) {
+        return instruction instanceof MethodInsnNode call && "java/lang/Thread".equals(call.owner) && name.equals(call.name);
     }
 
     /** The facts of the methods that have any, by name and descriptor. */
@@ -140,34 +196,6 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             }
         }
         return Set.copyOf(calls);
-    }
-
-    /** The fields an accessor writes on {@code this} or statically; none for other methods. */
-    private static Set<String> writesOnThis(String owner, MethodNode method) {
-        if (!ACCESSOR.matcher(method.name).matches()) {
-            return Set.of();
-        }
-        Receivers receivers = Receivers.of(owner, method);
-        return StreamSupport.stream(method.instructions.spliterator(), false)
-                .filter(instruction -> instruction instanceof FieldInsnNode write && owner.equals(write.owner)
-                        && (write.getOpcode() == Opcodes.PUTFIELD || write.getOpcode() == Opcodes.PUTSTATIC)
-                        && receivers.writesThis(write))
-                .map(instruction -> ((FieldInsnNode) instruction).name)
-                .collect(Collectors.toSet());
-    }
-
-    /** The fields the method reads, if it compares anything with {@code null}; else none. */
-    private static Set<String> nullGuardedReads(MethodNode method) {
-        List<AbstractInsnNode> instructions = StreamSupport.stream(method.instructions.spliterator(), false).toList();
-        boolean comparesWithNull = instructions.stream()
-                .anyMatch(instruction -> instruction.getOpcode() == Opcodes.IFNULL || instruction.getOpcode() == Opcodes.IFNONNULL);
-        if (!comparesWithNull) {
-            return Set.of();
-        }
-        return instructions.stream()
-                .filter(instruction -> instruction.getOpcode() == Opcodes.GETFIELD || instruction.getOpcode() == Opcodes.GETSTATIC)
-                .map(instruction -> ((FieldInsnNode) instruction).name)
-                .collect(Collectors.toSet());
     }
 
     /** The classes of the constant pool's class entries; a long or double takes two slots, the second one empty. */
@@ -265,65 +293,95 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             lambdaBodies = Map.copyOf(lambdaBodies);
         }
 
-        /** The calls on collaborators, fields of {@code this}, between a backward jump and its target. */
-        static Set<String> callsInLoops(String owner, MethodNode method) {
+        /**
+         * The calls between a backward jump and its target that ask a collaborator, an object that is the same for
+         * every item of that loop, about an item.
+         */
+        static Set<String> callsInLoops(MethodNode method, Memo<Receivers> analysis) {
             List<AbstractInsnNode> instructions = instructionsOf(method);
             int[] lines = linesOf(instructions);
-            List<int[]> loops = IntStream.range(0, instructions.size())
+            int fixedSlots = slotsOf(method, Type.getArgumentTypes(method.desc).length);
+            List<LoopValues.Stretch> loops = IntStream.range(0, instructions.size())
                     .filter(index -> instructions.get(index) instanceof JumpInsnNode jump
                             && method.instructions.indexOf(jump.label) < index)
-                    .mapToObj(index -> new int[] {method.instructions.indexOf(((JumpInsnNode) instructions.get(index)).label), index})
+                    .mapToObj(index -> new LoopValues.Stretch(
+                            method.instructions.indexOf(((JumpInsnNode) instructions.get(index)).label), index, fixedSlots))
                     .toList();
             if (loops.isEmpty()) {
                 return Set.of();
             }
-            Receivers receivers = Receivers.of(owner, method);
+            Receivers receivers = analysis.get();
             return IntStream.range(0, instructions.size())
-                    .filter(index -> isInstanceCall(instructions.get(index))
-                            && loops.stream().anyMatch(loop -> loop[0] <= index && index <= loop[1])
-                            && receivers.callsFieldOfThis((MethodInsnNode) instructions.get(index)))
+                    .filter(index -> isInstanceCall(instructions.get(index)) && loops.stream().anyMatch(loop -> loop.contains(index)
+                            && new LoopValues(receivers, loop).asksSameObjectPerItem((MethodInsnNode) instructions.get(index))))
                     .mapToObj(index -> keyOf((MethodInsnNode) instructions.get(index), lines[index]))
                     .collect(Collectors.toSet());
         }
 
         /**
-         * The lambdas, and method references bound to a collaborator such as {@code repository::find}, passed straight
-         * on to a per-item method such as {@code map}.
+         * The lambdas, and method references bound to an object such as {@code repository::find}, passed straight on
+         * to a per-item method such as {@code map}.
          */
-        static Set<String> iteratedLambdas(String owner, MethodNode method) {
+        static Set<String> iteratedLambdas(MethodNode method) {
             List<AbstractInsnNode> instructions = instructionsOf(method);
-            List<InvokeDynamicInsnNode> lambdas = IntStream.range(0, instructions.size())
+            return IntStream.range(0, instructions.size())
                     .filter(index -> instructions.get(index) instanceof InvokeDynamicInsnNode call
                             && LAMBDA_METAFACTORY.equals(call.bsm.getOwner()) && call.bsmArgs.length > 1
-                            && call.bsmArgs[1] instanceof Handle && takesItems(instructions, index))
-                    .mapToObj(index -> (InvokeDynamicInsnNode) instructions.get(index))
-                    .toList();
-            if (lambdas.isEmpty()) {
-                return Set.of();
-            }
-            Receivers receivers = Receivers.of(owner, method);
-            return lambdas.stream()
-                    .filter(lambda -> ((Handle) lambda.bsmArgs[1]).getName().startsWith(LAMBDA_PREFIX)
-                            || receivers.capturesFieldOfThis(lambda))
-                    .map(lambda -> (Handle) lambda.bsmArgs[1])
+                            && call.bsmArgs[1] instanceof Handle handle && takesItems(instructions, index)
+                            && (handle.getName().startsWith(LAMBDA_PREFIX) || Type.getArgumentTypes(call.desc).length > 0))
+                    .mapToObj(index -> (Handle) ((InvokeDynamicInsnNode) instructions.get(index)).bsmArgs[1])
                     .map(handle -> Type.getObjectType(handle.getOwner()).getClassName() + "." + handle.getName()
                             + handle.getDesc())
                     .collect(Collectors.toSet());
         }
 
-        /** The calls on collaborators, fields of {@code this}, in a lambda body; none for other methods. */
-        static Set<String> lambdaBodyCalls(String owner, MethodNode method) {
+        /**
+         * The calls in a lambda body that ask a collaborator, a field or a value the lambda captured, about its item.
+         * None for other methods.
+         *
+         * @param method   the method
+         * @param captured how many values each lambda body of the class captures as parameters, by name and descriptor
+         * @param analysis the method's data flow, computed when first needed
+         */
+        static Set<String> lambdaBodyCalls(MethodNode method, Map<String, Integer> captured, Memo<Receivers> analysis) {
             if (!method.name.startsWith(LAMBDA_PREFIX)) {
                 return Set.of();
             }
             List<AbstractInsnNode> instructions = instructionsOf(method);
             int[] lines = linesOf(instructions);
-            Receivers receivers = Receivers.of(owner, method);
+            Receivers receivers = analysis.get();
+            LoopValues.Stretch body = new LoopValues.Stretch(0, instructions.size() - 1,
+                    slotsOf(method, captured.getOrDefault(method.name + method.desc, 0)));
             return IntStream.range(0, instructions.size())
                     .filter(index -> isInstanceCall(instructions.get(index))
-                            && receivers.callsFieldOfThis((MethodInsnNode) instructions.get(index)))
+                            && new LoopValues(receivers, body).asksSameObjectPerItem((MethodInsnNode) instructions.get(index)))
                     .mapToObj(index -> keyOf((MethodInsnNode) instructions.get(index), lines[index]))
                     .collect(Collectors.toSet());
+        }
+
+        /**
+         * How many values each lambda body of the class captures as parameters, by name and descriptor: the values
+         * the {@code invokedynamic} that makes it takes, less {@code this}, which a body that is an instance method
+         * captures as itself.
+         */
+        static Map<String, Integer> capturedSlots(ClassNode node) {
+            return node.methods.stream()
+                    .flatMap(method -> instructionsOf(method).stream())
+                    .filter(instruction -> instruction instanceof InvokeDynamicInsnNode call
+                            && LAMBDA_METAFACTORY.equals(call.bsm.getOwner()) && call.bsmArgs.length > 1
+                            && call.bsmArgs[1] instanceof Handle handle && node.name.equals(handle.getOwner())
+                            && handle.getName().startsWith(LAMBDA_PREFIX))
+                    .map(InvokeDynamicInsnNode.class::cast)
+                    .collect(Collectors.toMap(call -> ((Handle) call.bsmArgs[1]).getName() + ((Handle) call.bsmArgs[1]).getDesc(),
+                            call -> Type.getArgumentTypes(call.desc).length
+                                    - (((Handle) call.bsmArgs[1]).getTag() == Opcodes.H_INVOKESTATIC ? 0 : 1),
+                            (first, second) -> first));
+        }
+
+        /** The local slots that {@code this}, if any, and the method's first parameters take. */
+        private static int slotsOf(MethodNode method, int parameters) {
+            int self = (method.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
+            return self + Arrays.stream(Type.getArgumentTypes(method.desc)).limit(parameters).mapToInt(Type::getSize).sum();
         }
 
         /** Whether the next call after the lambda is a per-item method it is the argument of. */
@@ -359,6 +417,112 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                 lines[index] = line;
             }
             return lines;
+        }
+    }
+
+    /**
+     * The calls a method makes on {@code System.out}, {@code System.err} or {@code System.in}, directly or through a
+     * local that holds one: they write to or read from the console, unlike the same calls on a stream it is given.
+     */
+    static final class ConsoleCalls {
+
+        private static final Set<String> CONSOLE_STREAMS = Set.of("out", "err", "in");
+
+        private ConsoleCalls() {
+        }
+
+        /**
+         * The method's calls on a console stream, keyed with their line.
+         *
+         * @param method   the method
+         * @param analysis the method's data flow, computed when first needed
+         * @return the {@link #callKey(String, String, int) calls}; none if it never reads a console stream
+         */
+        static Set<String> in(MethodNode method, Memo<Receivers> analysis) {
+            if (StreamSupport.stream(method.instructions.spliterator(), false).noneMatch(ConsoleCalls::isConsole)) {
+                return Set.of();
+            }
+            Receivers receivers = analysis.get();
+            Set<String> calls = new LinkedHashSet<>();
+            int line = 0;
+            for (AbstractInsnNode instruction : method.instructions) {
+                if (instruction instanceof LineNumberNode number) {
+                    line = number.line;
+                }
+                if (instruction instanceof MethodInsnNode call && call.getOpcode() != Opcodes.INVOKESTATIC
+                        && receivers.stackAt(call, Type.getArgumentTypes(call.desc).length).stream()
+                                .anyMatch(source -> isConsole(source) || holdsConsole(receivers, source))) {
+                    calls.add(callKey(Type.getObjectType(call.owner).getClassName(), call.name, line));
+                }
+            }
+            return Set.copyOf(calls);
+        }
+
+        private static boolean holdsConsole(Receivers receivers, AbstractInsnNode source) {
+            return source instanceof VarInsnNode load && receivers.storesOf(load).stream()
+                    .anyMatch(store -> receivers.stackAt(store, 0).stream().anyMatch(ConsoleCalls::isConsole));
+        }
+
+        private static boolean isConsole(AbstractInsnNode instruction) {
+            return instruction instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETSTATIC
+                    && "java/lang/System".equals(field.owner) && CONSOLE_STREAMS.contains(field.name);
+        }
+    }
+
+    /**
+     * The calls a method makes on one of its parameters while the parameter still holds what the caller passed, as
+     * {@code storage.load()} in {@code count(Storage storage)} is: they run the implementation the caller chose, not
+     * any the project has. Only calls that may dispatch to project code are kept: virtual and interface calls of
+     * types outside the JDK.
+     */
+    static final class ParameterCalls {
+
+        private ParameterCalls() {
+        }
+
+        /**
+         * The method's calls on its parameters, keyed with their line.
+         *
+         * @param method   the method
+         * @param analysis the method's data flow, computed when first needed
+         * @return the {@link #callKey(String, String, int) calls}; none if it takes no objects
+         */
+        static Set<String> in(MethodNode method, Memo<Receivers> analysis) {
+            boolean takesObjects = Arrays.stream(Type.getArgumentTypes(method.desc))
+                    .anyMatch(type -> type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY);
+            if (!takesObjects || StreamSupport.stream(method.instructions.spliterator(), false)
+                    .noneMatch(ParameterCalls::mayDispatch)) {
+                return Set.of();
+            }
+            int first = (method.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
+            int last = (Type.getArgumentsAndReturnSizes(method.desc) >> 2) - 2 + first;
+            Receivers receivers = analysis.get();
+            Set<String> calls = new LinkedHashSet<>();
+            int line = 0;
+            for (AbstractInsnNode instruction : method.instructions) {
+                if (instruction instanceof LineNumberNode number) {
+                    line = number.line;
+                }
+                if (mayDispatch(instruction) && isParameter(receivers, receivers.stackAt(instruction,
+                        Type.getArgumentTypes(((MethodInsnNode) instruction).desc).length), first, last)) {
+                    MethodInsnNode call = (MethodInsnNode) instruction;
+                    calls.add(callKey(Type.getObjectType(call.owner).getClassName(), call.name, line));
+                }
+            }
+            return Set.copyOf(calls);
+        }
+
+        /** Whether every source loads a parameter, in the slots from first to last, that the method never reassigns. */
+        private static boolean isParameter(Receivers receivers, Set<AbstractInsnNode> sources, int first, int last) {
+            return !sources.isEmpty() && sources.stream().allMatch(source -> source instanceof VarInsnNode load
+                    && load.getOpcode() == Opcodes.ALOAD && load.var >= first && load.var <= last
+                    && receivers.storesOf(load).isEmpty());
+        }
+
+        private static boolean mayDispatch(AbstractInsnNode instruction) {
+            return instruction instanceof MethodInsnNode call
+                    && (call.getOpcode() == Opcodes.INVOKEVIRTUAL || call.getOpcode() == Opcodes.INVOKEINTERFACE)
+                    && !call.owner.startsWith("java/") && !call.owner.startsWith("javax/");
         }
     }
 }
