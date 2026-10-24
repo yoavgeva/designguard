@@ -5,7 +5,6 @@ import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Finds values with mutable state: classes that aren't service-like (no I/O, clock, randomness...) but have a
@@ -14,7 +13,6 @@ import java.util.Set;
 public final class ValueImmutabilityCheck {
 
     private static final String RULE = "immutable-values";
-    private static final Set<String> PERSISTENCE = Set.of("Entity", "Embeddable", "MappedSuperclass", "Document");
 
     /**
      * Finds violations in the classes the filter selects.
@@ -51,6 +49,6 @@ public final class ValueImmutabilityCheck {
                 && !javaClass.isEnum()
                 && !javaClass.isRecord()
                 && !javaClass.isInterface()
-                && ProjectClasses.annotationNames(javaClass).stream().noneMatch(PERSISTENCE::contains);
+                && !ServiceLikeClasses.isPersistent(javaClass);
     }
 }

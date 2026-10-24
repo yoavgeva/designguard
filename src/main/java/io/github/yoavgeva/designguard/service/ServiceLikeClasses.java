@@ -7,6 +7,7 @@ import com.tngtech.archunit.core.domain.JavaModifier;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Classifies project classes by what their code does, using {@link Effects}.
@@ -14,10 +15,13 @@ import java.util.Set;
  * <p>A class is <em>effectful</em> if any of its methods, constructors or lambdas touches the outside world. A class
  * is <em>service-like</em>, worth depending on through an interface, if it is effectful, holds a field of an impure
  * JDK type or of a service-like class, or is an abstraction with a service-like implementation. Everything else is a
- * value. Exceptions and annotations are never service-like.
+ * value. Exceptions and annotations are never service-like, and neither are persistent classes, which a store loads
+ * and saves as data: JPA entities, embeddables and mapped superclasses, and documents. What their code does, such as
+ * reading the clock for a creation date, is reported where it happens.
  */
 final class ServiceLikeClasses {
 
+    private static final Set<String> PERSISTENT = Set.of("Entity", "Embeddable", "MappedSuperclass", "Document");
     private final Overrides overrides = new Overrides();
     private final ProjectClasses classes;
     private final Effects effects;
@@ -87,16 +91,22 @@ final class ServiceLikeClasses {
         return JdkEffects.canHaveEffects(javaClass);
     }
 
+    /** Whether the class is persistent data: a JPA entity, embeddable or mapped superclass, or a document. */
+    static boolean isPersistent(JavaClass javaClass) {
+        return ProjectClasses.annotationNames(javaClass).stream().anyMatch(PERSISTENT::contains);
+    }
+
     /**
      * The effectful classes, those holding an impure resource or a service-like class, and the subclasses of those
      * whose own code or fields make them service-like, which inherit both, until none is added; then the interfaces and
      * abstract classes with such a subclass. A class whose code is effectful only through overrides, as a base class
-     * calling its own abstract method is, passes nothing on to its subclasses.
+     * calling its own abstract method is, passes nothing on to its subclasses. Persistent classes are left out.
      */
     private Set<String> serviceLike(List<JavaClass> candidates) {
-        Set<String> result = new HashSet<>(effectfulNames);
-        Set<String> inherited = new HashSet<>(effectfulOnTheirOwnNames.get());
-        candidates.stream()
+        List<JavaClass> services = candidates.stream().filter(type -> !isPersistent(type)).toList();
+        Set<String> result = namesAmong(services, effectfulNames);
+        Set<String> inherited = namesAmong(services, effectfulOnTheirOwnNames.get());
+        services.stream()
                 .filter(type -> type.getFields().stream()
                         .flatMap(field -> field.getAllInvolvedRawTypes().stream())
                         .anyMatch(effects::isImpureType))
@@ -107,7 +117,7 @@ final class ServiceLikeClasses {
                 });
         boolean changed = true;
         while (changed) {
-            List<String> reached = candidates.stream()
+            List<String> reached = services.stream()
                     .filter(type -> !result.contains(type.getName())
                             && (holdsServiceLike(type, result) || extendsServiceLike(type, inherited)))
                     .map(JavaClass::getName)
@@ -115,7 +125,11 @@ final class ServiceLikeClasses {
             inherited.addAll(reached);
             changed = result.addAll(reached);
         }
-        return withAbstractions(candidates, result);
+        return withAbstractions(services, result);
+    }
+
+    private static Set<String> namesAmong(List<JavaClass> types, Set<String> names) {
+        return types.stream().map(JavaClass::getName).filter(names::contains).collect(Collectors.toCollection(HashSet::new));
     }
 
     private static boolean extendsServiceLike(JavaClass type, Set<String> serviceLike) {

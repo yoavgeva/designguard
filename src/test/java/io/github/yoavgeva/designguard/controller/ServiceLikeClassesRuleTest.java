@@ -257,4 +257,78 @@ class ServiceLikeClassesRuleTest {
                 "Cache is service-like, but its field 'hits' isn't final",
                 "EnvCheck is service-like, but its field 'calls' isn't final");
     }
+
+    @Test
+    void persistentClassesAreDataEvenWhenTheyReadTheClock() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Entity", "package shop;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Entity {\n}\n")
+                .add("Visit", """
+                        package shop;
+
+                        import java.time.Instant;
+                        import java.time.LocalDate;
+
+                        @Entity
+                        public class Visit {
+                            private LocalDate date;
+                            private Instant created;
+
+                            public Visit() {
+                                this.date = LocalDate.now();
+                            }
+
+                            public void stamp() {
+                                created = Instant.now();
+                            }
+                        }
+                        """)
+                .add("Pet", """
+                        package shop;
+
+                        import java.util.LinkedHashSet;
+                        import java.util.Set;
+
+                        @Entity
+                        public class Pet {
+                            private String name;
+                            private final Set<Visit> visits = new LinkedHashSet<>();
+
+                            public void addVisit(Visit visit) {
+                                visits.add(visit);
+                            }
+                        }
+                        """)
+                .add("Agenda", """
+                        package shop;
+
+                        import java.util.ArrayList;
+                        import java.util.List;
+
+                        public final class Agenda {
+                            private final List<Visit> visits = new ArrayList<>();
+                            private int booked;
+
+                            public void book(Visit visit) {
+                                visits.add(visit);
+                                booked++;
+                            }
+                        }
+                        """)
+                .add("Stopwatch", """
+                        package shop;
+
+                        public final class Stopwatch {
+                            private long started;
+
+                            public void start() {
+                                started = System.nanoTime();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
+                "Stopwatch is service-like, but its field 'started' isn't final");
+    }
 }
