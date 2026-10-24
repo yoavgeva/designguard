@@ -84,4 +84,51 @@ class QueryVerificationRuleTest {
         assertThat(guard.tests().testsCheckResults().evaluate().get(0).fix()).isEqualTo("stub it with"
                 + " when(...).thenReturn(...) and assert on what the code under test returns; verify only commands");
     }
+
+    @Test
+    void commandsThatReturnTheirResultOrAVoidPublisherAreCommands() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Mono", "package reactor.core.publisher;\n\npublic abstract class Mono<T> {\n}\n")
+                .add("Posts", """
+                        package shop;
+
+                        import java.util.concurrent.CompletableFuture;
+                        import reactor.core.publisher.Mono;
+
+                        public interface Posts {
+                            Mono<String> fetch(String name);
+
+                            Mono<String> update(String post);
+
+                            Mono<Void> sendCode(String method);
+
+                            CompletableFuture<Void> reindex(String name);
+
+                            boolean saveDraft(String post);
+                        }
+                        """)
+                .addTest("PostsTest", """
+                        package shop;
+
+                        import static org.mockito.Mockito.mock;
+                        import static org.mockito.Mockito.verify;
+
+                        class PostsTest {
+                            private final Posts posts = mock(Posts.class);
+
+                            @org.junit.jupiter.api.Test
+                            void edits() {
+                                verify(posts).fetch("hello");
+                                verify(posts).update("hello");
+                                verify(posts).sendCode("email");
+                                verify(posts).reindex("hello");
+                                verify(posts).saveDraft("hello");
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.tests().testsCheckResults().evaluate()).extracting(Violation::message)
+                .containsExactly("test PostsTest.edits() verifies Posts.fetch(), a query that returns a value");
+    }
 }

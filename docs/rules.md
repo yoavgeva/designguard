@@ -1228,7 +1228,10 @@ Fix: fix the test or the code, or delete the test if it no longer matters.
 `tests().testsCheckResults()` · **recommended**
 
 Tests that verify queries are reported: `verify(mock).method(...)` where every such method of the mock's type returns
-a value. A verification with a mode, such as `times(1)` or `never()`, counts calls on purpose, so it's fine.
+a value. Commands are fine to verify: methods that return nothing or only a `Void` publisher or future, such as
+`Mono<Void>`, and methods named for a change (`create`, `update`, `save`, `send`, `publish` and the like), which
+reactive clients and repositories make return what they stored. A verification with a mode, such as `times(1)` or
+`never()`, counts calls on purpose, so it's fine.
 
 Why: verifying that a query was called checks how the code works, not what it returns. Stub queries and assert on
 the result, and verify only commands, which return nothing.
