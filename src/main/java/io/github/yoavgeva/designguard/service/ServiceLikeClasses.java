@@ -87,23 +87,39 @@ final class ServiceLikeClasses {
         return JdkEffects.canHaveEffects(javaClass);
     }
 
+    /**
+     * The effectful classes, those holding an impure resource or a service-like class, and the subclasses of those
+     * whose own code or fields make them service-like, which inherit both, until none is added; then the interfaces and
+     * abstract classes with such a subclass. A class whose code is effectful only through overrides, as a base class
+     * calling its own abstract method is, passes nothing on to its subclasses.
+     */
     private Set<String> serviceLike(List<JavaClass> candidates) {
         Set<String> result = new HashSet<>(effectfulNames);
+        Set<String> inherited = new HashSet<>(effectfulOnTheirOwnNames.get());
         candidates.stream()
                 .filter(type -> type.getFields().stream()
                         .flatMap(field -> field.getAllInvolvedRawTypes().stream())
                         .anyMatch(effects::isImpureType))
                 .map(JavaClass::getName)
-                .forEach(result::add);
+                .forEach(name -> {
+                    result.add(name);
+                    inherited.add(name);
+                });
         boolean changed = true;
         while (changed) {
             List<String> reached = candidates.stream()
-                    .filter(type -> !result.contains(type.getName()) && holdsServiceLike(type, result))
+                    .filter(type -> !result.contains(type.getName())
+                            && (holdsServiceLike(type, result) || extendsServiceLike(type, inherited)))
                     .map(JavaClass::getName)
                     .toList();
+            inherited.addAll(reached);
             changed = result.addAll(reached);
         }
         return withAbstractions(candidates, result);
+    }
+
+    private static boolean extendsServiceLike(JavaClass type, Set<String> serviceLike) {
+        return type.getAllRawSuperclasses().stream().anyMatch(superclass -> serviceLike.contains(superclass.getName()));
     }
 
     private static boolean holdsServiceLike(JavaClass type, Set<String> serviceLike) {

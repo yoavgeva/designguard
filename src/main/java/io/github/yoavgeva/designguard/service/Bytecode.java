@@ -156,7 +156,9 @@ final class Bytecode {
         /** {@code Thread.currentThread().interrupt()}: it only restores the current thread's interrupt flag. */
         RESTORED_INTERRUPT(ClassFileFacts::restoredInterrupts),
         /** {@code System.out.println(...)} and other calls on a console stream: they use the console. */
-        CONSOLE(ClassFileFacts::consoleCalls);
+        CONSOLE(ClassFileFacts::consoleCalls),
+        /** {@code storage.load()} on a parameter: it runs the implementation the caller passed. */
+        ON_PARAMETER(ClassFileFacts::parameterCalls);
 
         private final Function<ClassFileFacts, Map<String, Set<String>>> calls;
 
