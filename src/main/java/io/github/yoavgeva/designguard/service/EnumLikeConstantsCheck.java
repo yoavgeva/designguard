@@ -1,5 +1,6 @@
 package io.github.yoavgeva.designguard.service;
 
+import com.github.javaparser.ast.body.CallableDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
@@ -27,7 +28,9 @@ import java.util.stream.Stream;
  * {@code STATUS_PAID}, whose values are a run of numbers from 0 or 1, distinct bit flags, or the names themselves.
  * Constants with real values, like {@code MAX_ITEMS = 50} and {@code MAX_RETRIES = 3}, don't count. Neither do String
  * constants that are keys of a format, which every use passes to a lookup, constants used only in converters, which are
- * the encoding of a type, or String values with syntax beyond the name, as {@code "rmi:"} has.
+ * the encoding of a type, or String values with syntax beyond the name, as {@code "rmi:"} has. Nor do the known values
+ * of an open vocabulary, declared in the class named after their prefix that takes any value, as {@code
+ * StatusInfo.valueOf(String)} does.
  */
 public final class EnumLikeConstantsCheck {
 
@@ -55,7 +58,7 @@ public final class EnumLikeConstantsCheck {
                         .filter(type -> Scopes.selected(filter, file, type))
                         .flatMap(type -> groups(constants(type))
                                 .filter(group -> !group.isOfStrings() || !uses.areKeys(group.names()))
-                                .filter(group -> !uses.encode(group.names()))
+                                .filter(group -> !uses.encode(group.names()) && !isOpenVocabulary(type, group))
                                 .map(group -> violation(file, type, group))))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
@@ -111,6 +114,23 @@ public final class EnumLikeConstantsCheck {
                 .values().stream()
                 .map(members -> new Group(members, prefixSegments))
                 .filter(Group::enumeratesCases);
+    }
+
+    /**
+     * Whether the class is the type of an open vocabulary the constants name some values of: it is named after their
+     * prefix, as {@code StatusInfo} is for {@code STATUS_UP}, holds a field of their type, and a constructor or method
+     * callers reach takes any such value. An enum would reject the values it doesn't list, as custom health statuses.
+     */
+    private static boolean isOpenVocabulary(ClassOrInterfaceDeclaration type, Group group) {
+        String valueType = group.constants().get(0).type();
+        boolean namedAfterPrefix = type.getNameAsString().startsWith(group.enumName());
+        boolean holdsOne = type.getFields().stream()
+                .anyMatch(field -> !field.isStatic() && valueType.equals(field.getElementType().asString()));
+        boolean takesAny = Stream.<CallableDeclaration<?>>concat(type.getConstructors().stream(), type.getMethods().stream())
+                .filter(callable -> !callable.isPrivate())
+                .anyMatch(callable -> callable.getParameters().stream()
+                        .anyMatch(parameter -> valueType.equals(parameter.getTypeAsString())));
+        return namedAfterPrefix && holdsOne && takesAny;
     }
 
     private static Violation violation(ParsedFile file, ClassOrInterfaceDeclaration type, Group group) {

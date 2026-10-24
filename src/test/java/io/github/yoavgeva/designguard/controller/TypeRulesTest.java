@@ -251,6 +251,43 @@ class TypeRulesTest {
                             }
                         }
                         """)
+                .add("StatusInfo", """
+                        package shop;
+
+                        public final class StatusInfo {
+                            public static final String STATUS_UP = "UP";
+                            public static final String STATUS_DOWN = "DOWN";
+
+                            private final String status;
+
+                            private StatusInfo(String status) {
+                                this.status = status;
+                            }
+
+                            public static StatusInfo valueOf(String status) {
+                                return new StatusInfo(status.toUpperCase(java.util.Locale.ROOT));
+                            }
+
+                            public static StatusInfo ofUp() {
+                                return valueOf(STATUS_UP);
+                            }
+
+                            public boolean isDown() {
+                                return STATUS_DOWN.equals(status);
+                            }
+                        }
+                        """)
+                .add("Channels", """
+                        package shop;
+
+                        public final class Channels {
+                            public static final String CHANNELS_WEB = "web";
+                            public static final String CHANNELS_STORE = "store";
+
+                            private Channels() {
+                            }
+                        }
+                        """)
                 .add("Lookups", """
                         package shop;
 
@@ -310,6 +347,8 @@ class TypeRulesTest {
         assertThat(guard.types().enumsOverConstants().evaluate())
                 .extracting(Violation::line, Violation::message, Violation::fix)
                 .containsExactly(
+                        tuple(4, "Channels declares CHANNELS_WEB, CHANNELS_STORE as String constants: make them an enum",
+                                "replace them with an enum, e.g. enum Channels { WEB, STORE }"),
                         tuple(4, "Flags declares FLAG_GIFT, FLAG_EXPRESS, FLAG_FRAGILE as int constants: make them an enum",
                                 "replace them with an enum, e.g. enum Flag { GIFT, EXPRESS, FRAGILE }"),
                         tuple(4, "Orders declares STATUS_OPEN, STATUS_PAID, STATUS_SHIPPED as int constants: make them"

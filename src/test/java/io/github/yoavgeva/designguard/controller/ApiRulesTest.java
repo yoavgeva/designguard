@@ -790,6 +790,19 @@ class ApiRulesTest {
                                 }
                             }
 
+                            public static String convertCondition(String key) {
+                                switch (key) {
+                                    case "consumes":
+                                        return "accept";
+                                    case "produces":
+                                        return "content-type";
+                                    case "headers":
+                                        return "header";
+                                    default:
+                                        return key;
+                                }
+                            }
+
                             public static String forExtension(String ext) {
                                 switch (ext) {
                                     case "kt":

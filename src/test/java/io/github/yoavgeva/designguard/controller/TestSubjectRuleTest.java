@@ -502,7 +502,7 @@ class TestSubjectRuleTest {
     }
 
     @Test
-    void beansTheWiringCreatesAndClassesAUsedClassCreatesAreUses() {
+    void beansTheWiringCreatesAndClassesAUsedClassCreatesOrRegistersAreUses() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Configuration", "package org.springframework.context.annotation;\n\n"
                         + RUNTIME
@@ -548,6 +548,21 @@ class TestSubjectRuleTest {
                             @org.junit.jupiter.api.Test
                             void prices() {
                                 org.assertj.core.api.Assertions.assertThat(new Dialect().processors()).isNotEmpty();
+                            }
+                        }
+                        """)
+                .add("Money", "package shop;\n\npublic record Money(long cents) {\n}\n")
+                .add("MoneyMixin", "package shop;\n\npublic abstract class MoneyMixin {\n    public abstract long cents();\n}\n")
+                .add("ShopModule", "package shop;\n\npublic class ShopModule {\n"
+                        + "    public java.util.Map<Class<?>, Class<?>> mixins() {\n"
+                        + "        return java.util.Map.of(Money.class, MoneyMixin.class);\n    }\n}\n")
+                .addTest("MoneyMixinTest", """
+                        package shop;
+
+                        class MoneyMixinTest {
+                            @org.junit.jupiter.api.Test
+                            void mixesIntoMoney() {
+                                org.assertj.core.api.Assertions.assertThat(new ShopModule().mixins()).containsKey(Money.class);
                             }
                         }
                         """)

@@ -750,7 +750,10 @@ flags, or the names themselves. Constants with real values, like `MAX_ITEMS = 50
 and neither do String constants that are keys of a format: every use passes one to a lookup, as
 `attributes.getValue(ATTR_PREMAIN_CLASS)` does, and none compares, switches on or assigns one. Nor do constants used
 only in converters, which turn outside input into a type, as `toPermissions(int mode)` does with a file mode's bits,
-or String values with syntax beyond the name, as `"rmi:"` has.
+or String values with syntax beyond the name, as `"rmi:"` has. Nor do the known values of an open vocabulary:
+constants declared in the class named after their prefix, as `StatusInfo` is for `STATUS_UP`, which holds a value of
+their type and takes any such value from callers, as `StatusInfo.valueOf(String)` takes custom health statuses that
+an enum would reject.
 
 Why: an `int` status accepts any number, and the compiler can't tell when a `switch` misses one (Effective Java,
 item 34).
@@ -1005,12 +1008,12 @@ Fix: return a record, such as `record Entry(String key, String value) {}`.
 
 Choices between strings are reported: a `switch` over three or more string literals, or an `if`/`else if` chain
 comparing one value with three or more strings through `equals`, `equalsIgnoreCase` or `Objects.equals`. Converters,
-which turn input strings into a type, are exempt: methods named `parse`, `from`, `valueOf`, `of`, `decode`, `to...`
-or `for...`, as `toBool` and `forExtension` are, and methods returning one of the project's enums. So are words from
-outside the code, which an enum can't own: strings with dots or spaces (property keys, class names, SQL), tokens a
-parser reads, any of which is punctuation such as `"("`, single characters such as operators, Java's type names,
-codes with digits such as SQL states, method names a proxy dispatches on, which include `toString`, HTTP's method
-names such as `"GET"` and `"POST"`, and command-line options such as `"--init"`.
+which turn input strings into a type, are exempt: methods named `parse`, `from`, `valueOf`, `of`, `decode`, `to...`,
+`for...` or `convert...`, as `toBool`, `forExtension` and `convertCondition` are, and methods returning one of the
+project's enums. So are words from outside the code, which an enum can't own: strings with dots or spaces (property
+keys, class names, SQL), tokens a parser reads, any of which is punctuation such as `"("`, single characters such as
+operators, Java's type names, codes with digits such as SQL states, method names a proxy dispatches on, which include
+`toString`, HTTP's method names such as `"GET"` and `"POST"`, and command-line options such as `"--init"`.
 
 Why: a typo in a string compiles, and a missing enum case doesn't.
 
@@ -1293,18 +1296,18 @@ Fix: `when(lookup.find("key")).thenReturn("value")`, then assert on the result o
 `tests().testsUseTheirSubject()` · **recommended**
 
 Test classes that don't exercise the class they're named after are reported: `OrderServiceTest` never uses
-`OrderService`, or only mocks it. A use is the class's name in a type, a static call or an annotation, a member of
-it the test imports statically, as `encode(text)` after `import static shop.Base64Url.encode`, or an expression whose
-type resolves to it, such as `Streams.failableStream(list)`, in the test or in a test-source helper
-class it uses. Expressions resolve against the production sources too, so a factory's result counts even when its
-classes aren't on the test's class path. A field the test's container injects (`@Autowired`, `@Inject`, `@Resource`)
-typed as an interface or superclass of the class uses it, and so does a test of a web controller, controller advice or
-filter that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate` or REST Assured. A test named after
-an interface or abstract class uses it through an implementation, a spy runs the real class, a project class the test
-uses that creates it, as a template dialect creates its processors, uses it too, a `@SpringBootTest` boots the
-`@SpringBootApplication` class, and requests a booted test sends reach any Spring bean: a component, or a class the
-wiring code creates in a `@Bean` method. Tests named after no
-project class are skipped.
+`OrderService`, or only mocks it. A use is the class's name in a type, a static call or an annotation, a member of it
+the test imports statically, as `encode(text)` after `import static shop.Base64Url.encode`, or an expression whose
+type resolves to it, such as `Streams.failableStream(list)`, in the test or in a test-source helper class it uses.
+Expressions resolve against the production sources too, so a factory's result counts even when its classes aren't on
+the test's class path. A field the test's container injects (`@Autowired`, `@Inject`, `@Resource`) typed as an
+interface or superclass of the class uses it, and so does a test of a web controller, controller advice or filter
+that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate` or REST Assured. A test named after an
+interface or abstract class uses it through an implementation, a spy runs the real class, a project class the test
+uses that creates it, as a template dialect creates its processors, or registers it by its class, as a Jackson module
+registers a mixin with `setMixInAnnotation(Money.class, MoneyMixin.class)`, uses it too, a `@SpringBootTest` boots
+the `@SpringBootApplication` class, and requests a booted test sends reach any Spring bean: a component, or a class
+the wiring code creates in a `@Bean` method. Tests named after no project class are skipped.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.
 

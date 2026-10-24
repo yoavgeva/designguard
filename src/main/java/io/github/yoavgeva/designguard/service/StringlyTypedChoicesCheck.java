@@ -25,11 +25,12 @@ import java.util.stream.Stream;
  * Finds choices between strings that an enum models with type safety: a {@code switch} over three or more string
  * literals, or an {@code if}/{@code else if} chain comparing one value with three or more strings through {@code
  * equals}. A typo in a string compiles; a missing enum case doesn't. Converters, which turn input strings into a type,
- * are exempt: methods named {@code parse}, {@code from}, {@code valueOf}, {@code of}, {@code decode} or {@code to...}
- * or {@code for...}, as {@code toBool} and {@code forExtension} are, and methods returning one of the project's enums.
- * So are words from outside the code, which an enum can't own: strings with dots or spaces, such as property keys or
- * SQL, single characters, Java's type names, codes with digits, such as SQL states, method names a proxy dispatches on,
- * HTTP's method names, and command-line options, which start with a dash.
+ * are exempt: methods named {@code parse}, {@code from}, {@code valueOf}, {@code of}, {@code decode}, {@code to...},
+ * {@code for...} or {@code convert...}, as {@code toBool}, {@code forExtension} and {@code convertCondition} are, and
+ * methods returning one of the project's enums. So are words from outside the code, which an enum can't own: strings
+ * with dots or spaces, such as property keys or SQL, single characters, Java's type names, codes with digits, such as
+ * SQL states, method names a proxy dispatches on, HTTP's method names, and command-line options, which start with a
+ * dash.
  */
 public final class StringlyTypedChoicesCheck {
 

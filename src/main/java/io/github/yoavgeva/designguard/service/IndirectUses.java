@@ -113,13 +113,18 @@ final class IndirectUses {
         return servesRequests && sendsRequests(file, test);
     }
 
-    /** Whether a project class the test names creates the subject, as a dialect creates its processors. */
+    /**
+     * Whether a project class the test names creates the subject, as a dialect creates its processors, or registers it
+     * by its class, as a Jackson module registers a mixin with {@code setMixInAnnotation(Money.class, MoneyMixin.class)}.
+     */
     boolean isCreatedByAUsedClass(ParsedFile file, TypeDeclaration<?> test, JavaClass subject) {
         Set<JavaClass> used = test.findAll(ClassOrInterfaceType.class).stream()
                 .flatMap(type -> types.resolve(file.unit(), type.getNameWithScope()).stream())
                 .filter(type -> !type.equals(subject))
                 .collect(Collectors.toSet());
-        return isCreatedBy(subject, used::contains);
+        return isCreatedBy(subject, used::contains) || used.stream()
+                .flatMap(type -> type.getReferencedClassObjects().stream())
+                .anyMatch(reference -> reference.getRawType().equals(subject));
     }
 
     private static boolean isCreatedBy(JavaClass subject, Predicate<JavaClass> creators) {
