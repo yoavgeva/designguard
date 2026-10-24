@@ -18,7 +18,7 @@ import java.util.stream.Stream;
  * system clock, uses unseeded randomness, reads environment variables or system properties, or sleeps. Seeded
  * {@code new Random(42)}, {@code Clock.fixed(...)} and {@code now(clock)} are fine, and so is a clock reading the
  * test overwrites before using it, see {@link OverwrittenTimes}. Test methods, helpers and field initializers are all
- * checked; fixture code inside strings isn't code.
+ * checked, in the code tests run ({@link CodeTestsRun}); fixture code inside strings isn't code.
  */
 public final class NondeterministicTestsCheck {
 
@@ -100,7 +100,9 @@ public final class NondeterministicTestsCheck {
      * @return violations ordered by file and line
      */
     public List<Violation> check(JavaSources sources, ClassFilter filter) {
+        CodeTestsRun run = CodeTestsRun.in(sources);
         return sources.files().stream()
+                .filter(file -> file.unit().getTypes().stream().anyMatch(run::isRun))
                 .flatMap(file -> Stream.concat(
                         file.unit().findAll(MethodCallExpr.class).stream().flatMap(call -> called(call).stream()),
                         file.unit().findAll(ObjectCreationExpr.class).stream().flatMap(creation -> created(creation).stream()))

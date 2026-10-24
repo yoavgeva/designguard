@@ -1372,8 +1372,10 @@ Fix: one test per case, or a `@ParameterizedTest` with the cases as parameters.
 Test code that reads the system clock is reported: `now()` without a `Clock`, `System.currentTimeMillis()`,
 `nanoTime()`, `new Date()`, `new GregorianCalendar()`, `Calendar.getInstance()` and the system `Clock`s. A reading
 the test overwrites before using it is fine: `Calendar.getInstance()` stored in a variable whose next use is
-`clear()`, `setTime(...)` or `setTimeInMillis(...)`. Test methods, helpers and field initializers are all checked;
-fixture code inside strings isn't code.
+`clear()`, `setTime(...)` or `setTimeInMillis(...)`. Test methods, helpers and field initializers are all checked, in
+the code tests run: the classes that declare tests and the test-source classes they use, such as fixtures and sample
+builders, but not other code that lives in the test sources, such as a Gatling simulation; fixture code inside
+strings isn't code.
 
 Why: a test that reads the clock can pass today and fail at midnight, at month end, or in another time zone.
 

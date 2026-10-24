@@ -74,6 +74,42 @@ class DeterministicTestsRuleTest {
     }
 
     @Test
+    void onlyCodeTheTestsRunIsTestCode() {
+        DesignGuard guard = new CompiledProject(directory)
+                .add("Cart", "package shop;\n\npublic class Cart {\n    public int total() {\n        return 3;\n    }\n}\n")
+                .addTest("CartSamples", """
+                        package shop;
+
+                        final class CartSamples {
+                            static String region() {
+                                return System.getenv("REGION");
+                            }
+                        }
+                        """)
+                .addTest("CartTest", """
+                        package shop;
+
+                        class CartTest {
+                            @org.junit.jupiter.api.Test
+                            void totals() {
+                                org.assertj.core.api.Assertions.assertThat(CartSamples.region() + new Cart().total()).isNotEmpty();
+                            }
+                        }
+                        """)
+                .addTest("CartSimulation", """
+                        package shop.load;
+
+                        public class CartSimulation {
+                            String baseUrl = System.getProperty("baseURL", "http://localhost:8080");
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.tests().testsDontReadTheEnvironment().evaluate()).extracting(Violation::message)
+                .containsExactly("CartSamples.region() reads the environment through System.getenv()");
+    }
+
+    @Test
     void clockReadingsOverwrittenBeforeUseAreFixed() {
         DesignGuard guard = new CompiledProject(directory)
                 .add("Cart", "package shop;\n\npublic class Cart {\n    public int total() {\n        return 3;\n    }\n}\n")
