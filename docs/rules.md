@@ -30,8 +30,11 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   (`System.out`, `System.err`, `System.in`). Holding, wrapping, reading or writing a stream someone else opened only
   processes its data, so a parser over a `Reader` or a writer of JSON to a `Writer` is a value.
 - **Service-like**: a class that is effectful, holds a service, extends a class that is effectful itself or holds one,
-  or is an interface or abstract class with a service-like implementation. A `@FunctionalInterface` isn't, whatever its
-  implementations do, so holding one is like holding a lambda. Persistent classes aren't either: JPA `@Entity`,
+  or is an interface or abstract class with a service-like implementation that isn't safe to create or call: one that
+  implements its methods with effectful code, does I/O anywhere, as when it loads keys at start-up, or holds a service.
+  An implementation that only reads the clock or randomness in methods of its own, as one model among many stamping a
+  token does, leaves the abstraction a value. A `@FunctionalInterface` isn't service-like, whatever its implementations
+  do, so holding one is like holding a lambda. Persistent classes aren't either: JPA `@Entity`,
   `@Embeddable` and `@MappedSuperclass` classes and `@Document`s are data a store loads and saves, so an entity that
   stamps its creation date with `LocalDate.now()`, and the entities holding it, aren't services; the clock read is
   reported where it happens. **Value**: any other class.

@@ -10,6 +10,7 @@ import com.tngtech.archunit.core.domain.PackageMatcher;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -45,6 +46,18 @@ final class Effects {
         return CallGraph.reaching(CallGraph.unitsOf(candidates),
                 unit -> CallGraph.projectCallees(classes, accesses(unit), access -> overrides.mayRun(classes.bytecode(), access)),
                 unit -> isDirectlyEffectful(classes.bytecode(), unit));
+    }
+
+    /**
+     * Full names of the methods, constructors and lambdas that touch the outside world by more than reading the clock or
+     * randomness: I/O, the environment, threads and the like. A call may run any override of its target.
+     */
+    Set<String> ioEffectfulCodeUnits(ProjectClasses classes, List<JavaClass> candidates) {
+        Bytecode bytecode = classes.bytecode();
+        return CallGraph.reaching(CallGraph.unitsOf(candidates),
+                unit -> CallGraph.projectCallees(classes, accesses(unit), access -> overrides.mayRun(bytecode, access)),
+                unit -> accesses(unit).anyMatch(access -> isImpure(bytecode, access) && !JdkEffects.readsTimeOrChance(access.getTarget()))
+                        || readsResource(unit, type -> !JdkEffects.isTimeOrChanceType(type)));
     }
 
     /**
@@ -93,11 +106,14 @@ final class Effects {
     }
 
     private boolean isDirectlyEffectful(Bytecode bytecode, JavaCodeUnit unit) {
-        boolean impureAccess = accesses(unit).anyMatch(access -> isImpure(bytecode, access));
-        boolean usesImpureResource = unit.getFieldAccesses().stream()
+        return accesses(unit).anyMatch(access -> isImpure(bytecode, access)) || readsResource(unit, type -> true);
+    }
+
+    /** Whether the unit reads a field of {@code System}, or one holding a resource of the kinds counted. */
+    private boolean readsResource(JavaCodeUnit unit, Predicate<JavaClass> counted) {
+        return unit.getFieldAccesses().stream()
                 .anyMatch(access -> "java.lang.System".equals(access.getTargetOwner().getName())
-                        || isImpureType(access.getTarget().getRawType()));
-        return impureAccess || usesImpureResource;
+                        || isImpureType(access.getTarget().getRawType()) && counted.test(access.getTarget().getRawType()));
     }
 
     /** Calls, constructor calls and method references the code unit makes. */

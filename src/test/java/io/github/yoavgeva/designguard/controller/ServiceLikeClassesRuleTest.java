@@ -29,18 +29,7 @@ class ServiceLikeClassesRuleTest {
 
     @Test
     void collaboratorsACallIsGivenAreTheCallersButStaticOnesAreTheClasss() {
-        DesignGuard guard = new CompiledProject(directory).release(release)
-                .add("Storage", "package shop;\n\npublic interface Storage {\n    int size();\n}\n")
-                .add("DiskStorage", """
-                        package shop;
-
-                        public final class DiskStorage implements Storage {
-                            @Override
-                            public int size() {
-                                return System.getenv("SIZE").length();
-                            }
-                        }
-                        """)
+        DesignGuard guard = withDiskStorage()
                 .add("Pricing", """
                         package shop;
 
@@ -87,18 +76,7 @@ class ServiceLikeClassesRuleTest {
 
     @Test
     void subclassesOfServicesAreServicesButSiblingsOfOneAreNot() {
-        DesignGuard guard = new CompiledProject(directory).release(release)
-                .add("Storage", "package shop;\n\npublic interface Storage {\n    int size();\n}\n")
-                .add("DiskStorage", """
-                        package shop;
-
-                        public final class DiskStorage implements Storage {
-                            @Override
-                            public int size() {
-                                return System.getenv("SIZE").length();
-                            }
-                        }
-                        """)
+        DesignGuard guard = withDiskStorage()
                 .add("Synchronization", """
                         package shop;
 
@@ -188,7 +166,7 @@ class ServiceLikeClassesRuleTest {
 
     @Test
     void functionalInterfacesPassBehaviourAsDataLikeJavaUtilFunction() {
-        DesignGuard guard = new CompiledProject(directory).release(release)
+        DesignGuard guard = withDiskStorage()
                 .add("Check", "package shop;\n\n@FunctionalInterface\npublic interface Check {\n"
                         + "    boolean test(String value);\n}\n")
                 .add("EnvCheck", """
@@ -220,17 +198,6 @@ class ServiceLikeClassesRuleTest {
                                     matches++;
                                 }
                                 return matches > 0;
-                            }
-                        }
-                        """)
-                .add("Storage", "package shop;\n\npublic interface Storage {\n    int size();\n}\n")
-                .add("DiskStorage", """
-                        package shop;
-
-                        public final class DiskStorage implements Storage {
-                            @Override
-                            public int size() {
-                                return System.getenv("SIZE").length();
                             }
                         }
                         """)
@@ -434,6 +401,166 @@ class ServiceLikeClassesRuleTest {
     }
 
     @Test
+    void anAbstractionIsServiceLikeWhenCallingItCanReachEffects() {
+        DesignGuard guard = withDiskStorage()
+                .add("Model", "package shop;\n\npublic interface Model {\n    String name();\n\n    String kind();\n}\n")
+                .add("Post", """
+                        package shop;
+
+                        public final class Post implements Model {
+                            @Override
+                            public String name() {
+                                return "post";
+                            }
+
+                            @Override
+                            public String kind() {
+                                return "content";
+                            }
+                        }
+                        """)
+                .add("Subscription", """
+                        package shop;
+
+                        public final class Subscription implements Model {
+                            @Override
+                            public String name() {
+                                return "subscription";
+                            }
+
+                            @Override
+                            public String kind() {
+                                return "notification";
+                            }
+
+                            public String unsubscribeToken() {
+                                return java.util.UUID.randomUUID().toString();
+                            }
+                        }
+                        """)
+                .add("Listing", """
+                        package shop;
+
+                        public final class Listing {
+                            private Model subject;
+
+                            public void show(Model model) {
+                                subject = model;
+                            }
+                        }
+                        """)
+                .add("Cache", """
+                        package shop;
+
+                        public final class Cache {
+                            private final Storage storage;
+                            private int hits;
+
+                            public Cache(Storage storage) {
+                                this.storage = storage;
+                            }
+
+                            public int size() {
+                                hits++;
+                                return storage.size() + hits;
+                            }
+                        }
+                        """)
+                .add("ConfigFetcher", "package shop;\n\npublic interface ConfigFetcher {\n    String fetch();\n}\n")
+                .add("CachedConfigFetcher", """
+                        package shop;
+
+                        import java.util.function.Supplier;
+
+                        public final class CachedConfigFetcher implements ConfigFetcher {
+                            private final Supplier<String> config = () -> System.getenv("CONFIG");
+
+                            @Override
+                            public String fetch() {
+                                return config.get();
+                            }
+                        }
+                        """)
+                .add("Settings", """
+                        package shop;
+
+                        public final class Settings {
+                            private final ConfigFetcher fetcher;
+                            private String last;
+
+                            public Settings(ConfigFetcher fetcher) {
+                                this.fetcher = fetcher;
+                            }
+
+                            public String current() {
+                                last = fetcher.fetch();
+                                return last;
+                            }
+                        }
+                        """)
+                .add("Context", "package shop;\n\npublic interface Context {\n    Storage storage();\n}\n")
+                .add("RequestContext", """
+                        package shop;
+
+                        public final class RequestContext implements Context {
+                            private final Storage storage;
+
+                            public RequestContext(Storage storage) {
+                                this.storage = storage;
+                            }
+
+                            @Override
+                            public Storage storage() {
+                                return storage;
+                            }
+                        }
+                        """)
+                .add("Crypto", "package shop;\n\npublic interface Crypto {\n    byte[] decrypt(byte[] message);\n\n"
+                        + "    byte[] publicKey();\n}\n")
+                .add("RsaKeys", """
+                        package shop;
+
+                        public final class RsaKeys implements Crypto {
+                            private byte[] key = new byte[0];
+
+                            public void afterPropertiesSet() throws java.io.IOException {
+                                key = java.nio.file.Files.readAllBytes(java.nio.file.Path.of("keys/private.pem"));
+                            }
+
+                            @Override
+                            public byte[] decrypt(byte[] message) {
+                                return message.length > key.length ? message : key;
+                            }
+
+                            @Override
+                            public byte[] publicKey() {
+                                return key.clone();
+                            }
+                        }
+                        """)
+                .addTest("ShopTest", """
+                        package shop;
+
+                        class ShopTest {
+                            @org.junit.jupiter.api.Test
+                            void mocks() {
+                                Context context = org.mockito.Mockito.mock(Context.class);
+                                Crypto crypto = org.mockito.Mockito.mock(Crypto.class);
+                                Model model = org.mockito.Mockito.mock(Model.class);
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
+                "Cache is service-like, but its field 'hits' isn't final",
+                "RsaKeys is service-like, but its field 'key' isn't final",
+                "Settings is service-like, but its field 'last' isn't final");
+        assertThat(guard.tests().testsDontMockValues().evaluate()).extracting(Violation::message).containsExactly(
+                "ShopTest mocks Model, which is a value");
+    }
+
+    @Test
     void persistentClassesAreDataEvenWhenTheyReadTheClock() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Entity", "package shop;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
@@ -505,5 +632,21 @@ class ServiceLikeClassesRuleTest {
 
         assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
                 "Stopwatch is service-like, but its field 'started' isn't final");
+    }
+
+    /** A project with a storage interface whose one implementation reads the environment, so both are service-like. */
+    private CompiledProject withDiskStorage() {
+        return new CompiledProject(directory).release(release)
+                .add("Storage", "package shop;\n\npublic interface Storage {\n    int size();\n}\n")
+                .add("DiskStorage", """
+                        package shop;
+
+                        public final class DiskStorage implements Storage {
+                            @Override
+                            public int size() {
+                                return System.getenv("SIZE").length();
+                            }
+                        }
+                        """);
     }
 }

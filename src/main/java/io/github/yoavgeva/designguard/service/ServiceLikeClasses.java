@@ -3,7 +3,6 @@ package io.github.yoavgeva.designguard.service;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
-import com.tngtech.archunit.core.domain.JavaModifier;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -25,6 +24,7 @@ final class ServiceLikeClasses {
     private final Overrides overrides = new Overrides();
     private final ProjectClasses classes;
     private final Effects effects;
+    private final EffectfulAbstractions abstractions;
     private final Set<String> effectfulNames;
     private final Memo<Set<String>> withBodies;
     private final Memo<Set<String>> surelyEffectfulWhenRun;
@@ -36,8 +36,10 @@ final class ServiceLikeClasses {
         this.classes = classes;
         this.effects = new Effects(extraImpurePackages, overrides, classes);
         List<JavaClass> candidates = classes.stream().filter(ServiceLikeClasses::canBeServiceLike).toList();
-        this.effectfulNames = Set.copyOf(withAbstractions(candidates,
-                CallGraph.ownersOf(candidates, effects.effectfulCodeUnits(classes, candidates))));
+        Set<String> effectfulUnits = effects.effectfulCodeUnits(classes, candidates);
+        this.abstractions = new EffectfulAbstractions(effectfulUnits, effects.ioEffectfulCodeUnits(classes, candidates));
+        this.effectfulNames = Set.copyOf(abstractions.with(candidates, CallGraph.ownersOf(candidates, effectfulUnits),
+                this::holdsAResource));
         this.withBodies = new Memo<>(() -> CallGraph.withBodies(CallGraph.unitsOf(candidates)));
         this.surelyEffectfulWhenRun = new Memo<>(() -> effects.surelyEffectfulWhenRun(classes, candidates));
         this.ownEffectsWhenRun = new Memo<>(() -> effects.ownEffectsWhenRun(classes, candidates));
@@ -107,9 +109,7 @@ final class ServiceLikeClasses {
         Set<String> result = namesAmong(services, effectfulNames);
         Set<String> inherited = namesAmong(services, effectfulOnTheirOwnNames.get());
         services.stream()
-                .filter(type -> type.getFields().stream()
-                        .flatMap(field -> field.getAllInvolvedRawTypes().stream())
-                        .anyMatch(effects::isImpureType))
+                .filter(this::holdsAResource)
                 .map(JavaClass::getName)
                 .forEach(name -> {
                     result.add(name);
@@ -125,7 +125,13 @@ final class ServiceLikeClasses {
             inherited.addAll(reached);
             changed = result.addAll(reached);
         }
-        return withAbstractions(services, result);
+        return abstractions.with(services, result, type -> holdsAResource(type) || holdsServiceLike(type, result));
+    }
+
+    private boolean holdsAResource(JavaClass type) {
+        return type.getFields().stream()
+                .flatMap(field -> field.getAllInvolvedRawTypes().stream())
+                .anyMatch(effects::isImpureType);
     }
 
     private static Set<String> namesAmong(List<JavaClass> types, Set<String> names) {
@@ -140,20 +146,5 @@ final class ServiceLikeClasses {
         return type.getFields().stream()
                 .flatMap(field -> field.getAllInvolvedRawTypes().stream())
                 .anyMatch(fieldType -> !fieldType.equals(type) && serviceLike.contains(fieldType.getName()));
-    }
-
-    /**
-     * The classes, plus the interfaces and abstract classes one of them extends; a functional interface passes
-     * behaviour as data, so an effectful implementation doesn't make it service-like.
-     */
-    private static Set<String> withAbstractions(List<JavaClass> candidates, Set<String> concrete) {
-        Set<String> result = new HashSet<>(concrete);
-        candidates.stream()
-                .filter(type -> (type.isInterface() || type.getModifiers().contains(JavaModifier.ABSTRACT))
-                        && !Hierarchy.isFunctionalInterface(type))
-                .filter(type -> type.getAllSubclasses().stream().anyMatch(subclass -> concrete.contains(subclass.getName())))
-                .map(JavaClass::getName)
-                .forEach(result::add);
-        return result;
     }
 }

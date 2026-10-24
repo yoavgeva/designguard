@@ -6,6 +6,8 @@ import com.tngtech.archunit.core.domain.PackageMatcher;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Which JDK APIs touch the outside world: I/O, the clock, randomness, the environment, threads, executors or
@@ -22,17 +24,21 @@ final class JdkEffects {
     private static final String CONSTRUCTOR = "<init>";
     private static final Set<String> IMPURE_PACKAGES =
             Set.of("java.nio.file", "java.nio.channels", "java.net", "java.net.http", "java.sql", "javax.sql");
-    private static final Set<String> IMPURE_TYPES = Set.of("java.time.Clock", "java.time.InstantSource",
+    /** Types whose every use reads the clock or randomness. */
+    private static final Set<String> TIME_AND_CHANCE_TYPES = Set.of("java.time.Clock", "java.time.InstantSource",
             "java.util.Random", "java.security.SecureRandom", "java.util.concurrent.ThreadLocalRandom",
-            "java.util.random.RandomGenerator", "java.lang.ProcessBuilder", "java.lang.Runtime",
-            "java.lang.IO", "java.io.Console");
-    private static final Set<String> IMPURE_CALLS = Set.of("java.lang.System.currentTimeMillis",
-            "java.lang.System.nanoTime", "java.lang.System.getenv", "java.lang.System.getProperty",
-            "java.lang.System.getProperties", "java.lang.Integer.getInteger", "java.lang.Long.getLong",
-            "java.lang.Boolean.getBoolean", "java.lang.Math.random", "java.util.UUID.randomUUID",
-            "java.util.Calendar.getInstance", "java.lang.System.console", "java.lang.Class.getResourceAsStream",
-            "java.lang.ClassLoader.getResourceAsStream", "java.lang.ClassLoader.getSystemResourceAsStream",
-            "java.lang.Module.getResourceAsStream");
+            "java.util.random.RandomGenerator");
+    private static final Set<String> IMPURE_TYPES = union(TIME_AND_CHANCE_TYPES,
+            Set.of("java.lang.ProcessBuilder", "java.lang.Runtime", "java.lang.IO", "java.io.Console"));
+    /** Calls that read the clock or randomness. */
+    private static final Set<String> TIME_AND_CHANCE_CALLS = Set.of("java.lang.System.currentTimeMillis",
+            "java.lang.System.nanoTime", "java.lang.Math.random", "java.util.UUID.randomUUID",
+            "java.util.Calendar.getInstance");
+    private static final Set<String> IMPURE_CALLS = union(TIME_AND_CHANCE_CALLS, Set.of("java.lang.System.getenv",
+            "java.lang.System.getProperty", "java.lang.System.getProperties", "java.lang.Integer.getInteger",
+            "java.lang.Long.getLong", "java.lang.Boolean.getBoolean", "java.lang.System.console",
+            "java.lang.Class.getResourceAsStream", "java.lang.ClassLoader.getResourceAsStream",
+            "java.lang.ClassLoader.getSystemResourceAsStream", "java.lang.Module.getResourceAsStream"));
     /** Types whose constructor without parameters reads the clock. */
     private static final Set<String> CLOCK_CONSTRUCTORS = Set.of("java.util.Date", "java.util.GregorianCalendar");
     /** What an {@code InetAddress} does that resolves names or reaches the network. */
@@ -115,6 +121,22 @@ final class JdkEffects {
         return !javaClass.isArray() && !javaClass.isAnnotation() && !javaClass.isAssignableTo(Throwable.class);
     }
 
+    /**
+     * Whether calling the target only reads the clock or randomness, as {@code Instant.now()}, {@code new Date()} and
+     * {@code UUID.randomUUID()} do, rather than doing I/O.
+     */
+    static boolean readsTimeOrChance(CodeUnitAccessTarget target) {
+        String owner = target.getOwner().getName();
+        return TIME_AND_CHANCE_TYPES.contains(owner) || TIME_AND_CHANCE_CALLS.contains(owner + "." + target.getName())
+                || "java.time".equals(target.getOwner().getPackageName()) && "now".equals(target.getName())
+                || CLOCK_CONSTRUCTORS.contains(owner) && CONSTRUCTOR.equals(target.getName());
+    }
+
+    /** Whether the type is a clock or a source of randomness. */
+    static boolean isTimeOrChanceType(JavaClass type) {
+        return TIME_AND_CHANCE_TYPES.contains(type.getName());
+    }
+
     /** Whether using this type at all means touching the outside world, like {@code HttpClient} or {@code Random}. */
     static boolean isImpureType(JavaClass type, List<PackageMatcher> extraImpurePackages) {
         String packageName = type.getPackageName();
@@ -157,5 +179,9 @@ final class JdkEffects {
         Set<String> names = OPENING_CONSTRUCTORS.getOrDefault(owner, FILE_NAMES);
         return HEADER_STREAMS.contains(owner)
                 || parameters.stream().findFirst().filter(first -> names.contains(first.getName())).isPresent();
+    }
+
+    private static Set<String> union(Set<String> first, Set<String> second) {
+        return Stream.concat(first.stream(), second.stream()).collect(Collectors.toUnmodifiableSet());
     }
 }
