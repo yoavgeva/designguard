@@ -13,6 +13,8 @@ import org.junit.jupiter.api.io.TempDir;
 /** A call may run its target or any override, found once per target however many calls share it. */
 class OverridesTest {
 
+    private static final String SHOP = "shop";
+
     @TempDir
     private Path directory;
 
@@ -26,15 +28,34 @@ class OverridesTest {
                         + "        return 1;\n    }\n}\n")
                 .add("Report", "package shop;\n\npublic class Report {\n    public double total(Shape shape) {\n"
                         + "        return shape.area();\n    }\n}\n")
-                .guard("shop");
-        ProjectClasses classes = CodeBase.of(ProjectSettings.forPackages(List.of("shop"))
-                .withClassDirectories(List.of(directory.resolve("classes")))).projectClasses();
+                .guard(SHOP);
         Overrides overrides = new Overrides();
-        CodeUnitAccessTarget area = classes.stream().filter(type -> "Report".equals(type.getSimpleName())).findFirst()
-                .orElseThrow().getMethodCallsFromSelf().iterator().next().getTarget();
+        CodeUnitAccessTarget area = callOfReport();
 
         assertThat(overrides.of(area))
                 .containsExactlyInAnyOrder("shop.Shape.area()", "shop.Circle.area()", "shop.Square.area()")
                 .isSameAs(overrides.of(area));
+    }
+
+    @Test
+    void aCallToAnInheritedMethodMayRunTheMethodASuperclassDeclares() {
+        new CompiledProject(directory)
+                .add("Base", "package shop;\n\npublic abstract class Base {\n    public String name() {\n"
+                        + "        return \"base\";\n    }\n}\n")
+                .add("Leaf", "package shop;\n\npublic final class Leaf extends Base {\n}\n")
+                .add("Report", "package shop;\n\npublic class Report {\n    public String title(Leaf leaf) {\n"
+                        + "        return leaf.name();\n    }\n}\n")
+                .guard(SHOP);
+        CodeUnitAccessTarget name = callOfReport();
+
+        assertThat(new Overrides().of(name)).containsExactlyInAnyOrder("shop.Leaf.name()", "shop.Base.name()");
+    }
+
+    /** The one call the class {@code Report} makes. */
+    private CodeUnitAccessTarget callOfReport() {
+        ProjectClasses classes = CodeBase.of(ProjectSettings.forPackages(List.of(SHOP))
+                .withClassDirectories(List.of(directory.resolve("classes")))).projectClasses();
+        return classes.stream().filter(type -> "Report".equals(type.getSimpleName())).findFirst()
+                .orElseThrow().getMethodCallsFromSelf().iterator().next().getTarget();
     }
 }

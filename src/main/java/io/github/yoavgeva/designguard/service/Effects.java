@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
+import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
@@ -8,14 +9,18 @@ import com.tngtech.archunit.core.domain.PackageMatcher;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Which code touches the outside world: I/O, the clock, randomness, the environment, threads, executors or
  * processes, or a configured impure package. Holding a thread or an executor, or reading the current thread, as
- * {@code Thread.currentThread().getName()} does, isn't an effect; starting, configuring or running work on one is. A method, constructor or lambda is effectful if it uses such an API, reads a field
- * holding such a resource, or calls project code that is effectful; a call through an interface counts as
- * effectful if any implementation is. Using {@code Path}, {@code URI} or {@code File} as data is not I/O.
+ * {@code Thread.currentThread().getName()} does, isn't an effect; starting, configuring or running work on one is. A
+ * method, constructor or lambda is effectful if it uses such an API, reads a field holding such a resource, or calls
+ * project code that is effectful; a call through an interface counts as effectful if any implementation is. Using
+ * {@code Path}, {@code URI} or {@code File} as data is not I/O, and neither are in-memory streams such as
+ * {@code StringWriter}, or wrapping a stream: only creating one on a file name, or an object stream, which reads or
+ * writes a header, is.
  */
 final class Effects {
 
@@ -29,6 +34,7 @@ final class Effects {
     private static final Set<String> IMPURE_CALLS = Set.of("java.lang.System.currentTimeMillis",
             "java.lang.System.nanoTime", "java.lang.System.getenv", "java.lang.System.getProperty",
             "java.lang.Math.random", "java.util.UUID.randomUUID");
+    private static final Set<String> HEADER_STREAMS = Set.of("java.io.ObjectInputStream", "java.io.ObjectOutputStream");
     private static final Set<String> RUNS_WORK = Set.of("execute", "submit", "invokeAll", "invokeAny", "schedule",
             "scheduleAtFixedRate", "scheduleWithFixedDelay", "shutdown", "shutdownNow", "close", "awaitTermination");
     private static final Set<String> STARTS_POOLS = Set.of(CONSTRUCTOR, "execute", "submit", "invokeAll", "invokeAny",
@@ -47,6 +53,12 @@ final class Effects {
                     "lastModified", "list", "listFiles", "delete", "deleteOnExit", "mkdir", "mkdirs", "createNewFile",
                     "renameTo", "getCanonicalPath", "getCanonicalFile", "setLastModified", "setReadOnly")),
             Map.entry("java.io.Serializable", Set.of()),
+            Map.entry("java.io.ByteArrayInputStream", Set.of()),
+            Map.entry("java.io.ByteArrayOutputStream", Set.of()),
+            Map.entry("java.io.CharArrayReader", Set.of()),
+            Map.entry("java.io.CharArrayWriter", Set.of()),
+            Map.entry("java.io.StringReader", Set.of()),
+            Map.entry("java.io.StringWriter", Set.of()),
             Map.entry("java.lang.Thread", Set.of(CONSTRUCTOR, "start", "sleep", "join", "interrupt", "interrupted",
                     "yield", "setDaemon", "setName", "setPriority", "setContextClassLoader",
                     "setUncaughtExceptionHandler", "setDefaultUncaughtExceptionHandler", "startVirtualThread",
@@ -60,7 +72,7 @@ final class Effects {
             Map.entry("java.util.concurrent.Executor", RUNS_WORK),
             Map.entry("java.util.concurrent.ExecutorService", RUNS_WORK),
             Map.entry("java.util.concurrent.ScheduledExecutorService", RUNS_WORK),
-            Map.entry("java.util.concurrent.AbstractExecutorService", STARTS_POOLS),
+            Map.entry("java.util.concurrent.AbstractExecutorService", RUNS_WORK),
             Map.entry("java.util.concurrent.ThreadPoolExecutor", STARTS_POOLS),
             Map.entry("java.util.concurrent.ScheduledThreadPoolExecutor", STARTS_POOLS),
             Map.entry("java.util.concurrent.ForkJoinPool", STARTS_POOLS));
@@ -95,14 +107,27 @@ final class Effects {
     }
 
     /**
-     * Full names of the methods and constructors that touch the outside world when they run, through the calls they
-     * make themselves. Calls in the lambdas they create, and methods they only reference, run later if at all.
+     * Full names of the methods and constructors that surely touch the outside world when they run, through the calls
+     * they make themselves: a call to an outside-world API, or to project code whose every implementation with a
+     * body surely does. A call that may run code without effects, such as a strategy with implementations of both
+     * kinds, doesn't count. Calls in the lambdas they create, and methods they only reference, run later if at all.
      */
-    Set<String> effectfulWhenRun(ProjectClasses classes, List<JavaClass> candidates) {
+    Set<String> surelyEffectfulWhenRun(ProjectClasses classes, List<JavaClass> candidates) {
         Bytecode bytecode = classes.bytecode();
-        return CallGraph.reaching(CallGraph.unitsOf(candidates),
-                unit -> CallGraph.projectCallees(classes, bytecode.callsMadeBy(unit), target -> overrides.of(target).stream()),
-                unit -> bytecode.callsMadeBy(unit).anyMatch(call -> isImpure(call.getTarget())));
+        List<JavaCodeUnit> units = CallGraph.unitsOf(candidates);
+        Set<String> withBodies = CallGraph.withBodies(units);
+        Map<String, Set<Set<String>>> calls = units.stream().collect(Collectors.toMap(JavaCodeUnit::getFullName,
+                unit -> bytecode.callsMadeBy(unit)
+                        .map(JavaCall::getTarget)
+                        .filter(target -> classes.isProject(target.getOwner()))
+                        .map(target -> overrides.implementationsOf(target, withBodies))
+                        .collect(Collectors.toSet()),
+                (first, second) -> Stream.concat(first.stream(), second.stream()).collect(Collectors.toSet())));
+        Set<String> seeds = units.stream()
+                .filter(unit -> bytecode.callsMadeBy(unit).anyMatch(call -> isImpure(call.getTarget())))
+                .map(JavaCodeUnit::getFullName)
+                .collect(Collectors.toSet());
+        return CallGraph.spreadThroughEvery(calls, seeds);
     }
 
     /**
@@ -150,8 +175,23 @@ final class Effects {
         if (EFFECTS_OF_VALUE_TYPES.containsKey(name)) {
             return EFFECTS_OF_VALUE_TYPES.get(name).contains(target.getName());
         }
+        if (CONSTRUCTOR.equals(target.getName()) && "java.io".equals(owner.getPackageName())) {
+            return opensOnCreation(target);
+        }
         return isImpureType(owner)
                 || IMPURE_CALLS.contains(name + "." + target.getName())
                 || "java.time".equals(owner.getPackageName()) && "now".equals(target.getName());
+    }
+
+    /**
+     * Whether creating the stream touches the outside world: it opens the file it is given by name, as
+     * {@code new FileReader("prices.txt")} does, or reads or writes an object stream's header. Wrapping a stream
+     * doesn't.
+     */
+    private static boolean opensOnCreation(CodeUnitAccessTarget constructor) {
+        return HEADER_STREAMS.contains(constructor.getOwner().getName())
+                || constructor.getRawParameterTypes().stream().findFirst()
+                        .filter(first -> first.isEquivalentTo(String.class) || first.isEquivalentTo(java.io.File.class))
+                        .isPresent();
     }
 }

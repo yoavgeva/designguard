@@ -115,4 +115,54 @@ class QueriesInLoopsRuleTest {
         assertThat(guard.dependencies().noQueriesInLoops().evaluate().get(0).fix()).isEqualTo("load what the loop"
                 + " needs with one call before it, such as one query for all the keys");
     }
+
+    @Test
+    void strategiesThatMayRunNoEffectsAreNotQueries() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Rule", "package shop;\n\npublic interface Rule {\n    boolean test(String value);\n}\n")
+                .add("LengthRule", """
+                        package shop;
+
+                        public final class LengthRule implements Rule {
+                            @Override
+                            public boolean test(String value) {
+                                return value.length() > 3;
+                            }
+                        }
+                        """)
+                .add("EnvRule", """
+                        package shop;
+
+                        public final class EnvRule implements Rule {
+                            @Override
+                            public boolean test(String value) {
+                                return System.getenv(value) != null;
+                            }
+                        }
+                        """)
+                .add("Selection", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Selection {
+                            private final Rule rule;
+
+                            public Selection(Rule rule) {
+                                this.rule = rule;
+                            }
+
+                            public long matching(List<String> items) {
+                                long count = 0;
+                                for (String item : items) {
+                                    count += rule.test(item) ? 1 : 0;
+                                }
+                                return count + items.stream().filter(rule::test).count();
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.dependencies().noQueriesInLoops().evaluate()).isEmpty();
+    }
 }

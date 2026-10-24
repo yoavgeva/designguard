@@ -131,17 +131,63 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
+                .add("EnvDefaults", """
+                        package shop;
+
+                        public abstract class EnvDefaults {
+                            public String region() {
+                                return System.getenv("REGION");
+                            }
+                        }
+                        """)
+                .add("ShopDefaults", "package shop;\n\npublic final class ShopDefaults extends EnvDefaults {\n}\n")
+                .add("Banner", """
+                        package shop;
+
+                        public class Banner {
+                            private final String region;
+
+                            public Banner(ShopDefaults defaults) {
+                                this.region = defaults.region();
+                            }
+
+                            public String region() {
+                                return region;
+                            }
+                        }
+                        """)
+                .add("Journal", """
+                        package shop;
+
+                        import java.io.FileNotFoundException;
+                        import java.io.FileOutputStream;
+                        import java.io.OutputStream;
+
+                        public class Journal {
+                            private final OutputStream out;
+
+                            public Journal(String file) throws FileNotFoundException {
+                                this.out = new FileOutputStream(file);
+                            }
+
+                            public OutputStream out() {
+                                return out;
+                            }
+                        }
+                        """)
                 .guard("shop");
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate())
                 .extracting(Violation::line, Violation::message)
                 .containsExactly(
+                        tuple(7, "Banner does work in its constructor through ShopDefaults.region()"),
                         tuple(12, "Catalog does work in its constructor through Files.readAllLines()"),
                         tuple(4, "Config does work in its static initializer through System.getenv()"),
+                        tuple(11, "Journal does work in its constructor through new FileOutputStream()"),
                         tuple(9, "PriceCache does work in its constructor through Storage.load()"),
                         tuple(4, "Regions does work in its constructor through System.getenv()"),
                         tuple(5, "Reports does work in its constructor through Reports.refresh()"));
-        assertThat(guard.dependencies().constructorsDoNoWork().evaluate().get(0).fix()).isEqualTo(
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate().get(1).fix()).isEqualTo(
                 "pass in what Files.readAllLines() produces, or call it from a method when it's needed");
     }
 
@@ -246,6 +292,110 @@ class ConstructorWorkRuleTest {
 
                             public static void main(String[] args) {
                                 new App();
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();
+    }
+
+    @Test
+    void callsThatMayRunNoEffectsAreNotWork() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Rule", "package shop;\n\npublic interface Rule {\n    boolean test(String value);\n}\n")
+                .add("LengthRule", """
+                        package shop;
+
+                        public final class LengthRule implements Rule {
+                            @Override
+                            public boolean test(String value) {
+                                return value.length() > 3;
+                            }
+                        }
+                        """)
+                .add("EnvRule", """
+                        package shop;
+
+                        public final class EnvRule implements Rule {
+                            @Override
+                            public boolean test(String value) {
+                                return System.getenv(value) != null;
+                            }
+                        }
+                        """)
+                .add("FileLines", """
+                        package shop;
+
+                        import java.io.BufferedReader;
+                        import java.io.IOException;
+                        import java.io.UncheckedIOException;
+                        import java.util.Iterator;
+
+                        public final class FileLines implements Iterator<String> {
+                            private final BufferedReader reader;
+                            private String line;
+
+                            public FileLines(BufferedReader reader) {
+                                this.reader = reader;
+                            }
+
+                            @Override
+                            public boolean hasNext() {
+                                try {
+                                    line = reader.readLine();
+                                } catch (IOException e) {
+                                    throw new UncheckedIOException(e);
+                                }
+                                return line != null;
+                            }
+
+                            @Override
+                            public String next() {
+                                return line;
+                            }
+                        }
+                        """)
+                .add("Filter", """
+                        package shop;
+
+                        import java.util.Iterator;
+                        import java.util.List;
+
+                        public final class Filter {
+                            private final boolean accepted;
+                            private final String first;
+                            private final int size;
+
+                            public Filter(Rule rule, Iterator<String> values, List<String> names) {
+                                this.accepted = rule.test("x");
+                                this.first = values.hasNext() ? values.next() : "";
+                                this.size = names.size();
+                            }
+
+                            public String describe() {
+                                return accepted + first + size;
+                            }
+                        }
+                        """)
+                .add("CountingStream", """
+                        package shop;
+
+                        import java.io.ByteArrayOutputStream;
+                        import java.io.DataOutputStream;
+                        import java.io.FilterInputStream;
+                        import java.io.InputStream;
+
+                        public final class CountingStream extends FilterInputStream {
+                            private final ByteArrayOutputStream copy = new ByteArrayOutputStream();
+                            private final DataOutputStream data = new DataOutputStream(copy);
+
+                            public CountingStream(InputStream in) {
+                                super(in);
+                            }
+
+                            public int copied() {
+                                return copy.size() + data.size();
                             }
                         }
                         """)

@@ -4,7 +4,9 @@ import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
@@ -13,6 +15,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /** Spreads a property of code units, such as touching the outside world, to every project code unit that calls one. */
@@ -62,6 +65,40 @@ final class CallGraph {
     }
 
     /**
+     * The seeds, plus every caller with a call whose possible targets are all reached, until none is added. A call
+     * that may run a unit without the property, such as a strategy with implementations of both kinds, doesn't spread
+     * it. Each target of each call is counted once, so the time grows with the number of calls.
+     *
+     * @param calls each caller's calls, each as the full names of the units it may run; a call with none never spreads
+     * @param seeds the names that have the property themselves
+     * @return the names with the property
+     */
+    static Set<String> spreadThroughEvery(Map<String, Set<Set<String>>> calls, Set<String> seeds) {
+        List<String> callers = new ArrayList<>();
+        List<Set<String>> targets = new ArrayList<>();
+        calls.forEach((caller, made) -> made.stream().filter(call -> !call.isEmpty()).forEach(call -> {
+            callers.add(caller);
+            targets.add(call);
+        }));
+        int[] unreached = targets.stream().mapToInt(Set::size).toArray();
+        Map<String, List<Integer>> callsOf = IntStream.range(0, targets.size()).boxed()
+                .flatMap(call -> targets.get(call).stream().map(target -> Map.entry(target, call)))
+                .collect(Collectors.groupingBy(Map.Entry::getKey,
+                        Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+        Set<String> reached = new HashSet<>(seeds);
+        Deque<String> pending = new ArrayDeque<>(seeds);
+        while (!pending.isEmpty()) {
+            for (int call : callsOf.getOrDefault(pending.pop(), List.of())) {
+                unreached[call]--;
+                if (unreached[call] == 0 && reached.add(callers.get(call))) {
+                    pending.push(callers.get(call));
+                }
+            }
+        }
+        return Set.copyOf(reached);
+    }
+
+    /**
      * Both units' callees: units can share a full name, as a covariant override and the bridge method the compiler
      * adds for it do, and a call by that name may run either.
      */
@@ -76,6 +113,14 @@ final class CallGraph {
                 .map(JavaCodeUnitAccess::getTarget)
                 .filter(target -> classes.isProject(target.getOwner()))
                 .flatMap(dispatch)
+                .collect(Collectors.toSet());
+    }
+
+    /** Full names of the code units with a body: all but abstract methods. */
+    static Set<String> withBodies(List<JavaCodeUnit> units) {
+        return units.stream()
+                .filter(unit -> !unit.getModifiers().contains(JavaModifier.ABSTRACT))
+                .map(JavaCodeUnit::getFullName)
                 .collect(Collectors.toSet());
     }
 

@@ -380,8 +380,9 @@ public class Checkout {
 Queries made once per item, the N+1 pattern, are reported. A query is a call on a collaborator that touches the
 outside world and returns a value. It counts when it is made inside a loop, or in a lambda or method reference
 handed to a stream or `forEach`. Commands, which return nothing, aren't queries. Calls on the loop's own items, a
-class's own helpers and static methods are left alone, since that per-item work can't be batched. Wiring code is
-exempt.
+class's own helpers and static methods are left alone, since that per-item work can't be batched. A call counts
+only if every implementation it may run touches the outside world, so a strategy such as a `Predicate` with pure
+implementations isn't a query. Wiring code is exempt.
 
 Why: one round trip per item turns a page of 50 orders into 51 database or HTTP calls.
 
@@ -405,8 +406,10 @@ Fix: add a batch query to the collaborator, such as `client.chargeAll(amounts)`,
 `dependencies().constructorsDoNoWork()` · **recommended**
 
 Constructors and static initializers that call effectful code are reported: I/O, the clock, an injected
-collaborator. Field initializers run in every constructor, and are reported once. Creating objects is left to
-`inject-services`, and wiring code is exempt.
+collaborator. Field initializers run in every constructor, and are reported once. A call to a collaborator counts
+only if every implementation it may run touches the outside world, and calls to JDK interfaces such as
+`Iterator.hasNext()` don't count. Wrapping a stream, or creating an in-memory one such as `StringWriter`, isn't I/O.
+Creating objects is left to `inject-services`, and wiring code is exempt.
 
 Why: a class whose constructor does work can't be created without it, so tests can't create it cheaply, and a
 failure there leaves no object to recover with.

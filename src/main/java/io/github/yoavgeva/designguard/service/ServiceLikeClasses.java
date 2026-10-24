@@ -19,19 +19,23 @@ import java.util.Set;
 final class ServiceLikeClasses {
 
     private final Overrides overrides = new Overrides();
+    private final ProjectClasses classes;
     private final Effects effects;
     private final Set<String> effectfulNames;
-    private final Memo<Set<String>> effectfulWhenRun;
+    private final Memo<Set<String>> withBodies;
+    private final Memo<Set<String>> surelyEffectfulWhenRun;
     private final Memo<Set<String>> ownEffectsWhenRun;
     private final Memo<Set<String>> effectfulOnTheirOwnNames;
     private final Set<String> serviceLikeNames;
 
     ServiceLikeClasses(ProjectClasses classes, List<String> extraImpurePackages) {
+        this.classes = classes;
         this.effects = new Effects(extraImpurePackages, overrides);
         List<JavaClass> candidates = classes.stream().filter(ServiceLikeClasses::canBeServiceLike).toList();
         this.effectfulNames = Set.copyOf(withAbstractions(candidates,
                 CallGraph.ownersOf(candidates, effects.effectfulCodeUnits(classes, candidates))));
-        this.effectfulWhenRun = new Memo<>(() -> effects.effectfulWhenRun(classes, candidates));
+        this.withBodies = new Memo<>(() -> CallGraph.withBodies(CallGraph.unitsOf(candidates)));
+        this.surelyEffectfulWhenRun = new Memo<>(() -> effects.surelyEffectfulWhenRun(classes, candidates));
         this.ownEffectsWhenRun = new Memo<>(() -> effects.ownEffectsWhenRun(classes, candidates));
         this.effectfulOnTheirOwnNames = new Memo<>(() -> Set.copyOf(effects.effectfulOnTheirOwn(classes, candidates)));
         this.serviceLikeNames = Set.copyOf(serviceLike(candidates));
@@ -56,12 +60,19 @@ final class ServiceLikeClasses {
     }
 
     /**
-     * Whether making the call touches the outside world right away: it calls an outside-world API, or project code,
-     * any override of it included, whose own calls do. Lambdas the code creates don't count until they run.
+     * Whether making the call surely touches the outside world right away: it calls an outside-world API, or project
+     * code whose every implementation's own calls do. A strategy with an implementation without effects doesn't, nor
+     * does a JDK interface such as {@code Iterator.hasNext()} that a project class implements with I/O. Lambdas the
+     * code creates don't count until they run.
      */
     boolean runsEffects(CodeUnitAccessTarget target) {
-        Set<String> whenRun = effectfulWhenRun.get();
-        return effects.isImpure(target) || overrides.of(target).stream().anyMatch(whenRun::contains);
+        if (effects.isImpure(target)) {
+            return true;
+        }
+        Set<String> implementations = classes.isProject(target.getOwner())
+                ? overrides.implementationsOf(target, withBodies.get())
+                : Set.of();
+        return !implementations.isEmpty() && surelyEffectfulWhenRun.get().containsAll(implementations);
     }
 
     /**
