@@ -2,6 +2,7 @@ package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.SwitchExpr;
@@ -21,8 +22,8 @@ import java.util.Optional;
 /**
  * Finds tests with logic ("conditional test logic"): an {@code if} or a {@code switch} in a test method, which makes it
  * check different things on different runs, or a loop around an assertion, which hides which case failed. A loop
- * that only sets up data is fine, and so is logic in helper methods and in classes a test declares, such as a fake;
- * the tests themselves take one path.
+ * that only sets up data is fine, and so is logic in helper methods, in classes a test declares, such as a fake, and
+ * in lambdas that assert nothing, which are fakes too; the tests themselves take one path.
  */
 public final class BranchingTestsCheck {
 
@@ -67,9 +68,11 @@ public final class BranchingTestsCheck {
                 .min(Comparator.comparingInt(found -> Scopes.line(found.getKey())));
     }
 
-    /** Whether the node is in an anonymous or local class the test declares. */
+    /** Whether the node is in an anonymous or local class the test declares, or in a lambda that asserts nothing. */
     private static boolean inClassOf(MethodDeclaration test, Node node) {
         return Scopes.nearest(node, MethodDeclaration.class).filter(method -> !method.equals(test)).isPresent()
+                || Scopes.nearest(node, LambdaExpr.class).filter(lambda -> lambda.getBody().findAll(MethodCallExpr.class)
+                        .stream().noneMatch(UnitTestMethods::isAssertion)).isPresent()
                 || Scopes.nearest(node, ObjectCreationExpr.class).filter(creation -> creation.getAnonymousClassBody().isPresent()
                         && creation.getAnonymousClassBody().get().stream().anyMatch(member -> member.isAncestorOf(node)))
                         .isPresent();
