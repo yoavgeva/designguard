@@ -43,16 +43,19 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * @param directCalls  for each method and constructor that creates lambdas, by name and descriptor such as
  *                     {@code <init>(I)V}, the {@link #callKey(String, String, int) calls} it makes itself, not those
  *                     in the lambdas; other methods make exactly the calls ArchUnit reports
+ * @param superCalls       for each method and constructor that calls a method with {@code invokespecial}, such as
+ *                         {@code super.describe()} or a private method, the {@link #callKey(String, String, int) calls}:
+ *                         they run exactly the method they name, not an override
  * @param loops            the calls each method makes once per item: in a loop, or in a lambda it gives a stream
  * @param accessorChanges  for each {@code get}, {@code is} or {@code has} method that changes fields of its class, by
  *                         name and descriptor, the {@link AccessorChanges changes} it makes, lazy initialization aside
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
-        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Loops loops,
-        Map<String, List<AccessorChanges.FieldChange>> accessorChanges) {
+        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> superCalls,
+        Loops loops, Map<String, List<AccessorChanges.FieldChange>> accessorChanges) {
 
     /** For a class without a class file to read. */
-    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(),
+    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of(),
             new Loops(Map.of(), Map.of(), Map.of()), Map.of());
 
     /** Java N writes class files of major version N + 44. */
@@ -68,6 +71,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         switchLabels = List.copyOf(switchLabels);
         namedClasses = List.copyOf(namedClasses);
         directCalls = Map.copyOf(directCalls);
+        superCalls = Map.copyOf(superCalls);
         accessorChanges = Map.copyOf(accessorChanges);
     }
 
@@ -97,11 +101,27 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         int release = reader.readUnsignedShort(MAJOR_VERSION_OFFSET) - CLASS_FILE_VERSION_OFFSET;
         Map<String, Integer> captured = Loops.capturedSlots(node);
         return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
-                byMethod(node, ClassFileFacts::directCalls),
+                byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::superCalls),
                 new Loops(byMethod(node, method -> Loops.callsInLoops(node.name, method)),
                         byMethod(node, Loops::iteratedLambdas),
                         byMethod(node, method -> Loops.lambdaBodyCalls(node.name, method, captured))),
                 AccessorChanges.of(node));
+    }
+
+    /** The non-virtual calls of methods the method makes, keyed with their line: {@code super.m()} and private methods. */
+    private static Set<String> superCalls(MethodNode method) {
+        Set<String> calls = new LinkedHashSet<>();
+        int line = 0;
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof LineNumberNode number) {
+                line = number.line;
+            }
+            if (instruction instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL
+                    && !"<init>".equals(call.name)) {
+                calls.add(callKey(Type.getObjectType(call.owner).getClassName(), call.name, line));
+            }
+        }
+        return Set.copyOf(calls);
     }
 
     /** The facts of the methods that have any, by name and descriptor. */

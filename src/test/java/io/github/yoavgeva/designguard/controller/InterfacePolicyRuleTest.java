@@ -18,6 +18,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 @MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class InterfacePolicyRuleTest {
 
+    private static final String SHOP = "shop";
+
     @Parameter
     private int release;
 
@@ -28,7 +30,7 @@ class InterfacePolicyRuleTest {
 
     @BeforeEach
     void compileShop() {
-        guard = ShopFixture.write(directory).release(release).guard("shop");
+        guard = ShopFixture.write(directory).release(release).guard(SHOP);
     }
 
     @Test
@@ -71,7 +73,7 @@ class InterfacePolicyRuleTest {
                         + "    private final shop.config.Settings settings;\n\n"
                         + "    public Loader(shop.config.Settings settings) {\n        this.settings = settings;\n    }\n\n"
                         + "    public String root() {\n        return settings.root().toString();\n    }\n}\n")
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(paths.dependencies().interfacePolicy(InterfacePolicy.PORTS).evaluate()).isEmpty();
     }
@@ -83,9 +85,26 @@ class InterfacePolicyRuleTest {
                         + "    public String charge() {\n        return System.getenv(\"STRIPE_KEY\");\n    }\n}\n")
                 .add("Shop", "package shop;\n\npublic class Shop {\n    public String pay(shop.payments.StripeClient client) {\n"
                         + "        return client.charge();\n    }\n}\n")
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(root.dependencies().interfacePolicy(InterfacePolicy.PORTS).evaluate()).isEmpty();
+    }
+
+    @Test
+    void aSuperCallRunsTheSuperclassMethodNotOverrides(@TempDir Path other) {
+        var shapes = new CompiledProject(other).release(release)
+                .add("Shape", "package shop.shapes;\n\npublic abstract class Shape {\n"
+                        + "    protected String describe() {\n        return \"shape\";\n    }\n}\n")
+                .add("Square", "package shop.shapes;\n\npublic class Square extends Shape {\n"
+                        + "    public String label() {\n        return super.describe();\n    }\n\n"
+                        + "    @Override\n    protected String describe() {\n        return \"square\";\n    }\n}\n")
+                .add("LoggedSquare", "package shop.shapes;\n\npublic class LoggedSquare extends Square {\n"
+                        + "    @Override\n    protected String describe() {\n        return System.getenv(\"SHAPE\");\n    }\n}\n")
+                .add("Gallery", "package shop.shapes;\n\npublic class Gallery {\n    private final Square square = new Square();\n\n"
+                        + "    public String show() {\n        return square.label();\n    }\n}\n")
+                .guard(SHOP);
+
+        assertThat(shapes.dependencies().interfacePolicy(InterfacePolicy.SERVICES).evaluate()).isEmpty();
     }
 
     @Test

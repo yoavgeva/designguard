@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard.service;
 
-import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
@@ -106,13 +105,12 @@ final class CallGraph {
         return Stream.concat(first.stream(), second.stream()).collect(Collectors.toSet());
     }
 
-    /** The project code units the accesses may run, as {@code dispatch} resolves each target. */
+    /** The project code units the accesses may run, as {@code dispatch} resolves each access. */
     static Set<String> projectCallees(ProjectClasses classes, Stream<? extends JavaCodeUnitAccess<?>> accesses,
-            Function<CodeUnitAccessTarget, Stream<String>> dispatch) {
+            Function<JavaCodeUnitAccess<?>, Set<String>> dispatch) {
         return accesses
-                .map(JavaCodeUnitAccess::getTarget)
-                .filter(target -> classes.isProject(target.getOwner()))
-                .flatMap(dispatch)
+                .filter(access -> classes.isProject(access.getTarget().getOwner()))
+                .flatMap(access -> dispatch.apply(access).stream())
                 .collect(Collectors.toSet());
     }
 

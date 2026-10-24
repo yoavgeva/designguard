@@ -1,7 +1,6 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
-import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
@@ -102,7 +101,7 @@ final class Effects {
     /** Full names of the effectful methods, constructors and lambdas; a call may run any override of its target. */
     Set<String> effectfulCodeUnits(ProjectClasses classes, List<JavaClass> candidates) {
         return CallGraph.reaching(CallGraph.unitsOf(candidates),
-                unit -> CallGraph.projectCallees(classes, accesses(unit), target -> overrides.of(target).stream()),
+                unit -> CallGraph.projectCallees(classes, accesses(unit), access -> overrides.mayRun(classes.bytecode(), access)),
                 this::isDirectlyEffectful);
     }
 
@@ -118,9 +117,8 @@ final class Effects {
         Set<String> withBodies = CallGraph.withBodies(units);
         Map<String, Set<Set<String>>> calls = units.stream().collect(Collectors.toMap(JavaCodeUnit::getFullName,
                 unit -> bytecode.callsMadeBy(unit)
-                        .map(JavaCall::getTarget)
-                        .filter(target -> classes.isProject(target.getOwner()))
-                        .map(target -> overrides.implementationsOf(target, withBodies))
+                        .filter(call -> classes.isProject(call.getTargetOwner()))
+                        .map(call -> overrides.implementationsOf(bytecode, call, withBodies))
                         .collect(Collectors.toSet()),
                 (first, second) -> Stream.concat(first.stream(), second.stream()).collect(Collectors.toSet())));
         Set<String> seeds = units.stream()
@@ -138,7 +136,7 @@ final class Effects {
     Set<String> ownEffectsWhenRun(ProjectClasses classes, List<JavaClass> candidates) {
         Bytecode bytecode = classes.bytecode();
         return CallGraph.reaching(CallGraph.unitsOf(candidates),
-                unit -> CallGraph.projectCallees(classes, bytecode.callsMadeBy(unit), target -> Stream.of(target.getFullName())),
+                unit -> CallGraph.projectCallees(classes, bytecode.callsMadeBy(unit), access -> overrides.named(access.getTarget())),
                 unit -> bytecode.callsMadeBy(unit).anyMatch(call -> isImpure(call.getTarget())));
     }
 
@@ -148,7 +146,7 @@ final class Effects {
      */
     Set<String> effectfulOnTheirOwn(ProjectClasses classes, List<JavaClass> candidates) {
         return CallGraph.ownersOf(candidates, CallGraph.reaching(CallGraph.unitsOf(candidates),
-                unit -> CallGraph.projectCallees(classes, accesses(unit), target -> Stream.of(target.getFullName())),
+                unit -> CallGraph.projectCallees(classes, accesses(unit), access -> overrides.named(access.getTarget())),
                 this::isDirectlyEffectful));
     }
 

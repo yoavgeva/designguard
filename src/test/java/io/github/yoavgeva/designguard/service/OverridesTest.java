@@ -38,7 +38,7 @@ class OverridesTest {
     }
 
     @Test
-    void aCallToAnInheritedMethodMayRunTheMethodASuperclassDeclares() {
+    void aCallToAnInheritedMethodNamesTheMethodASuperclassDeclares() {
         new CompiledProject(directory)
                 .add("Base", "package shop;\n\npublic abstract class Base {\n    public String name() {\n"
                         + "        return \"base\";\n    }\n}\n")
@@ -48,7 +48,7 @@ class OverridesTest {
                 .guard(SHOP);
         CodeUnitAccessTarget name = callOfReport();
 
-        assertThat(new Overrides().of(name)).containsExactlyInAnyOrder("shop.Leaf.name()", "shop.Base.name()");
+        assertThat(new Overrides().named(name)).containsExactlyInAnyOrder("shop.Leaf.name()", "shop.Base.name()");
     }
 
     /** The one call the class {@code Report} makes. */

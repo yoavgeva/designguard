@@ -1,8 +1,8 @@
 package io.github.yoavgeva.designguard.service;
 
-import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
+import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import java.util.HashSet;
 import java.util.List;
@@ -65,12 +65,12 @@ final class ServiceLikeClasses {
      * does a JDK interface such as {@code Iterator.hasNext()} that a project class implements with I/O. Lambdas the
      * code creates don't count until they run.
      */
-    boolean runsEffects(CodeUnitAccessTarget target) {
-        if (effects.isImpure(target)) {
+    boolean runsEffects(JavaCodeUnitAccess<?> call) {
+        if (effects.isImpure(call.getTarget())) {
             return true;
         }
-        Set<String> implementations = classes.isProject(target.getOwner())
-                ? overrides.implementationsOf(target, withBodies.get())
+        Set<String> implementations = classes.isProject(call.getTargetOwner())
+                ? overrides.implementationsOf(classes.bytecode(), call, withBodies.get())
                 : Set.of();
         return !implementations.isEmpty() && surelyEffectfulWhenRun.get().containsAll(implementations);
     }

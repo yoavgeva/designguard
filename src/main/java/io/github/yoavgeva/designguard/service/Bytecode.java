@@ -85,6 +85,13 @@ final class Bytecode {
                 .orElseGet(calls::stream);
     }
 
+    /** Whether the call runs exactly the method it names, as {@code super.describe()} does, not an override. */
+    boolean isSuperCall(JavaCodeUnitAccess<?> access) {
+        JavaCodeUnit origin = access.getOrigin();
+        return factsOf(origin.getOwner()).superCalls().getOrDefault(origin.getName() + origin.getDescriptor(), Set.of())
+                .contains(ClassFileFacts.callKey(access.getTargetOwner().getName(), access.getName(), access.getLineNumber()));
+    }
+
     /**
      * The fields an accessor changes on {@code this} or statically, itself or through methods of its class, lazy
      * initialization aside: the first change of each field, by line.
@@ -128,16 +135,13 @@ final class Bytecode {
                 .min();
     }
 
+    /** Dependencies on the referenced classes that were imported, project classes or those switches match on. */
     private Stream<ClassDependency> references(JavaClass origin, List<ClassFileFacts.Reference> references) {
-        return references.stream().flatMap(reference -> classNamed(reference.className()).stream()
-                .map(target -> new ClassDependency(origin, target, reference.line())));
-    }
-
-    private Optional<JavaClass> classNamed(String name) {
-        if (classes.contain(name)) {
-            return Optional.of(classes.get(name));
-        }
-        return matchedOutside.contain(name) ? Optional.of(matchedOutside.get(name)) : Optional.empty();
+        return references.stream().flatMap(reference -> Stream.of(classes, matchedOutside)
+                .filter(imported -> imported.contain(reference.className()))
+                .findFirst()
+                .map(imported -> new ClassDependency(origin, imported.get(reference.className()), reference.line()))
+                .stream());
     }
 
     private ClassFileFacts factsOf(JavaClass javaClass) {

@@ -45,7 +45,7 @@ public final class QueriesInLoopsCheck {
     private static Stream<Violation> queries(ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass type,
             JavaCodeUnit unit) {
         return classes.bytecode().perItemAccesses(unit)
-                .filter(access -> isQuery(classes, serviceLike, type, access.getTarget()))
+                .filter(access -> isQuery(classes, type, access.getTarget()) && serviceLike.runsEffects(access))
                 .collect(Collectors.toMap(access -> access.getTarget().getFullName(), access -> access,
                         (first, second) -> first.getLineNumber() <= second.getLineNumber() ? first : second,
                         LinkedHashMap::new))
@@ -53,15 +53,13 @@ public final class QueriesInLoopsCheck {
                 .map(access -> violation(classes, type, unit, access));
     }
 
-    /** An instance method of another project type that touches the outside world and returns a value. */
-    private static boolean isQuery(ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass type,
-            CodeUnitAccessTarget target) {
+    /** An instance method of another project type that returns a value; the caller checks it touches the outside world. */
+    private static boolean isQuery(ProjectClasses classes, JavaClass type, CodeUnitAccessTarget target) {
         JavaClass owner = target.getOwner();
         return classes.isProject(owner) && !Hierarchy.isSelfOrNested(type, owner)
                 && !ForbiddenCall.CONSTRUCTOR.equals(target.getName())
                 && !target.getRawReturnType().isEquivalentTo(void.class)
-                && target.resolveMember().filter(member -> member.getModifiers().contains(JavaModifier.STATIC)).isEmpty()
-                && serviceLike.runsEffects(target);
+                && target.resolveMember().filter(member -> member.getModifiers().contains(JavaModifier.STATIC)).isEmpty();
     }
 
     private static Violation violation(ProjectClasses classes, JavaClass type, JavaCodeUnit unit,
