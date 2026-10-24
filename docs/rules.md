@@ -212,7 +212,10 @@ Fix: call what `shop.orders` exposes, or move `OrderMath` into its API package i
 Classes that depend on each other, directly or around a loop, are reported once per cycle, at the first class by
 name. A nested class counts as its top-level class. A type naming its own subtypes, as a sealed type's `permits`
 clause or an interface's factory method does, isn't part of a cycle, nor is an annotation naming the class that
-handles it, as a Bean Validation constraint names its validator with `@Constraint(validatedBy = ...)`.
+handles it, as a Bean Validation constraint names its validator with `@Constraint(validatedBy = ...)`, nor is an
+entity's inverse side of a JPA association: a `@OneToMany`, `@OneToOne` or `@ManyToMany` field with `mappedBy`, as
+`Owner.pets` is for `Pet.owner`, is one association with the side that maps it, so the entity's uses of the other
+don't count. Two owning sides, which map the association twice, still form a cycle.
 
 Why: classes in a cycle can only be understood, tested and changed together.
 
@@ -1210,17 +1213,17 @@ Tests that prove nothing are reported:
 - tests that assert only in a `catch` block, which pass when nothing is thrown.
 
 Assertions are calls named `assert*`, `verify*`, `expect*` or `fail*`, plus AssertJ's `then`, MockMvc's `andExpect`,
-ArchUnit's and designguard's `check`, Awaitility's `until`, a thrown `AssertionError`, and anything thrown when a
-check fails, as `if (actual != expected) throw new IllegalStateException(...)` does. A call to a helper of the test
-sources that asserts counts too: a method of the test class, of a test superclass, or of a test class the call names.
-So do JUnit 4's `@Test(expected = ...)`, and a test name or comment saying it checks that nothing is thrown, such as
-`shouldNotThrowForAnEmptyCart`, `// nothing thrown`, `// should not blow up` or `// concurrent modification won't
-happen`, and an empty test in a `@SpringBootTest` class, like Spring's `contextLoads()`, which checks that the
-application starts. Constants given to a helper of the tests are its inputs, so only library assertions count as
-asserting on constants. Some comparisons with the same expression on both sides can still fail, so they don't count
-as self-comparisons: `assertEquals(range, range)` on an object, which checks its `equals`, expressions with a call or
-`new`, which run twice, and any comparison in a test whose name mentions `equal`, `hash` or `compar`, which checks
-reflexivity on purpose.
+ArchUnit's and designguard's `check`, Awaitility's `until`, Java's `assert` statements, which Maven, Gradle and IDEs
+enable in tests, a thrown `AssertionError`, and anything thrown when a check fails, as `if (actual != expected) throw
+new IllegalStateException(...)` does. A call to a helper of the test sources that asserts counts too: a method of the
+test class, of a test superclass, or of a test class the call names. So do JUnit 4's `@Test(expected = ...)`, and a
+test name or comment saying it checks that nothing is thrown, such as `shouldNotThrowForAnEmptyCart`, `// nothing
+thrown`, `// should not blow up` or `// concurrent modification won't happen`, and an empty test in a
+`@SpringBootTest` class, like Spring's `contextLoads()`, which checks that the application starts. Constants given to
+a helper of the tests are its inputs, so only library assertions count as asserting on constants. Some comparisons
+with the same expression on both sides can still fail, so they don't count as self-comparisons: `assertEquals(range,
+range)` on an object, which checks its `equals`, expressions with a call or `new`, which run twice, and any
+comparison in a test whose name mentions `equal`, `hash` or `compar`, which checks reflexivity on purpose.
 
 Why: a test that can't fail gives coverage without checking anything. Agents write them to get a suite green.
 
@@ -1426,7 +1429,9 @@ Fix: use fixed data, or `new Random(42)`.
 
 `tests().testsDontReadTheEnvironment()` · **recommended**
 
-Test code reading environment variables or system properties is reported.
+Test code reading environment variables or system properties is reported. A property the test saves to restore is
+fine: a variable or field whose every use puts the value back with `System.setProperty(...)` or checks it for null,
+as a test that sets `user.home` itself does in its `finally` block or `@AfterEach` method.
 
 Why: such a test passes on one machine and fails on another, or in CI.
 

@@ -4,6 +4,7 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.LiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.stmt.AssertStmt;
 import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -142,6 +143,7 @@ public final class MeaningfulTestsCheck {
             AssertingHelpers helpers) {
         List<MethodCallExpr> assertions = test.findAll(MethodCallExpr.class).stream().filter(helpers::isAssertion).toList();
         boolean onlyInCatch = test.findAll(ThrowStmt.class).isEmpty()
+                && test.findAll(AssertStmt.class).stream().allMatch(stmt -> Scopes.nearest(stmt, CatchClause.class).isPresent())
                 && assertions.stream().anyMatch(call -> !call.getNameAsString().startsWith("fail"))
                 && assertions.stream().allMatch(call -> Scopes.nearest(call, CatchClause.class).isPresent());
         return onlyInCatch

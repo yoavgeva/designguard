@@ -16,9 +16,10 @@ import java.util.stream.Stream;
 /**
  * Finds test code that gives different results on different runs or machines, one subject per check: it reads the
  * system clock, uses unseeded randomness, reads environment variables or system properties, or sleeps. Seeded
- * {@code new Random(42)}, {@code Clock.fixed(...)} and {@code now(clock)} are fine, and so is a clock reading the
- * test overwrites before using it, see {@link OverwrittenTimes}. Test methods, helpers and field initializers are all
- * checked, in the code tests run ({@link CodeTestsRun}); fixture code inside strings isn't code.
+ * {@code new Random(42)}, {@code Clock.fixed(...)} and {@code now(clock)} are fine, and so are a clock reading the
+ * test overwrites before using it, see {@link OverwrittenTimes}, and a system property it saves to restore, see
+ * {@link SavedProperties}. Test methods, helpers and field initializers are all checked, in the code tests run
+ * ({@link CodeTestsRun}); fixture code inside strings isn't code.
  */
 public final class NondeterministicTestsCheck {
 
@@ -107,7 +108,8 @@ public final class NondeterministicTestsCheck {
                         file.unit().findAll(MethodCallExpr.class).stream().flatMap(call -> called(call).stream()),
                         file.unit().findAll(ObjectCreationExpr.class).stream().flatMap(creation -> created(creation).stream()))
                         .filter(found -> found.kind() == kind && Scopes.selected(filter, file, found.node())
-                                && !(kind == Kind.CLOCK && OverwrittenTimes.isOverwritten(found.node())))
+                                && !(kind == Kind.CLOCK && OverwrittenTimes.isOverwritten(found.node()))
+                                && !(kind == Kind.ENVIRONMENT && SavedProperties.isSaved(found.node())))
                         .map(found -> found.violation(file)))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();

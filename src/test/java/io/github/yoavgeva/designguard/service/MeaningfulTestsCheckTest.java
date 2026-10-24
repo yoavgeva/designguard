@@ -42,6 +42,23 @@ class MeaningfulTestsCheckTest {
                     void respondsOk() throws Exception {
                         mvc.perform(get("/cart")).andExpect(status().isOk());
                     }
+
+                    @Test
+                    void startsEmpty() {
+                        Cart cart = new Cart();
+
+                        assert cart.total() == 0 : "a new cart is empty";
+                    }
+
+                    @Test
+                    void rejectsUnknownItems() {
+                        try {
+                            new Cart().add("unknown");
+                        } catch (IllegalArgumentException expected) {
+                            assertThat(expected.getMessage()).contains("unknown");
+                        }
+                        assert new Cart().total() == 0;
+                    }
                 }
                 """)).isEmpty();
     }

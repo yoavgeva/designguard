@@ -8,6 +8,7 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.stmt.AssertStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import java.util.HashSet;
@@ -42,7 +43,10 @@ final class AssertingHelpers {
                 .collect(Collectors.groupingBy(TypeDeclaration::getNameAsString));
     }
 
-    /** Whether the code asserts: an assertion call, a throw that fails the test, or a helper that asserts. */
+    /**
+     * Whether the code asserts: an assertion call, an {@code assert} statement, which test runners enable, a throw that
+     * fails the test, or a helper that asserts.
+     */
     boolean asserts(Node code) {
         return asserts(code, new HashSet<>());
     }
@@ -59,6 +63,7 @@ final class AssertingHelpers {
 
     private boolean asserts(Node code, Set<MethodDeclaration> visited) {
         return code.findAll(ThrowStmt.class).stream().anyMatch(AssertingHelpers::fails)
+                || !code.findAll(AssertStmt.class).isEmpty()
                 || code.findAll(MethodCallExpr.class).stream().anyMatch(call -> isAssertion(call, visited));
     }
 

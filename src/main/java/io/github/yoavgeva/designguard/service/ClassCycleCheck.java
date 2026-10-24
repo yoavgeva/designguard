@@ -1,5 +1,6 @@
 package io.github.yoavgeva.designguard.service;
 
+import com.tngtech.archunit.core.domain.JavaAnnotation;
 import com.tngtech.archunit.core.domain.JavaClass;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
@@ -10,6 +11,7 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -19,12 +21,15 @@ import java.util.stream.Stream;
  * Finds classes that depend on each other, directly or around a loop. A nested class counts as its top-level class,
  * and a type naming its own subtypes, as a sealed type's {@code permits} clause or an interface's factory method does,
  * isn't part of a cycle, nor is an annotation naming the class that handles it, as a Bean Validation constraint names
- * its validator. Each set of classes in a cycle is reported once, at the first class by name.
+ * its validator, nor an entity's inverse side of a JPA association to the entity that maps it. Each set of classes in
+ * a cycle is reported once, at the first class by name.
  */
 public final class ClassCycleCheck {
 
     private static final String RULE = "class-cycles";
     private static final int LISTED = 10;
+    private static final Set<String> PERSISTENCE = Set.of("jakarta.persistence", "javax.persistence");
+    private static final Set<String> INVERSE_ASSOCIATIONS = Set.of("OneToMany", "OneToOne", "ManyToMany");
 
     /**
      * Finds cycles among the classes the filter selects.
@@ -44,14 +49,17 @@ public final class ClassCycleCheck {
         Map<JavaClass, List<JavaClass>> nestedByTop = classes.stream()
                 .collect(Collectors.groupingBy(ClassCycleCheck::topLevelOf));
         List<List<Integer>> successors = nodes.stream()
-                .map(node -> nestedByTop.getOrDefault(node, List.of(node)).stream()
-                        .flatMap(member -> classes.bytecode().dependenciesFrom(member))
-                        .map(dependency -> topLevelOf(dependency.target()))
-                        .filter(target -> !target.equals(node) && !target.isAssignableTo(node.getName())
-                                && !handles(target, node))
-                        .flatMap(target -> Stream.ofNullable(indexes.get(target.getName())))
-                        .distinct()
-                        .toList())
+                .map(node -> {
+                    Set<JavaClass> inverse = inverseSides(nestedByTop.getOrDefault(node, List.of(node)));
+                    return nestedByTop.getOrDefault(node, List.of(node)).stream()
+                            .flatMap(member -> classes.bytecode().dependenciesFrom(member))
+                            .map(dependency -> topLevelOf(dependency.target()))
+                            .filter(target -> !target.equals(node) && !target.isAssignableTo(node.getName())
+                                    && !handles(target, node) && !inverse.contains(target))
+                            .flatMap(target -> Stream.ofNullable(indexes.get(target.getName())))
+                            .distinct()
+                            .toList();
+                })
                 .toList();
         int[] components = components(successors, finishOrder(successors));
         return IntStream.range(0, nodes.size()).boxed()
@@ -73,6 +81,27 @@ public final class ClassCycleCheck {
                 .flatMap(meta -> meta.getProperties().values().stream())
                 .flatMap(value -> value instanceof Object[] values ? Arrays.stream(values) : Stream.of(value))
                 .anyMatch(handler::equals);
+    }
+
+    /**
+     * The entities the classes hold the inverse side of an association with: a JPA {@code @OneToMany},
+     * {@code @OneToOne} or {@code @ManyToMany} field with {@code mappedBy}, as {@code Owner.pets} is for
+     * {@code Pet.owner}. The two sides are one association, which the owning side maps.
+     */
+    private static Set<JavaClass> inverseSides(List<JavaClass> members) {
+        return members.stream()
+                .flatMap(member -> member.getFields().stream())
+                .filter(field -> field.getAnnotations().stream().anyMatch(ClassCycleCheck::isInverseSide))
+                .flatMap(field -> field.getAllInvolvedRawTypes().stream())
+                .map(ClassCycleCheck::topLevelOf)
+                .collect(Collectors.toSet());
+    }
+
+    private static boolean isInverseSide(JavaAnnotation<?> annotation) {
+        String name = annotation.getRawType().getName();
+        return INVERSE_ASSOCIATIONS.contains(name.substring(name.lastIndexOf('.') + 1))
+                && PERSISTENCE.contains(annotation.getRawType().getPackageName())
+                && annotation.get("mappedBy").filter(mappedBy -> !"".equals(mappedBy)).isPresent();
     }
 
     private static JavaClass topLevelOf(JavaClass type) {
