@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.CallableDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
@@ -20,7 +21,8 @@ import java.util.stream.Stream;
  * Finds identifiers typed as raw strings, numbers or UUIDs in the guarded packages: fields, record components and
  * non-private method and constructor parameters named {@code id} or {@code somethingId}. With a type per identifier,
  * the compiler stops a customer ID from being passed where an order ID belongs. The identifier types themselves, named
- * {@code ...Id}, are skipped.
+ * {@code ...Id}, are skipped, and so are parameters of methods that override or implement another type's, whose
+ * signature that type sets.
  */
 public final class RawIdentifiersCheck {
 
@@ -89,9 +91,16 @@ public final class RawIdentifiersCheck {
                 .flatMap(parameter -> ownerName(parameter).stream().flatMap(owner -> Scopes.enclosingCallable(parameter)
                         .stream()
                         .flatMap(callable -> raw(parameter.getType(), parameter.getNameAsString()).stream()
+                                .filter(type -> !overrides(callable))
                                 .map(type -> new RawIdentifier(file, parameter, owner,
                                         Scopes.describe(callable) + " takes " + parameter.getNameAsString() + " as",
                                         parameter.getNameAsString(), type)))));
+    }
+
+    /** Whether the method overrides or implements a method of another type, which sets its signature. */
+    private static boolean overrides(CallableDeclaration<?> callable) {
+        return callable instanceof MethodDeclaration method
+                && (Scopes.hasAnnotation(method, "Override") || Resolution.overridesSupertype(method));
     }
 
     /** The enclosing type's name, unless the type is an identifier type itself. */

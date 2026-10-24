@@ -212,16 +212,33 @@ class TypeRulesTest {
                         }
                         """)
                 .add("OrderDto", "package shop.web;\n\npublic record OrderDto(String id) {\n}\n")
+                .add("Finder", "package shop.domain;\n\npublic interface Finder {\n    Order find(String orderId);\n}\n")
+                .add("Lookup", """
+                        package shop.domain;
+
+                        public class Lookup implements java.util.function.ToIntFunction<String>, Finder {
+                            @Override
+                            public int applyAsInt(String orderId) {
+                                return orderId.length();
+                            }
+
+                            public Order find(String orderId) {
+                                return null;
+                            }
+                        }
+                        """)
                 .guard(SHOP);
 
         assertThat(guard.types().typedIdentifiers("..domain..").evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
+                        tuple(4, "Finder.find() takes orderId as a raw String identifier"),
                         tuple(4, "Order.id is a raw String identifier"),
                         tuple(5, "Order.customerId is a raw long identifier"),
                         tuple(6, "Order.cartId is a raw UUID identifier"),
                         tuple(6, "Orders.find() takes orderId as a raw String identifier"),
                         tuple(10, "Orders.byAccount() takes accountId as a raw Long identifier"));
         assertThat(guard.types().typedIdentifiers("..domain..").evaluate()).extracting(Violation::fix).startsWith(
+                "declare record OrderId(String value) and use it, so identifiers of different things can't be swapped",
                 "declare record OrderId(String value) and use it, so identifiers of different things can't be swapped",
                 "declare record CustomerId(long value) and use it, so identifiers of different things can't be swapped");
     }

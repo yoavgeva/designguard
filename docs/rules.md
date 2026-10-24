@@ -681,7 +681,8 @@ Fix: pass the count in and return the new one, or keep it in a store the service
 
 Identifiers typed as raw strings, numbers or UUIDs in the given packages are reported: fields, record components,
 and non-private method and constructor parameters named `id` or `somethingId`. The identifier types themselves,
-named `...Id`, are skipped.
+named `...Id`, are skipped, and so are parameters of methods that override or implement another type's, with or
+without `@Override`, since that type sets the signature.
 
 Why: with one type per identifier, the compiler stops a customer ID from being passed where an order ID belongs.
 
