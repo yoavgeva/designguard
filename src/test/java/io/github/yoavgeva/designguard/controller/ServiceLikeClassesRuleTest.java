@@ -185,4 +185,76 @@ class ServiceLikeClassesRuleTest {
                 "CacheSynchronization is service-like, but its field 'flushes' isn't final",
                 "QuickSaver is service-like, but its field 'saves' isn't final");
     }
+
+    @Test
+    void functionalInterfacesPassBehaviourAsDataLikeJavaUtilFunction() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Check", "package shop;\n\n@FunctionalInterface\npublic interface Check {\n"
+                        + "    boolean test(String value);\n}\n")
+                .add("EnvCheck", """
+                        package shop;
+
+                        public final class EnvCheck implements Check {
+                            private int calls;
+
+                            @Override
+                            public boolean test(String value) {
+                                calls++;
+                                return System.getenv(value) != null && calls > 0;
+                            }
+                        }
+                        """)
+                .add("Matcher", """
+                        package shop;
+
+                        public final class Matcher {
+                            private final Check check;
+                            private int matches;
+
+                            public Matcher(Check check) {
+                                this.check = check;
+                            }
+
+                            public boolean matches(String value) {
+                                if (check.test(value)) {
+                                    matches++;
+                                }
+                                return matches > 0;
+                            }
+                        }
+                        """)
+                .add("Storage", "package shop;\n\npublic interface Storage {\n    int size();\n}\n")
+                .add("DiskStorage", """
+                        package shop;
+
+                        public final class DiskStorage implements Storage {
+                            @Override
+                            public int size() {
+                                return System.getenv("SIZE").length();
+                            }
+                        }
+                        """)
+                .add("Cache", """
+                        package shop;
+
+                        public final class Cache {
+                            private final Storage storage;
+                            private int hits;
+
+                            public Cache(Storage storage) {
+                                this.storage = storage;
+                            }
+
+                            public int size() {
+                                hits++;
+                                return storage.size() + hits;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
+                "Cache is service-like, but its field 'hits' isn't final",
+                "EnvCheck is service-like, but its field 'calls' isn't final");
+    }
 }

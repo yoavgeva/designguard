@@ -55,8 +55,9 @@ final class Overrides {
     }
 
     /**
-     * The code units the call may run as the caller's own code: those it names, for a super call or a call on a
-     * parameter, whose implementation the caller's caller chose, or else the target and its overrides.
+     * The code units the call may run as the caller's own code: those it names, for a super call, a call on a
+     * parameter, whose implementation the caller's caller chose, or a call through a
+     * {@link Hierarchy#isFunctionalInterface functional interface}, or else the target and its overrides.
      *
      * @param bytecode the facts of the class files, which tell super calls and calls on parameters apart
      * @param call     the call or method reference
@@ -64,7 +65,7 @@ final class Overrides {
      */
     Set<String> mayRun(Bytecode bytecode, JavaCodeUnitAccess<?> call) {
         return bytecode.isCall(Bytecode.CallKind.SUPER, call) || bytecode.isCall(Bytecode.CallKind.ON_PARAMETER, call)
-                ? named(call.getTarget()) : of(call.getTarget());
+                || Hierarchy.isFunctionalInterface(call.getTargetOwner()) ? named(call.getTarget()) : of(call.getTarget());
     }
 
     /**

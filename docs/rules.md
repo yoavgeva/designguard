@@ -13,16 +13,19 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   executors, processes, or a package given to `treatingAsImpure(...)`. Code is effectful directly, through a field
   holding such a resource, or by calling effectful project code; a call through an interface is effectful if any
   implementation is, except a call on a parameter, which runs whatever implementation the caller passed, so
-  `count(Storage storage)` calling `storage.load()` isn't effectful itself. The clock includes `new Date()` and `Calendar.getInstance()`, and the environment includes
-  `System.getProperties()` and `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an `InetAddress` or a
+  `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface annotated
+  `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do. The clock includes
+  `new Date()` and `Calendar.getInstance()`, and the environment includes `System.getProperties()` and
+  `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an `InetAddress` or a
   `java.sql.Timestamp` as data, encoding a URL, copying an array, holding a thread or an executor, reading the current
   thread, and restoring its interrupt flag with `Thread.currentThread().interrupt()` aren't effects; resolving a host
   name or interrupting another thread is. A stream touches the outside world where it is opened: on a file name, as
   `new FileReader("prices.txt")` and `new Scanner(file)` are, from a classpath resource, or as the console
   (`System.out`, `System.err`, `System.in`). Holding, wrapping, reading or writing a stream someone else opened only
   processes its data, so a parser over a `Reader` or a writer of JSON to a `Writer` is a value.
-- **Service-like**: a class that is effectful, holds a service, or is an interface with a service-like
-  implementation. **Value**: any other class.
+- **Service-like**: a class that is effectful, holds a service, extends a class that is effectful itself or holds one,
+  or is an interface or abstract class with a service-like implementation. A `@FunctionalInterface` isn't, whatever its
+  implementations do, so holding one is like holding a lambda. **Value**: any other class.
 - **Collaborator**: an instance of another project type that a class holds in a field, as injected services are.
 - **Wiring code**: code whose job is to assemble the application, which may create and hold concrete services:
   classes with a `main` method, Spring `@Configuration` and `@SpringBootApplication` classes, Dagger `@Module`s,

@@ -43,6 +43,15 @@ final class Hierarchy {
                         && method.getRawParameterTypes().equals(unit.getRawParameterTypes()));
     }
 
+    /**
+     * Whether the type is a project interface annotated {@code @FunctionalInterface}: like the interfaces of
+     * {@code java.util.function}, it passes behaviour as data, so what one implementation does says nothing about the
+     * code that calls or holds it.
+     */
+    static boolean isFunctionalInterface(JavaClass type) {
+        return type.isInterface() && type.isAnnotatedWith(FunctionalInterface.class);
+    }
+
     /** Whether the class can be instantiated: not an interface and not abstract. */
     static boolean isConcrete(JavaClass javaClass) {
         return !javaClass.isInterface() && !javaClass.getModifiers().contains(JavaModifier.ABSTRACT);

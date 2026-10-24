@@ -128,10 +128,15 @@ final class ServiceLikeClasses {
                 .anyMatch(fieldType -> !fieldType.equals(type) && serviceLike.contains(fieldType.getName()));
     }
 
+    /**
+     * The classes, plus the interfaces and abstract classes one of them extends; a functional interface passes
+     * behaviour as data, so an effectful implementation doesn't make it service-like.
+     */
     private static Set<String> withAbstractions(List<JavaClass> candidates, Set<String> concrete) {
         Set<String> result = new HashSet<>(concrete);
         candidates.stream()
-                .filter(type -> type.isInterface() || type.getModifiers().contains(JavaModifier.ABSTRACT))
+                .filter(type -> (type.isInterface() || type.getModifiers().contains(JavaModifier.ABSTRACT))
+                        && !Hierarchy.isFunctionalInterface(type))
                 .filter(type -> type.getAllSubclasses().stream().anyMatch(subclass -> concrete.contains(subclass.getName())))
                 .map(JavaClass::getName)
                 .forEach(result::add);
