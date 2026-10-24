@@ -1113,12 +1113,19 @@ Fix: delete it.
 Tests that prove nothing are reported:
 
 - tests without any assertion;
-- assertions on constants, like `assertTrue(true)`;
-- assertions comparing a value with itself, like `assertEquals(total, total)`.
+- assertions on constants, like `assertTrue(true)` or `assertThat(1).isEqualTo(1)`;
+- assertions comparing a value with itself, like `assertEquals(total, total)` on a number or string, or
+  `assertSame(range, range)`;
+- assertions that a new object isn't null, like `assertNotNull(new Cart())`;
+- tests that assert only in a `catch` block, which pass when nothing is thrown.
 
 Assertions are calls named `assert*`, `verify*`, `expect*` or `fail*`, plus AssertJ's `then`, MockMvc's `andExpect`,
-ArchUnit's and designguard's `check`, and Awaitility's `until`. JUnit 4's `@Test(expected = ...)` counts too. Some
-comparisons with the same expression on both sides can still fail, so they don't count as self-comparisons:
+ArchUnit's and designguard's `check`, Awaitility's `until`, and a thrown `AssertionError`. A call to a helper of the
+test sources that asserts counts too: a method of the test class, of a test superclass, or of a test class the call
+names. So do JUnit 4's `@Test(expected = ...)`, and a test name or comment saying it checks that nothing is thrown,
+such as `shouldNotThrowForAnEmptyCart`. Constants given to a helper of the tests are its inputs, so only library
+assertions count as asserting on constants. Some comparisons with the same expression on both sides can still fail,
+so they don't count as self-comparisons: `assertEquals(range, range)` on an object, which checks its `equals`,
 expressions with a call or `new`, which run twice, and any comparison in a test whose name mentions `equal`, `hash`
 or `compar`, which checks reflexivity on purpose.
 

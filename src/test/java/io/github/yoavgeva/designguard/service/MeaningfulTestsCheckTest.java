@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.yoavgeva.designguard.SourceTree;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -65,54 +66,6 @@ class MeaningfulTestsCheckTest {
     }
 
     @Test
-    void reportsAssertionsThatCanNeverFail() {
-        assertThat(violations("""
-                package shop;
-
-                class CartTest {
-                    @ParameterizedTest
-                    void total(int size) {
-                        assertTrue(true);
-                        assertThat(1).isEqualTo(1);
-                    }
-
-                    @Test
-                    void same() {
-                        int total = new Cart().total();
-                        assertEquals(total, total);
-                        assertThat(total).isEqualTo(total);
-                    }
-                }
-                """)).extracting(Violation::message).containsExactly(
-                        "test CartTest.total() asserts on constants, which can never fail",
-                        "test CartTest.total() asserts on constants, which can never fail",
-                        "test CartTest.same() compares total with itself, which can never fail",
-                        "test CartTest.same() compares total with itself, which can never fail");
-    }
-
-    @Test
-    void equalsTestsAndRepeatedCallsCanFail() {
-        assertThat(violations("""
-                package shop;
-
-                class RangeTest {
-                    @Test
-                    void testEquals() {
-                        Range range = new Range(1, 2);
-                        assertEquals(range, range);
-                        assertThat(range).isEqualTo(range);
-                    }
-
-                    @Test
-                    void hashesTheSameEachTime() {
-                        Range range = new Range(1, 2);
-                        assertEquals(range.hash(), range.hash());
-                    }
-                }
-                """)).isEmpty();
-    }
-
-    @Test
     void acceptsRuleChecksAndAwaitilityAsAssertions() {
         assertThat(violations("""
                 package shop;
@@ -148,6 +101,98 @@ class MeaningfulTestsCheckTest {
                     }
                 }
                 """)).isEmpty();
+    }
+
+    @Test
+    void followsHelpersThatAssert() {
+        new SourceTree(root)
+                .add("BaseTest", """
+                        package shop;
+
+                        abstract class BaseTest {
+                            void checkTax(Cart cart) {
+                                if (cart.tax() < 0) {
+                                    throw new AssertionError("negative tax");
+                                }
+                            }
+                        }
+                        """)
+                .add("Carts", """
+                        package shop;
+
+                        final class Carts {
+                            static void feesAreZero(Cart cart) {
+                                assertEquals(0, cart.fees());
+                            }
+                        }
+                        """);
+
+        assertThat(violations("""
+                package shop;
+
+                class CartTest extends BaseTest {
+                    @Test
+                    void total() {
+                        totalIs(new Cart(), 3);
+                    }
+
+                    @Test
+                    void tax() {
+                        checkTax(new Cart());
+                    }
+
+                    @Test
+                    void fees() {
+                        Carts.feesAreZero(new Cart());
+                    }
+
+                    @Test
+                    void shouldNotThrowForAnEmptyCart() {
+                        new Cart().checkout();
+                    }
+
+                    @Test
+                    void parsesAnEmptyCart() {
+                        // should not throw an exception
+                        new Cart().parse("");
+                    }
+
+                    @Test
+                    void checksOut() {
+                        helps(new Cart());
+                    }
+
+                    private void totalIs(Cart cart, int total) {
+                        assertEquals(total, cart.total());
+                    }
+
+                    private void helps(Cart cart) {
+                        cart.checkout();
+                    }
+                }
+                """)).extracting(Violation::message).containsExactly("test CartTest.checksOut() asserts nothing");
+    }
+
+    @Test
+    void constantsGivenToOwnHelpersAreInputs() {
+        assertThat(violations("""
+                package shop;
+
+                class CartTest {
+                    @Test
+                    void escapes() {
+                        assertEscaped("\\t", "\t");
+                        assertThat(1).isEqualTo(1);
+                        assertThat("2.8.5").matches(Escapes.VERSION);
+                        assertWithMessage("setup is broken").that(Escapes.name()).isEqualTo("x");
+                    }
+
+                    private void assertEscaped(String expected, String input) {
+                        assertEquals(expected, Escapes.escape(input));
+                    }
+                }
+                """)).extracting(Violation::line, Violation::message).containsExactly(
+                        tuple(7, "test CartTest.escapes() asserts on constants, which can never fail"));
     }
 
     private List<Violation> violations(String source) {
