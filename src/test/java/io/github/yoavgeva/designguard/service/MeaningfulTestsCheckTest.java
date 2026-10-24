@@ -89,6 +89,29 @@ class MeaningfulTestsCheckTest {
     }
 
     @Test
+    void aThrowOnAFailedCheckIsAnAssertion() {
+        assertThat(violations("""
+                package shop;
+
+                class CartTest {
+                    @Test
+                    void resolvesEveryCase() {
+                        Map.of("/a", true, "/b", false).forEach((url, expected) -> {
+                            if (resolver.isResource(url) != expected) {
+                                throw new IllegalStateException(url + " expected " + expected);
+                            }
+                        });
+                    }
+
+                    @Test
+                    void total() {
+                        new Cart().total();
+                    }
+                }
+                """)).extracting(Violation::message).containsExactly("test CartTest.total() asserts nothing");
+    }
+
+    @Test
     void reportsATestWithoutAssertions() {
         assertThat(violations("""
                 package shop;

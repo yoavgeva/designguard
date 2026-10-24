@@ -8,6 +8,7 @@ import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import java.util.HashSet;
 import java.util.List;
@@ -41,7 +42,7 @@ final class AssertingHelpers {
                 .collect(Collectors.groupingBy(TypeDeclaration::getNameAsString));
     }
 
-    /** Whether the code asserts: an assertion call, a throw of an {@code AssertionError}, or a helper that asserts. */
+    /** Whether the code asserts: an assertion call, a throw that fails the test, or a helper that asserts. */
     boolean asserts(Node code) {
         return asserts(code, new HashSet<>());
     }
@@ -57,7 +58,7 @@ final class AssertingHelpers {
     }
 
     private boolean asserts(Node code, Set<MethodDeclaration> visited) {
-        return code.findAll(ThrowStmt.class).stream().anyMatch(AssertingHelpers::throwsAssertionError)
+        return code.findAll(ThrowStmt.class).stream().anyMatch(AssertingHelpers::fails)
                 || code.findAll(MethodCallExpr.class).stream().anyMatch(call -> isAssertion(call, visited));
     }
 
@@ -100,8 +101,13 @@ final class AssertingHelpers {
         return Stream.concat(Stream.of(type), superclasses);
     }
 
-    private static boolean throwsAssertionError(ThrowStmt stmt) {
-        return stmt.getExpression() instanceof ObjectCreationExpr creation
+    /**
+     * Whether the throw fails the test as an assertion would: it throws an {@code AssertionError}, or anything when a
+     * check fails, as {@code if (actual != expected) throw new IllegalStateException(...)} does.
+     */
+    private static boolean fails(ThrowStmt stmt) {
+        boolean assertionError = stmt.getExpression() instanceof ObjectCreationExpr creation
                 && creation.getType().getNameAsString().matches(".*Assertion(Failed)?Error");
+        return assertionError || Scopes.nearest(stmt, IfStmt.class).isPresent();
     }
 }
