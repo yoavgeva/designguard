@@ -598,10 +598,13 @@ class ConstructorWorkRuleTest {
                             private final String query;
                             private final Timestamp created;
                             private final JDBCType type = JDBCType.valueOf("VARCHAR");
+                            private final String client;
 
-                            public Address(String query, long millis) {
+                            public Address(String query, long millis, java.net.InetSocketAddress remote) {
                                 this.query = URLEncoder.encode(query, StandardCharsets.UTF_8);
                                 this.created = new Timestamp(millis);
+                                this.client = remote.isUnresolved() ? remote.getHostString()
+                                        : remote.getAddress().getHostAddress() + ":" + remote.getPort();
                             }
 
                             private static InetAddress loopback() {
@@ -613,7 +616,7 @@ class ConstructorWorkRuleTest {
                             }
 
                             public String describe() {
-                                return LOOPBACK.getHostAddress() + query + created.toLocalDateTime() + type;
+                                return LOOPBACK.getHostAddress() + query + created.toLocalDateTime() + type + client;
                             }
                         }
                         """)

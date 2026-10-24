@@ -41,7 +41,10 @@ final class JdkEffects {
             "java.lang.ClassLoader.getSystemResourceAsStream", "java.lang.Module.getResourceAsStream"));
     /** Types whose constructor without parameters reads the clock. */
     private static final Set<String> CLOCK_CONSTRUCTORS = Set.of("java.util.Date", "java.util.GregorianCalendar");
-    /** What an {@code InetAddress} does that resolves names or reaches the network. */
+    /**
+     * What an {@code InetAddress} does that resolves names or reaches the network. An {@code InetSocketAddress} resolves
+     * its host when made from a name, and may look one up for {@code getHostName()}.
+     */
     private static final Set<String> RESOLVES = Set.of("getByName", "getAllByName", "getLocalHost", "getHostName",
             "getCanonicalHostName", "isReachable");
     private static final Set<String> HEADER_STREAMS = Set.of("java.io.ObjectInputStream", "java.io.ObjectOutputStream");
@@ -79,6 +82,7 @@ final class JdkEffects {
             Map.entry("java.net.InetAddress", RESOLVES),
             Map.entry("java.net.Inet4Address", RESOLVES),
             Map.entry("java.net.Inet6Address", RESOLVES),
+            Map.entry("java.net.InetSocketAddress", Set.of(CONSTRUCTOR, "getHostName")),
             Map.entry("java.net.URLEncoder", Set.of()),
             Map.entry("java.net.URLDecoder", Set.of()),
             Map.entry("java.net.IDN", Set.of()),
