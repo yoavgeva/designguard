@@ -158,6 +158,35 @@ class MeaningfulTestsCheckTest {
                     }
 
                     @Test
+                    void parsesSpaces() {
+                        // Expect nothing thrown
+                        new Cart().parse(" ");
+                    }
+
+                    @Test
+                    void parsesTabs() {
+                        // should not blow up
+                        new Cart().parse("tab");
+                    }
+
+                    @Test
+                    void parsesNewLines() {
+                        // the parser doesn't actually throw here
+                        new Cart().parse("line");
+                    }
+
+                    @Test
+                    void parsesWithoutThrowing() {
+                        new Cart().parse("x");
+                    }
+
+                    @Test
+                    void parsesTwice() {
+                        // now throws if parsed twice, which this doesn't check
+                        new Cart().parse("y");
+                    }
+
+                    @Test
                     void checksOut() {
                         helps(new Cart());
                     }
@@ -170,7 +199,8 @@ class MeaningfulTestsCheckTest {
                         cart.checkout();
                     }
                 }
-                """)).extracting(Violation::message).containsExactly("test CartTest.checksOut() asserts nothing");
+                """)).extracting(Violation::message).containsExactly(
+                        "test CartTest.parsesTwice() asserts nothing", "test CartTest.checksOut() asserts nothing");
     }
 
     @Test

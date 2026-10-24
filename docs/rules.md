@@ -1149,7 +1149,7 @@ Assertions are calls named `assert*`, `verify*`, `expect*` or `fail*`, plus Asse
 ArchUnit's and designguard's `check`, Awaitility's `until`, and a thrown `AssertionError`. A call to a helper of the
 test sources that asserts counts too: a method of the test class, of a test superclass, or of a test class the call
 names. So do JUnit 4's `@Test(expected = ...)`, and a test name or comment saying it checks that nothing is thrown,
-such as `shouldNotThrowForAnEmptyCart`. Constants given to a helper of the tests are its inputs, so only library
+such as `shouldNotThrowForAnEmptyCart`, `// nothing thrown` or `// should not blow up`. Constants given to a helper of the tests are its inputs, so only library
 assertions count as asserting on constants. Some comparisons with the same expression on both sides can still fail,
 so they don't count as self-comparisons: `assertEquals(range, range)` on an object, which checks its `equals`,
 expressions with a call or `new`, which run twice, and any comparison in a test whose name mentions `equal`, `hash`

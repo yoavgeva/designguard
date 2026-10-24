@@ -30,11 +30,14 @@ public final class MeaningfulTestsCheck {
     /** Tests of equals, hashCode or compareTo compare a value with itself on purpose: reflexivity can fail. */
     private static final Pattern EQUALITY_TEST = Pattern.compile("(?i)equal|hash|compar");
     /**
-     * Tests named or commented for checking that nothing is thrown, as {@code shouldNotThrowForAnEmptyCart} or
-     * {@code // should not throw an exception} are.
+     * A test's name or comment saying it checks that nothing is thrown, as {@code shouldNotThrowForAnEmptyCart},
+     * "nothing thrown", "doesn't actually throw" or "should not blow up" do: a negation, at most one word, then a
+     * failure.
      */
-    private static final Pattern NOTHING_THROWN =
-            Pattern.compile("(?i)(not|never|no|without)[ _]?(throw|exception|error|fail)");
+    private static final Pattern NOTHING_THROWN = Pattern.compile("(?i)(?:\\b(?:not|never|no|nothing|without)|n't)"
+            + "(?:\\s+\\w+)?\\s+(?:throw|exception|error|fail|blow|crash|explode)");
+    /** Where a name in camel case or snake case starts a word. */
+    private static final Pattern WORD_START = Pattern.compile("(?<=[a-z0-9])(?=[A-Z])|_");
 
     /**
      * Finds weak tests in the sources the filter selects.
@@ -60,7 +63,8 @@ public final class MeaningfulTestsCheck {
         boolean expectsException = UnitTestMethods.annotation(test, "Test")
                 .flatMap(annotation -> AnnotationValues.attribute(annotation, "expected"))
                 .isPresent();
-        boolean checksNothingIsThrown = NOTHING_THROWN.matcher(test.getNameAsString()).find()
+        boolean checksNothingIsThrown = NOTHING_THROWN.matcher(WORD_START.matcher(test.getNameAsString()).replaceAll(" "))
+                .find()
                 || test.getAllContainedComments().stream().anyMatch(comment -> NOTHING_THROWN.matcher(comment.getContent()).find());
         if (expectsException || checksNothingIsThrown) {
             return Stream.empty();
