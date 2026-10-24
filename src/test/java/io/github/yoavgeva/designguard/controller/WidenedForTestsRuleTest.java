@@ -42,8 +42,17 @@ class WidenedForTestsRuleTest {
                                 items.addAll(seed);
                             }
 
+                            protected Orders(String first) {
+                                items.add(first);
+                            }
+
                             public int count() {
-                                return items.size() + recount();
+                                return items.size() + recount() + cacheSize();
+                            }
+
+                            @VisibleForTesting
+                            int cacheSize() {
+                                return items.size();
                             }
 
                             int recount() {
@@ -63,6 +72,7 @@ class WidenedForTestsRuleTest {
                             }
                         }
                         """)
+                .add("VisibleForTesting", "package shop;\n\npublic @interface VisibleForTesting {\n}\n")
                 .addTest("OrdersTest", """
                         package shop;
 
@@ -72,6 +82,7 @@ class WidenedForTestsRuleTest {
                             @org.junit.jupiter.api.Test
                             void counts() {
                                 Orders orders = new Orders(java.util.List.of("a"));
+                                assertThat(new Orders("b").cacheSize()).isOne();
                                 assertThat(orders.recalculate()).isEqualTo(2);
                                 orders.reset();
                                 assertThat(orders.count()).isZero();
@@ -84,7 +95,8 @@ class WidenedForTestsRuleTest {
                 .containsExactlyInAnyOrder(
                         "Orders(List) is package-private, and only tests call it",
                         "Orders.recalculate() is package-private, and only tests call it",
-                        "Orders.reset() is protected, and only tests call it");
+                        "Orders.reset() is protected, and only tests call it",
+                        "Orders.cacheSize() is package-private for tests: it's marked @VisibleForTesting");
         assertThat(guard.guardrails().noWidenedForTests().evaluate()).extracting(Violation::fix).containsOnly(
                 "test through the public API, or move it into a class of its own whose API tests and production both use");
     }

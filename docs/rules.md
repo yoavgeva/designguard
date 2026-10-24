@@ -1067,8 +1067,10 @@ Fix: fix what the tool reports, here by taking a `List<String>`.
 
 `guardrails().noWidenedForTests()` · **recommended**
 
-Package-private or protected methods and constructors that no production code calls, but tests in their package do,
-are reported. Overrides, annotated members and wiring code are skipped. Code nothing calls is left to
+Package-private or protected methods and constructors that tests in their package call are reported when no
+production code calls them, or when they are marked `@VisibleForTesting` (any annotation of that name), which says
+they were widened for tests. Overrides, members with other annotations, which a framework may call, protected
+constructors, which are there for subclasses, and wiring code are skipped. Code nothing calls is left to
 `no-unused-public-code`.
 
 Why: the method was opened up so tests could reach inside the class, which ties the tests to its internals.

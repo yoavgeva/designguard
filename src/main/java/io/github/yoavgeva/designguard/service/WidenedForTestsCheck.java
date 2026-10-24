@@ -14,14 +14,16 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Finds methods and constructors widened for tests: package-private or protected, never called by production code,
- * but called by tests in their package, which reach inside the class instead of testing it through its API. Code
- * nothing calls is left to {@link UnusedPublicCodeCheck}; overrides, annotated members and wiring code are skipped.
+ * Finds methods and constructors widened for tests: package-private or protected, never called by production code or
+ * marked {@code @VisibleForTesting}, but called by tests in their package, which reach inside the class instead of
+ * testing it through its API. Code nothing calls is left to {@link UnusedPublicCodeCheck}; overrides, members with other
+ * annotations, protected constructors, which are for subclasses, and wiring code are skipped.
  * Test calls are matched by name, argument count and, for constructors, the created type.
  */
 public final class WidenedForTestsCheck {
 
     private static final String RULE = "no-widened-for-tests";
+    private static final String VISIBLE_FOR_TESTING = "VisibleForTesting";
 
     /**
      * Finds violations in the classes the filter selects.
@@ -39,7 +41,8 @@ public final class WidenedForTestsCheck {
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && !wiring.contains(type))
                 .flatMap(type -> type.getCodeUnits().stream()
-                        .filter(unit -> isWidened(type, unit) && unit.getAccessesToSelf().isEmpty())
+                        .filter(unit -> isWidened(type, unit)
+                                && (unit.getAccessesToSelf().isEmpty() || isMarkedForTests(unit)))
                         .filter(unit -> testsCall(type, unit, testsByPackage.getOrDefault(type.getPackageName(), List.of()),
                                 types))
                         .map(unit -> violation(classes, type, unit)))
@@ -47,14 +50,25 @@ public final class WidenedForTestsCheck {
                 .toList();
     }
 
+    /**
+     * Whether the code unit is package-private or protected, declared here and not for a framework: other annotations
+     * than {@code @VisibleForTesting} may mean a framework calls it. A protected constructor is there for subclasses,
+     * as in {@code new TypeToken<List<String>>() {}}.
+     */
     private static boolean isWidened(JavaClass type, JavaCodeUnit unit) {
         Set<JavaModifier> modifiers = unit.getModifiers();
         boolean constructor = isConstructor(unit);
         return (constructor || unit.isMethod())
                 && !modifiers.contains(JavaModifier.PUBLIC) && !modifiers.contains(JavaModifier.PRIVATE)
                 && !modifiers.contains(JavaModifier.SYNTHETIC) && !modifiers.contains(JavaModifier.BRIDGE)
-                && unit.getAnnotations().isEmpty()
+                && unit.getAnnotations().stream().allMatch(annotation -> VISIBLE_FOR_TESTING.equals(annotation.getRawType().getSimpleName()))
+                && !(constructor && modifiers.contains(JavaModifier.PROTECTED))
                 && (constructor || !Hierarchy.isInherited(type, unit));
+    }
+
+    /** Whether the code unit says it was widened for tests, as Guava's and others' {@code @VisibleForTesting} do. */
+    private static boolean isMarkedForTests(JavaCodeUnit unit) {
+        return !unit.getAnnotations().isEmpty();
     }
 
     private static boolean testsCall(JavaClass type, JavaCodeUnit unit, List<ParsedFile> tests, SourceTypes types) {
@@ -79,8 +93,9 @@ public final class WidenedForTestsCheck {
                         .collect(Collectors.joining(", ", "(", ")"))
                 : owner + "." + unit.getName() + "()";
         String visibility = unit.getModifiers().contains(JavaModifier.PROTECTED) ? "protected" : "package-private";
+        String why = isMarkedForTests(unit) ? " for tests: it's marked @" + VISIBLE_FOR_TESTING : ", and only tests call it";
         return classes.violation(RULE, type, unit.getSourceCodeLocation().getLineNumber(),
-                name + " is " + visibility + ", and only tests call it",
+                name + " is " + visibility + why,
                 "test through the public API, or move it into a class of its own whose API tests and production both use");
     }
 }
