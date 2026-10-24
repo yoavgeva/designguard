@@ -895,7 +895,8 @@ Fix: `private final @Nullable String name;` and `Optional<String> name() { retur
 Project exception classes that extend `Exception` but not `RuntimeException`, and non-private methods that declare
 a checked exception, are reported. Methods whose signature is inherited, like `AutoCloseable.close()` or an
 override of a generic method such as `write(Writer out, String value)` for `write(Writer out, T value)`, are skipped,
-and so is wiring code.
+and so is wiring code. `InterruptedException` is fine to declare: a blocking method such as a queue's `take()` passes
+the interrupt on to its caller instead of losing it in a wrapper.
 
 Why: checked exceptions don't compose with lambdas and streams, and force every caller to handle what only one
 place can.
@@ -1011,9 +1012,11 @@ still equal to a sentinel, that sets it. That covers `if (name == null) { name =
 loaded = true; }`, `if (cached != null) return cached;` followed by the load, `d != null ? d : (d = load())`, double-
 checked locking, and caching in a map the method checks first or fills with `computeIfAbsent`. A field set only while
 the method runs is fine: a flag it sets both `true` and `false`, or a field it both sets and clears to `null`, as a
-query's `before()` and `after()` do with the mode they save, itself or through the methods it calls. So are `getAnd...` methods, whose names say they change something, a cursor's
-`hasNext()`, which may read ahead, void methods, and methods implementing an interface from outside the project,
-such as JDBC's `Statement.getResultSet()`, whose name the interface dictates.
+query's `before()` and `after()` do with the mode they save, itself or through the methods it calls. So are
+`getAnd...` methods, whose names say they change something, a cursor's `hasNext()`, which may read ahead, void
+methods, a builder's setters, which take a value and return the builder, as Lombok's `isBound(boolean)` does, and
+methods implementing an interface from outside the project, such as JDBC's `Statement.getResultSet()`, whose name the
+interface dictates.
 
 Why: callers read accessors as queries and call them freely, so a hidden change surprises them (command-query
 separation).
@@ -1180,8 +1183,9 @@ Assertions are calls named `assert*`, `verify*`, `expect*` or `fail*`, plus Asse
 ArchUnit's and designguard's `check`, Awaitility's `until`, and a thrown `AssertionError`. A call to a helper of the
 test sources that asserts counts too: a method of the test class, of a test superclass, or of a test class the call
 names. So do JUnit 4's `@Test(expected = ...)`, and a test name or comment saying it checks that nothing is thrown,
-such as `shouldNotThrowForAnEmptyCart`, `// nothing thrown` or `// should not blow up`. Constants given to a helper of the tests are its inputs, so only library
-assertions count as asserting on constants. Some comparisons with the same expression on both sides can still fail,
+such as `shouldNotThrowForAnEmptyCart`, `// nothing thrown` or `// should not blow up`, and an empty test in a
+`@SpringBootTest` class, like Spring's `contextLoads()`, which checks that the application starts. Constants given to a
+helper of the tests are its inputs, so only library assertions count as asserting on constants. Some comparisons with the same expression on both sides can still fail,
 so they don't count as self-comparisons: `assertEquals(range, range)` on an object, which checks its `equals`,
 expressions with a call or `new`, which run twice, and any comparison in a test whose name mentions `equal`, `hash`
 or `compar`, which checks reflexivity on purpose.

@@ -19,7 +19,8 @@ import java.util.stream.Stream;
  * {@code catch} block. Assertions are calls named {@code assert*}, {@code verify*}, {@code expect*}, {@code fail*},
  * AssertJ's {@code then}, MockMvc's {@code andExpect}, ArchUnit's and designguard's {@code check}, or Awaitility's
  * {@code until}, a thrown {@code AssertionError}, and helpers of the test sources that assert; JUnit 4's
- * {@code @Test(expected = ...)} counts too, and so does a name or comment saying the test checks that nothing is thrown.
+ * {@code @Test(expected = ...)} counts too, and so does a name or comment saying the test checks that nothing is thrown,
+ * or an empty test in a {@code @SpringBootTest} class, which checks that the application starts.
  * Constants given to a helper of the tests are its inputs, not an assertion on constants.
  */
 public final class MeaningfulTestsCheck {
@@ -66,7 +67,7 @@ public final class MeaningfulTestsCheck {
         boolean checksNothingIsThrown = NOTHING_THROWN.matcher(WORD_START.matcher(test.getNameAsString()).replaceAll(" "))
                 .find()
                 || test.getAllContainedComments().stream().anyMatch(comment -> NOTHING_THROWN.matcher(comment.getContent()).find());
-        if (expectsException || checksNothingIsThrown) {
+        if (expectsException || checksNothingIsThrown || checksTheApplicationStarts(test)) {
             return Stream.empty();
         }
         if (!helpers.asserts(test)) {
@@ -82,6 +83,15 @@ public final class MeaningfulTestsCheck {
                         .stream());
         return Stream.of(onlyInCatch(file, name, test, helpers).stream(), constants, newObjects, selfComparisons)
                 .flatMap(violations -> violations);
+    }
+
+    /**
+     * Whether the test is an empty one in a {@code @SpringBootTest} class, as Spring's {@code contextLoads()} is: booting
+     * the application is what it checks.
+     */
+    private static boolean checksTheApplicationStarts(MethodDeclaration test) {
+        return test.getBody().filter(body -> body.getStatements().isEmpty()).isPresent()
+                && Scopes.enclosingType(test).filter(type -> Scopes.hasAnnotation(type, "SpringBootTest")).isPresent();
     }
 
     /** Whether the call is a library assertion, or a check chained onto one, as {@code isEqualTo} is in AssertJ. */

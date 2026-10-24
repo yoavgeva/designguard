@@ -118,6 +118,11 @@ class ApiRulesTest {
                             public void run() throws IllegalStateException {
                                 throw new IllegalStateException("not ready");
                             }
+
+                            public String take() throws InterruptedException {
+                                Thread.sleep(1);
+                                return "next";
+                            }
                         }
                         """)
                 .add("Codec", """
@@ -275,6 +280,15 @@ class ApiRulesTest {
                                 copy.count = count;
                                 copy.dirty = dirty;
                                 return copy;
+                            }
+
+                            public static final class Builder {
+                                private boolean bound;
+
+                                public Builder isBound(boolean bound) {
+                                    this.bound = bound;
+                                    return this;
+                                }
                             }
 
                             private volatile String label;

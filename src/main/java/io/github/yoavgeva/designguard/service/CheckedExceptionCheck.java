@@ -12,7 +12,8 @@ import java.util.stream.Stream;
 /**
  * Finds checked exceptions: project exception classes that extend {@code Exception} but not
  * {@code RuntimeException}, and non-private methods that declare a checked exception. Methods whose signature is
- * inherited, like {@code AutoCloseable.close()}, are skipped, as is wiring code.
+ * inherited, like {@code AutoCloseable.close()}, are skipped, as is wiring code, and so is {@code InterruptedException}:
+ * a blocking method declares it so callers learn of the interrupt instead of losing it in a wrapper.
  */
 public final class CheckedExceptionCheck {
 
@@ -50,7 +51,7 @@ public final class CheckedExceptionCheck {
                         && !unit.getModifiers().contains(JavaModifier.SYNTHETIC)
                         && !Hierarchy.isInherited(type, unit))
                 .flatMap(unit -> unit.getThrowsClause().getTypes().stream()
-                        .filter(CheckedExceptionCheck::isChecked)
+                        .filter(thrown -> isChecked(thrown) && !thrown.isEquivalentTo(InterruptedException.class))
                         .map(thrown -> classes.violation(RULE, type, unit.getSourceCodeLocation().getLineNumber(),
                                 describe(type, unit) + " declares the checked exception " + thrown.getSimpleName(),
                                 fix(thrown))));

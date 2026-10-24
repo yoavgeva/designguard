@@ -47,6 +47,25 @@ class MeaningfulTestsCheckTest {
     }
 
     @Test
+    void anEmptyTestOfABootedApplicationChecksThatItStarts() {
+        assertThat(violations("""
+                package shop;
+
+                @SpringBootTest
+                class CartTest {
+                    @Test
+                    void contextLoads() {
+                    }
+
+                    @Test
+                    void total() {
+                        new Cart().total();
+                    }
+                }
+                """)).extracting(Violation::message).containsExactly("test CartTest.total() asserts nothing");
+    }
+
+    @Test
     void reportsATestWithoutAssertions() {
         assertThat(violations("""
                 package shop;

@@ -16,8 +16,9 @@ import java.util.stream.Stream;
  * queries, so a hidden change surprises them (command-query separation). Lazy initialization, a change made only while
  * a field is still {@code null} or a flag still {@code false} that sets it, double-checked locking included, is fine,
  * and so is a flag set only while the method runs. So are {@code getAnd...} methods, which say they change something,
- * a cursor's {@code hasNext()}, which may read ahead, void methods, which are commands whatever their name, and methods
- * implementing an interface from outside the project, which dictates their name.
+ * a cursor's {@code hasNext()}, which may read ahead, void methods, which are commands whatever their name, a
+ * builder's setters, which take a value and return the builder, and methods implementing an interface from outside the
+ * project, which dictates their name.
  */
 public final class AccessorSideEffectsCheck {
 
@@ -56,7 +57,12 @@ public final class AccessorSideEffectsCheck {
         return ACCESSOR.matcher(method.getName()).matches() && !method.getName().startsWith(CHANGING_GETTER)
                 && !READS_AHEAD.contains(method.getName()) && !method.getRawReturnType().isEquivalentTo(void.class)
                 && !modifiers.contains(JavaModifier.STATIC) && !modifiers.contains(JavaModifier.SYNTHETIC)
-                && !implementsOutsideApi(classes, type, method);
+                && !isFluentSetter(type, method) && !implementsOutsideApi(classes, type, method);
+    }
+
+    /** A method that takes a value and returns its own type, as a builder's {@code isBound(boolean)} does, sets it. */
+    private static boolean isFluentSetter(JavaClass type, JavaMethod method) {
+        return !method.getRawParameterTypes().isEmpty() && method.getRawReturnType().equals(type);
     }
 
     /**
