@@ -59,11 +59,11 @@ public final class BranchingTestsCheck {
      */
     private static Optional<Map.Entry<Node, String>> firstLogic(MethodDeclaration test) {
         return test.findAll(Node.class).stream()
-                .filter(node -> !inClassOf(test, node))
-                .filter(node -> LOOPS.stream().noneMatch(loop -> loop.isInstance(node))
-                        || node.findAll(MethodCallExpr.class).stream().anyMatch(UnitTestMethods::isAssertion))
                 .flatMap(node -> LOGIC.stream().filter(kind -> kind.getKey().isInstance(node))
                         .map(kind -> Map.entry(node, kind.getValue())))
+                .filter(found -> !inClassOf(test, found.getKey()))
+                .filter(found -> LOOPS.stream().noneMatch(loop -> loop.isInstance(found.getKey()))
+                        || found.getKey().findAll(MethodCallExpr.class).stream().anyMatch(UnitTestMethods::isAssertion))
                 .min(Comparator.comparingInt(found -> Scopes.line(found.getKey())));
     }
 

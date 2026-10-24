@@ -1,7 +1,9 @@
 package io.github.yoavgeva.designguard.service;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -47,11 +49,41 @@ final class AccessorChanges {
 
     private final Map<String, Body> bodies;
 
+    /**
+     * Analyzes the accessors of the class and the methods of the class they call, directly or not; other methods can't
+     * change anything an accessor does.
+     */
     private AccessorChanges(ClassNode node) {
-        Map<String, Set<String>> reads = node.methods.stream().collect(Collectors.toMap(method -> method.name + method.desc,
-                method -> fieldsRead(node.name, method), (first, second) -> first));
-        this.bodies = node.methods.stream().collect(Collectors.toMap(method -> method.name + method.desc,
-                method -> new Body(node.name, method, reads), (first, second) -> first));
+        Map<String, MethodNode> methods = node.methods.stream()
+                .collect(Collectors.toMap(method -> method.name + method.desc, method -> method, (first, second) -> first));
+        Set<String> reached = reachedFromAccessors(node.name, methods);
+        Map<String, Set<String>> reads = reached.stream().flatMap(key -> calledInClass(node.name, methods.get(key)))
+                .filter(methods::containsKey)
+                .distinct()
+                .collect(Collectors.toMap(key -> key, key -> fieldsRead(node.name, methods.get(key))));
+        this.bodies = reached.stream()
+                .collect(Collectors.toMap(key -> key, key -> new Body(node.name, methods.get(key), reads)));
+    }
+
+    /** The accessors and the methods of the class they call, directly or through others, by name and descriptor. */
+    private static Set<String> reachedFromAccessors(String owner, Map<String, MethodNode> methods) {
+        Set<String> reached = methods.keySet().stream()
+                .filter(key -> ACCESSOR.matcher(key).lookingAt())
+                .collect(Collectors.toCollection(HashSet::new));
+        Deque<String> pending = new ArrayDeque<>(reached);
+        while (!pending.isEmpty()) {
+            calledInClass(owner, methods.get(pending.pop()))
+                    .filter(callee -> methods.containsKey(callee) && reached.add(callee))
+                    .forEach(pending::push);
+        }
+        return reached;
+    }
+
+    /** The methods of the class the method calls, by name and descriptor. */
+    private static Stream<String> calledInClass(String owner, MethodNode method) {
+        return StreamSupport.stream(method.instructions.spliterator(), false)
+                .filter(instruction -> instruction instanceof MethodInsnNode call && owner.equals(call.owner))
+                .map(instruction -> ((MethodInsnNode) instruction).name + ((MethodInsnNode) instruction).desc);
     }
 
     /**
