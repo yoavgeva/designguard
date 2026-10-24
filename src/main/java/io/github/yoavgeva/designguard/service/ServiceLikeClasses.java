@@ -66,7 +66,7 @@ final class ServiceLikeClasses {
      * code creates don't count until they run.
      */
     boolean runsEffects(JavaCodeUnitAccess<?> call) {
-        if (effects.isImpure(call.getTarget())) {
+        if (effects.isImpure(classes.bytecode(), call)) {
             return true;
         }
         Set<String> implementations = classes.isProject(call.getTargetOwner())
@@ -84,7 +84,7 @@ final class ServiceLikeClasses {
     }
 
     static boolean canBeServiceLike(JavaClass javaClass) {
-        return Effects.canHaveEffects(javaClass);
+        return JdkEffects.canHaveEffects(javaClass);
     }
 
     private Set<String> serviceLike(List<JavaClass> candidates) {

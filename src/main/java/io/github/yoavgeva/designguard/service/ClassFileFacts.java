@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ConstantDynamic;
 import org.objectweb.asm.Handle;
@@ -46,17 +47,20 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * @param superCalls       for each method and constructor that calls a method with {@code invokespecial}, such as
  *                         {@code super.describe()} or a private method, the {@link #callKey(String, String, int) calls}:
  *                         they run exactly the method they name, not an override
+ * @param restoredInterrupts for each method and constructor that calls {@code Thread.currentThread().interrupt()},
+ *                         the {@link #callKey(String, String, int) calls} of {@code interrupt()}
  * @param loops            the calls each method makes once per item: in a loop, or in a lambda it gives a stream
  * @param accessorChanges  for each {@code get}, {@code is} or {@code has} method that changes fields of its class, by
  *                         name and descriptor, the {@link AccessorChanges changes} it makes, lazy initialization aside
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
         List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> superCalls,
-        Loops loops, Map<String, List<AccessorChanges.FieldChange>> accessorChanges) {
+        Map<String, Set<String>> restoredInterrupts, Loops loops,
+        Map<String, List<AccessorChanges.FieldChange>> accessorChanges) {
 
     /** For a class without a class file to read. */
     static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of(),
-            new Loops(Map.of(), Map.of(), Map.of()), Map.of());
+            Map.of(), new Loops(Map.of(), Map.of(), Map.of()), Map.of());
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
@@ -72,6 +76,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         namedClasses = List.copyOf(namedClasses);
         directCalls = Map.copyOf(directCalls);
         superCalls = Map.copyOf(superCalls);
+        restoredInterrupts = Map.copyOf(restoredInterrupts);
         accessorChanges = Map.copyOf(accessorChanges);
     }
 
@@ -102,6 +107,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         Map<String, Integer> captured = Loops.capturedSlots(node);
         return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
                 byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::superCalls),
+                byMethod(node, ClassFileFacts::restoredInterrupts),
                 new Loops(byMethod(node, method -> Loops.callsInLoops(node.name, method)),
                         byMethod(node, Loops::iteratedLambdas),
                         byMethod(node, method -> Loops.lambdaBodyCalls(node.name, method, captured))),
@@ -122,6 +128,29 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             }
         }
         return Set.copyOf(calls);
+    }
+
+    /** The calls of {@code Thread.currentThread().interrupt()}, keyed with their line. */
+    private static Set<String> restoredInterrupts(MethodNode method) {
+        Set<String> calls = new LinkedHashSet<>();
+        int line = 0;
+        AbstractInsnNode previous = null;
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof LineNumberNode number) {
+                line = number.line;
+            }
+            if (instruction.getOpcode() >= 0) {
+                if (isThreadCall(instruction, "interrupt") && isThreadCall(previous, "currentThread")) {
+                    calls.add(callKey("java.lang.Thread", "interrupt", line));
+                }
+                previous = instruction;
+            }
+        }
+        return Set.copyOf(calls);
+    }
+
+    private static boolean isThreadCall(@Nullable AbstractInsnNode instruction, String name) {
+        return instruction instanceof MethodInsnNode call && "java/lang/Thread".equals(call.owner) && name.equals(call.name);
     }
 
     /** The facts of the methods that have any, by name and descriptor. */

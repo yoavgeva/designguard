@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -85,10 +86,10 @@ final class Bytecode {
                 .orElseGet(calls::stream);
     }
 
-    /** Whether the call runs exactly the method it names, as {@code super.describe()} does, not an override. */
-    boolean isSuperCall(JavaCodeUnitAccess<?> access) {
+    /** Whether the call is of the kind, as {@code super.describe()} is a {@link CallKind#SUPER} call. */
+    boolean isCall(CallKind kind, JavaCodeUnitAccess<?> access) {
         JavaCodeUnit origin = access.getOrigin();
-        return factsOf(origin.getOwner()).superCalls().getOrDefault(origin.getName() + origin.getDescriptor(), Set.of())
+        return kind.calls.apply(factsOf(origin.getOwner())).getOrDefault(origin.getName() + origin.getDescriptor(), Set.of())
                 .contains(ClassFileFacts.callKey(access.getTargetOwner().getName(), access.getName(), access.getLineNumber()));
     }
 
@@ -146,5 +147,19 @@ final class Bytecode {
 
     private ClassFileFacts factsOf(JavaClass javaClass) {
         return facts.getOrDefault(javaClass.getName(), ClassFileFacts.UNREAD);
+    }
+
+    /** Kinds of call that ArchUnit doesn't tell apart and the class file does. */
+    enum CallKind {
+        /** {@code super.describe()} or a private method: it runs exactly the method it names, not an override. */
+        SUPER(ClassFileFacts::superCalls),
+        /** {@code Thread.currentThread().interrupt()}: it only restores the current thread's interrupt flag. */
+        RESTORED_INTERRUPT(ClassFileFacts::restoredInterrupts);
+
+        private final Function<ClassFileFacts, Map<String, Set<String>>> calls;
+
+        CallKind(Function<ClassFileFacts, Map<String, Set<String>>> calls) {
+            this.calls = calls;
+        }
     }
 }

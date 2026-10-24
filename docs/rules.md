@@ -14,8 +14,9 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   holding such a resource, or by calling effectful project code; a call through an interface is effectful if any
   implementation is. The clock includes `new Date()` and `Calendar.getInstance()`, and the environment includes
   `System.getProperties()` and `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an `InetAddress` or a
-  `java.sql.Timestamp` as data, encoding a URL, holding a thread or an executor, and reading the current thread aren't
-  effects; resolving a host name is.
+  `java.sql.Timestamp` as data, encoding a URL, copying an array, holding a thread or an executor, reading the current
+  thread, and restoring its interrupt flag with `Thread.currentThread().interrupt()` aren't effects; resolving a host
+  name or interrupting another thread is.
 - **Service-like**: a class that is effectful, holds a service, or is an interface with a service-like
   implementation. **Value**: any other class.
 - **Collaborator**: an instance of another project type that a class holds in a field, as injected services are.

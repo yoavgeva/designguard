@@ -62,7 +62,7 @@ final class Overrides {
      * @return the full names of the code units
      */
     Set<String> mayRun(Bytecode bytecode, JavaCodeUnitAccess<?> call) {
-        return bytecode.isSuperCall(call) ? named(call.getTarget()) : of(call.getTarget());
+        return bytecode.isCall(Bytecode.CallKind.SUPER, call) ? named(call.getTarget()) : of(call.getTarget());
     }
 
     /**
@@ -75,7 +75,7 @@ final class Overrides {
      * @return the full names of the units with a body among the target, the inherited method and the overrides
      */
     Set<String> implementationsOf(Bytecode bytecode, JavaCodeUnitAccess<?> call, Set<String> withBodies) {
-        Stream<String> overrides = bytecode.isSuperCall(call) ? Stream.empty() : of(call.getTarget()).stream();
+        Stream<String> overrides = bytecode.isCall(Bytecode.CallKind.SUPER, call) ? Stream.empty() : of(call.getTarget()).stream();
         return Stream.concat(named(call.getTarget()).stream(), overrides)
                 .filter(withBodies::contains)
                 .collect(Collectors.toUnmodifiableSet());

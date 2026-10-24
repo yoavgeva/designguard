@@ -200,12 +200,29 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
+                .add("Canceller", """
+                        package shop;
+
+                        public final class Canceller {
+                            private final Thread worker;
+
+                            public Canceller(Thread worker) {
+                                this.worker = worker;
+                                worker.interrupt();
+                            }
+
+                            public Thread worker() {
+                                return worker;
+                            }
+                        }
+                        """)
                 .guard("shop");
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate())
                 .extracting(Violation::line, Violation::message)
                 .containsExactly(
                         tuple(7, "Banner does work in its constructor through ShopDefaults.region()"),
+                        tuple(8, "Canceller does work in its constructor through Thread.interrupt()"),
                         tuple(12, "Catalog does work in its constructor through Files.readAllLines()"),
                         tuple(4, "Config does work in its static initializer through System.getenv()"),
                         tuple(11, "Journal does work in its constructor through new FileOutputStream()"),
@@ -213,7 +230,7 @@ class ConstructorWorkRuleTest {
                         tuple(4, "Regions does work in its constructor through System.getenv()"),
                         tuple(5, "Reports does work in its constructor through Reports.refresh()"),
                         tuple(10, "Stamps does work in its constructor through new Date()"));
-        assertThat(guard.dependencies().constructorsDoNoWork().evaluate().get(1).fix()).isEqualTo(
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate().get(2).fix()).isEqualTo(
                 "pass in what Files.readAllLines() produces, or call it from a method when it's needed");
     }
 
@@ -435,6 +452,44 @@ class ConstructorWorkRuleTest {
 
                             public String describe() {
                                 return LOOPBACK.getHostAddress() + query + created.toLocalDateTime() + type;
+                            }
+                        }
+                        """)
+                .add("Options", """
+                        package shop;
+
+                        import java.nio.file.OpenOption;
+                        import java.util.concurrent.ExecutionException;
+                        import java.util.concurrent.Future;
+
+                        public final class Options {
+                            private final OpenOption[] options;
+                            private final String result;
+
+                            public Options(Future<String> pending, OpenOption... options) throws ExecutionException {
+                                this.options = options.clone();
+                                this.result = getUninterruptibly(pending);
+                            }
+
+                            private static String getUninterruptibly(Future<String> future) throws ExecutionException {
+                                boolean interrupted = false;
+                                try {
+                                    while (true) {
+                                        try {
+                                            return future.get();
+                                        } catch (InterruptedException e) {
+                                            interrupted = true;
+                                        }
+                                    }
+                                } finally {
+                                    if (interrupted) {
+                                        Thread.currentThread().interrupt();
+                                    }
+                                }
+                            }
+
+                            public int size() {
+                                return options.length + result.length();
                             }
                         }
                         """)
