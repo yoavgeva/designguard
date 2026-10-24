@@ -28,7 +28,9 @@ import java.util.stream.Stream;
  * literals, or an {@code if}/{@code else if} chain comparing one value with three or more strings through
  * {@code equals}. A typo in a string compiles; a missing enum case doesn't. Converters, which turn input strings into
  * a type, are exempt: methods named {@code parse}, {@code from}, {@code valueOf}, {@code of} or {@code decode}, and
- * methods returning one of the project's enums.
+ * methods returning one of the project's enums. So are words from outside the code, which an enum can't own: strings
+ * with dots or spaces, such as property keys or SQL, single characters, Java's type names, codes with digits, such as
+ * SQL states, and method names a proxy dispatches on.
  */
 public final class StringlyTypedChoicesCheck {
 
@@ -37,6 +39,10 @@ public final class StringlyTypedChoicesCheck {
     private static final Pattern CONVERTER = Pattern.compile("(parse|from|valueOf|of|decode).*");
     private static final Pattern NOT_IDENTIFIER = Pattern.compile("[^A-Za-z0-9]+");
     private static final Set<String> EQUALS = Set.of("equals", "equalsIgnoreCase");
+    private static final Set<String> PRIMITIVES = Set.of("boolean", "byte", "char", "short", "int", "long", "float",
+            "double", "void");
+    private static final Set<String> OBJECT_METHODS = Set.of("toString", "hashCode", "equals", "getClass");
+    private static final Pattern DIGIT = Pattern.compile("\\d");
 
     /**
      * Finds violations in the sources the filter selects.
@@ -52,7 +58,8 @@ public final class StringlyTypedChoicesCheck {
                 .collect(Collectors.toSet());
         return sources.files().stream()
                 .flatMap(file -> Stream.concat(switches(file), chains(file))
-                        .filter(choice -> Scopes.selected(filter, file, choice.node()) && !inConverter(choice.node(), enums))
+                        .filter(choice -> Scopes.selected(filter, file, choice.node()) && !inConverter(choice.node(), enums)
+                                && !isOutsideVocabulary(choice.strings()))
                         .map(choice -> choice.violation(file)))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
@@ -102,20 +109,39 @@ public final class StringlyTypedChoicesCheck {
                 .isPresent();
     }
 
-    /** The value and the string an {@code equals} call compares, either way round. */
+    /**
+     * The value and the string an {@code equals} call compares, either way round: {@code value.equals("a")},
+     * {@code "a".equals(value)} or {@code Objects.equals(value, "a")}.
+     */
     private static Optional<Map.Entry<String, String>> comparison(Expression condition) {
         Optional<MethodCallExpr> call = condition.toMethodCallExpr()
-                .filter(equals -> EQUALS.contains(equals.getNameAsString()) && equals.getArguments().size() == 1);
-        return call.flatMap(equals -> equals.getScope().flatMap(scope -> {
-            Expression argument = equals.getArgument(0);
-            if (argument.isStringLiteralExpr() && !scope.isStringLiteralExpr()) {
-                return Optional.of(Map.entry(scope.toString(), argument.asStringLiteralExpr().asString()));
-            }
-            if (scope.isStringLiteralExpr() && !argument.isStringLiteralExpr()) {
-                return Optional.of(Map.entry(argument.toString(), scope.asStringLiteralExpr().asString()));
-            }
-            return Optional.empty();
-        }));
+                .filter(equals -> EQUALS.contains(equals.getNameAsString()));
+        return call.flatMap(equals -> equals.getArguments().size() == 2
+                ? pair(equals.getArgument(0), equals.getArgument(1))
+                : equals.getScope().filter(scope -> equals.getArguments().size() == 1)
+                        .flatMap(scope -> pair(scope, equals.getArgument(0))));
+    }
+
+    private static Optional<Map.Entry<String, String>> pair(Expression first, Expression second) {
+        if (second.isStringLiteralExpr() && !first.isStringLiteralExpr()) {
+            return Optional.of(Map.entry(first.toString(), second.asStringLiteralExpr().asString()));
+        }
+        if (first.isStringLiteralExpr() && !second.isStringLiteralExpr()) {
+            return Optional.of(Map.entry(second.toString(), first.asStringLiteralExpr().asString()));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Whether the strings are words of a vocabulary from outside the code, which an enum can't own: property keys,
+     * class names or SQL, which have dots or spaces, single characters such as operators, Java's type names, codes
+     * such as SQL states, which all have digits, or method names a proxy dispatches on, which include
+     * {@code toString}.
+     */
+    private static boolean isOutsideVocabulary(List<String> strings) {
+        return strings.stream().anyMatch(string -> string.contains(".") || string.contains(" ") || OBJECT_METHODS.contains(string))
+                || strings.stream().allMatch(string -> string.length() <= 1 || DIGIT.matcher(string).find())
+                || strings.stream().filter(PRIMITIVES::contains).count() * 2 >= strings.size();
     }
 
     private static String subjectOf(Expression selector) {

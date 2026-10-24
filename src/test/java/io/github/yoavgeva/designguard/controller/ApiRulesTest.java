@@ -550,6 +550,80 @@ class ApiRulesTest {
                                         throw new IllegalArgumentException(text);
                                 }
                             }
+
+                            public int weight(String unit) {
+                                if (java.util.Objects.equals(unit, "kg")) {
+                                    return 1000;
+                                } else if (java.util.Objects.equals("g", unit)) {
+                                    return 1;
+                                } else if (java.util.Objects.equals(unit, "lb")) {
+                                    return 453;
+                                }
+                                return 0;
+                            }
+
+                            public String sqlType(String type) {
+                                switch (type) {
+                                    case "int":
+                                        return "integer";
+                                    case "long":
+                                        return "bigint";
+                                    case "boolean":
+                                        return "bit";
+                                    default:
+                                        return type;
+                                }
+                            }
+
+                            public int setting(String key) {
+                                if (key.equals("shop.show_sql")) {
+                                    return 1;
+                                } else if (key.equals("shop.format_sql")) {
+                                    return 2;
+                                } else if (key.equals("shop.use_comments")) {
+                                    return 3;
+                                }
+                                return 0;
+                            }
+
+                            public int retry(String sqlState) {
+                                switch (sqlState) {
+                                    case "40P01":
+                                        return 1;
+                                    case "55P03":
+                                        return 2;
+                                    case "57014":
+                                        return 3;
+                                    default:
+                                        return 0;
+                                }
+                            }
+
+                            public int invoke(String method) {
+                                switch (method) {
+                                    case "close":
+                                        return 1;
+                                    case "isClosed":
+                                        return 2;
+                                    case "toString":
+                                        return 3;
+                                    default:
+                                        return 0;
+                                }
+                            }
+
+                            public int operator(String token) {
+                                switch (token) {
+                                    case "+":
+                                        return 1;
+                                    case "-":
+                                        return 2;
+                                    case "*":
+                                        return 3;
+                                    default:
+                                        return 0;
+                                }
+                            }
                         }
                         """)
                 .guard(SHOP);
@@ -560,7 +634,9 @@ class ApiRulesTest {
                                 "replace the strings with an enum, e.g. enum Delivery { EXPRESS, PICKUP, IN_STORE }, and"
                                         + " switch over it"),
                         tuple(18, "Fees.tax() compares region with the strings \"eu\", \"us\" and \"uk\": make them an enum",
-                                "replace the strings with an enum, e.g. enum Region { EU, US, UK }, and switch over it"));
+                                "replace the strings with an enum, e.g. enum Region { EU, US, UK }, and switch over it"),
+                        tuple(59, "Fees.weight() compares unit with the strings \"kg\", \"g\" and \"lb\": make them an enum",
+                                "replace the strings with an enum, e.g. enum Unit { KG, G, LB }, and switch over it"));
     }
 
     @Test
