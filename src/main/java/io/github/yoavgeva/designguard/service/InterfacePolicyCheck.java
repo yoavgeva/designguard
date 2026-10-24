@@ -21,7 +21,8 @@ import java.util.stream.Stream;
 
 /**
  * Finds classes that hold or receive a concrete class where the policy wants an interface: through a field, a
- * constructor parameter or a method parameter. Wiring code is exempt.
+ * constructor parameter or a method parameter. Wiring code is exempt, and so are overrides, whose parameters the
+ * overridden method declares.
  */
 public final class InterfacePolicyCheck {
 
@@ -110,7 +111,10 @@ public final class InterfacePolicyCheck {
                 .identifiedAs(ProjectClasses.nameOf(dependent) + " depends on concrete " + targetName));
     }
 
-    /** Where the class uses other types: its fields, then its constructors, then its methods, each kind by name. */
+    /**
+     * Where the class uses other types: its fields, then its constructors, then its methods, each kind by name. An
+     * override takes what the method it overrides declares, so the dependency is that declaration's.
+     */
     private static Stream<Usage> usages(JavaClass dependent) {
         Stream<Usage> fields = dependent.getFields().stream()
                 .sorted(Comparator.comparing(JavaField::getName))
@@ -122,7 +126,7 @@ public final class InterfacePolicyCheck {
         Stream<Usage> methods = dependent.getMethods().stream()
                 .sorted(Comparator.comparing(JavaMethod::getName))
                 .filter(method -> !method.getModifiers().contains(JavaModifier.SYNTHETIC)
-                        && !method.getModifiers().contains(JavaModifier.BRIDGE))
+                        && !method.getModifiers().contains(JavaModifier.BRIDGE) && !Hierarchy.isInherited(dependent, method))
                 .flatMap(method -> parameterUsages(method, "method " + method.getName()));
         return Stream.of(fields, constructors, methods).flatMap(stream -> stream);
     }

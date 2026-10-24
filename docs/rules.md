@@ -340,7 +340,8 @@ the policy wants an interface is reported:
 - `SERVICES`: any service-like class, even inside one slice.
 - `ALL`: any project class, values included. Exceptions and annotations are exempt.
 
-Wiring code is exempt.
+Wiring code is exempt, and so are overrides: the method an override implements declares its parameters, so a
+reconciler's `setupWith(ControllerBuilder builder)` takes what its interface says.
 
 Why: depending on an interface lets tests pass a fake and lets the implementation change without touching callers.
 
@@ -1137,8 +1138,9 @@ Fix: test through the public API, or move the logic into a class of its own that
 
 `guardrails().serviceLikeClassesHaveTests()`
 
-Service-like classes without a test class named `<Name>Test`, `<Name>Tests` or `<Name>IT` are reported. Wiring code is
-skipped. Not in `recommended()`, since projects that test by feature don't follow the convention.
+Service-like classes without a test class named `<Name>Test`, `<Name>Tests` or `<Name>IT` are reported. A test named
+after an interface or superclass of the class counts when it uses the class by name, as `ViewNameResolverTest` testing
+`DefaultViewNameResolver` does. Wiring code is skipped. Not in `recommended()`, since projects that test by feature don't follow the convention.
 
 Why: service-like classes hold the behaviour worth testing, and agents skip writing tests.
 

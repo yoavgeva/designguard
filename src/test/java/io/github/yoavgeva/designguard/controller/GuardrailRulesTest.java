@@ -46,6 +46,22 @@ class GuardrailRulesTest {
     }
 
     @Test
+    void aTestNamedAfterAnInterfaceTestsTheImplementationsItUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("ViewNameResolver", "package shop;\n\npublic interface ViewNameResolver {\n    String resolve(String name);\n}\n")
+                .add("DefaultViewNameResolver", "package shop;\n\npublic class DefaultViewNameResolver implements ViewNameResolver {\n"
+                        + "    public String resolve(String name) {\n        return System.getenv(name);\n    }\n}\n")
+                .add("ThemeViewNameResolver", "package shop;\n\npublic class ThemeViewNameResolver implements ViewNameResolver {\n"
+                        + "    public String resolve(String name) {\n        return System.getenv(\"THEME\") + name;\n    }\n}\n")
+                .addTest("ViewNameResolverTest", "package shop;\n\nclass ViewNameResolverTest {\n"
+                        + "    private final DefaultViewNameResolver resolver = new DefaultViewNameResolver();\n}\n")
+                .guard(SHOP);
+
+        assertThat(guard.guardrails().serviceLikeClassesHaveTests().evaluate()).extracting(Violation::message).containsExactly(
+                "ThemeViewNameResolver is service-like, but has no test class (looked for ThemeViewNameResolverTest)");
+    }
+
+    @Test
     void unusedPublicCodeIsReported() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Line", "package shop;\n\npublic record Line(int quantity) {\n}\n")
