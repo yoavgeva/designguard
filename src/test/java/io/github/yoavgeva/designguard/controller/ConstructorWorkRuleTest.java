@@ -103,7 +103,7 @@ class ConstructorWorkRuleTest {
                         package shop;
 
                         public final class Regions {
-                            private final String region = System.getenv("REGION");
+                            private final boolean cached = java.nio.file.Files.exists(java.nio.file.Path.of("regions"));
                             private final int size;
 
                             public Regions() {
@@ -119,7 +119,7 @@ class ConstructorWorkRuleTest {
                             }
 
                             public String region() {
-                                return region + size;
+                                return cached + " " + size;
                             }
                         }
                         """)
@@ -127,7 +127,7 @@ class ConstructorWorkRuleTest {
                         package shop;
 
                         public final class Config {
-                            public static final String REGION = System.getenv("REGION");
+                            public static final boolean CACHED = java.nio.file.Files.exists(java.nio.file.Path.of("cache"));
 
                             private Config() {
                             }
@@ -138,7 +138,7 @@ class ConstructorWorkRuleTest {
 
                         public abstract class EnvDefaults {
                             public String region() {
-                                return System.getenv("REGION");
+                                return java.nio.file.Files.exists(java.nio.file.Path.of("eu")) ? "eu" : "us";
                             }
                         }
                         """)
@@ -245,13 +245,13 @@ class ConstructorWorkRuleTest {
                         tuple(7, "Banner does work in its constructor through ShopDefaults.region()"),
                         tuple(8, "Canceller does work in its constructor through Thread.interrupt()"),
                         tuple(12, "Catalog does work in its constructor through Files.readAllLines()"),
-                        tuple(4, "Config does work in its static initializer through System.getenv()"),
+                        tuple(4, "Config does work in its static initializer through Files.exists()"),
                         tuple(11, "Greeter does work in its constructor through PrintStream.println()"),
                         tuple(11, "Journal does work in its constructor through new FileOutputStream()"),
                         tuple(9, "PriceCache does work in its constructor through Storage.load()"),
-                        tuple(4, "Regions does work in its constructor through System.getenv()"),
+                        tuple(4, "Regions does work in its constructor through Files.exists()"),
                         tuple(5, "Reports does work in its constructor through Reports.refresh()"),
-                        tuple(10, "Stamps does work in its constructor through new Date()"));
+                        tuple(17, "Stamps does work in its constructor through InetAddress.getByName()"));
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate().get(2).fix()).isEqualTo(
                 "pass in what Files.readAllLines() produces, or call it from a method when it's needed");
     }
@@ -514,7 +514,7 @@ class ConstructorWorkRuleTest {
     }
 
     @Test
-    void creatingAClockOrRandomSourceIsNotWorkButReadingOneIs() {
+    void theClockRandomnessAndConfigurationAreNotWork() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Tokens", """
                         package shop;
@@ -554,10 +554,26 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
+                .add("Entry", """
+                        package shop;
+
+                        import java.time.Instant;
+
+                        public final class Entry {
+                            private static final Instant STARTED = Instant.now();
+                            private static final boolean NATIVE = "runtime".equals(System.getProperty("image"));
+                            private static final boolean ANSI = System.console() != null && !"dumb".equals(System.getenv("TERM"));
+                            private final long stamp = System.currentTimeMillis();
+                            private final String id = java.util.UUID.randomUUID().toString();
+
+                            public String describe() {
+                                return STARTED + " " + NATIVE + ANSI + stamp + id;
+                            }
+                        }
+                        """)
                 .guard(SHOP);
 
-        assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).extracting(Violation::message)
-                .containsExactly("Session does work in its constructor through Instant.now()");
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();
     }
 
     @Test

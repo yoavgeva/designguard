@@ -13,10 +13,10 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * Finds constructors and static initializers that do work: they call effectful code, such as I/O, the clock or an
- * injected collaborator, instead of only storing what they are given. Such classes can't be created without that
- * work, so tests can't create them cheaply. Creating objects is left to {@link InjectServicesCheck}; wiring code is
- * exempt.
+ * Finds constructors and static initializers that do work: they call effectful code, such as I/O or an injected
+ * collaborator, instead of only storing what they are given. Such classes can't be created without that work, so tests
+ * can't create them cheaply. Reading the clock, randomness or configuration is cheap and can't fail, so it isn't work.
+ * Creating objects is left to {@link InjectServicesCheck}; wiring code is exempt.
  */
 public final class ConstructorWorkCheck {
 
@@ -43,12 +43,12 @@ public final class ConstructorWorkCheck {
                 .toList();
     }
 
-    /** The first effectful call the code unit makes, by line and then by name, except creating project objects. */
+    /** The first call doing work the code unit makes, by line and then by name, except creating project objects. */
     private static Optional<Violation> work(
             ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass type, JavaCodeUnit unit) {
         return classes.bytecode().callsMadeBy(unit)
                 .filter(call -> !(ForbiddenCall.CONSTRUCTOR.equals(call.getName()) && classes.isProject(call.getTargetOwner())))
-                .filter(serviceLike.sure()::runsEffects)
+                .filter(serviceLike.sure()::doesWork)
                 .min(Comparator.<JavaCall<?>>comparingInt(JavaAccess::getLineNumber)
                         .thenComparing(call -> ForbiddenCall.describe(call.getTarget())))
                 .map(call -> {

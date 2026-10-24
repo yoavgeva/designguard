@@ -444,13 +444,15 @@ Fix: add a batch query to the collaborator, such as `prices.pricesOf(items)`, an
 
 `dependencies().constructorsDoNoWork()` · **recommended**
 
-Constructors and static initializers that call effectful code are reported: I/O, the clock, an injected collaborator.
-Field initializers run in every constructor, and are reported once. A call to a collaborator counts only if every
-implementation it may run touches the outside world, and calls to JDK interfaces such as `Iterator.hasNext()` don't
-count. Reading a stream the constructor is given, wrapping it, or creating an in-memory one such as `StringWriter`,
-isn't I/O, and neither is creating a client or a clock, as `new RestTemplate()` and `Clock.systemUTC()` do, or
-configuring a client with a setter or a fluent method such as `withTableName(...)`. Creating objects is left to
-`inject-services`, and wiring code is exempt.
+Constructors and static initializers that do work are reported: I/O, printing, threads, or a collaborator that does.
+Reading the clock, randomness, environment variables or system properties is cheap and can't fail, so it isn't work
+here; `inject-clock`, `inject-randomness` and `inject-configuration` report those reads. Field initializers run in
+every constructor, and are reported once. A call to a collaborator counts only if every implementation it may run
+touches the outside world, and calls to JDK interfaces such as `Iterator.hasNext()` don't count. Reading a stream the
+constructor is given, wrapping it, or creating an in-memory one such as `StringWriter`, isn't I/O, and neither is
+creating a client or a clock, as `new RestTemplate()` and `Clock.systemUTC()` do, or configuring a client with a
+setter or a fluent method such as `withTableName(...)`. Creating objects is left to `inject-services`, and wiring
+code is exempt.
 
 Why: a class whose constructor does work can't be created without it, so tests can't create it cheaply, and a
 failure there leaves no object to recover with.

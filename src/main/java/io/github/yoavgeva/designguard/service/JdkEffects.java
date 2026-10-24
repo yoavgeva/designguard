@@ -37,9 +37,11 @@ final class JdkEffects {
     private static final Set<String> TIME_AND_CHANCE_CALLS = Set.of("java.lang.System.currentTimeMillis",
             "java.lang.System.nanoTime", "java.lang.Math.random", "java.util.UUID.randomUUID",
             "java.util.Calendar.getInstance");
-    private static final Set<String> IMPURE_CALLS = union(TIME_AND_CHANCE_CALLS, Set.of("java.lang.System.getenv",
+    /** Calls that read how the process was started: environment variables, system properties, or its console. */
+    private static final Set<String> CONFIGURATION_CALLS = Set.of("java.lang.System.getenv",
             "java.lang.System.getProperty", "java.lang.System.getProperties", "java.lang.Integer.getInteger",
-            "java.lang.Long.getLong", "java.lang.Boolean.getBoolean", "java.lang.System.console",
+            "java.lang.Long.getLong", "java.lang.Boolean.getBoolean", "java.lang.System.console");
+    private static final Set<String> IMPURE_CALLS = union(union(TIME_AND_CHANCE_CALLS, CONFIGURATION_CALLS), Set.of(
             "java.lang.Class.getResourceAsStream", "java.lang.ClassLoader.getResourceAsStream",
             "java.lang.ClassLoader.getSystemResourceAsStream", "java.lang.Module.getResourceAsStream"));
     /** Types whose constructor without parameters reads the clock. */
@@ -139,6 +141,14 @@ final class JdkEffects {
         return TIME_AND_CHANCE_TYPES.contains(owner) || TIME_AND_CHANCE_CALLS.contains(owner + "." + target.getName())
                 || "java.time".equals(target.getOwner().getPackageName()) && "now".equals(target.getName())
                 || CLOCK_CONSTRUCTORS.contains(owner) && CONSTRUCTOR.equals(target.getName());
+    }
+
+    /**
+     * Whether calling the target only reads the process's state, which is cheap and can't fail: the clock, randomness,
+     * environment variables, system properties or whether there is a console.
+     */
+    static boolean readsProcessState(CodeUnitAccessTarget target) {
+        return readsTimeOrChance(target) || CONFIGURATION_CALLS.contains(target.getOwner().getName() + "." + target.getName());
     }
 
     /**

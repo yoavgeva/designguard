@@ -127,6 +127,14 @@ final class Effects {
     }
 
     /**
+     * Whether the call does work, which may be slow or fail: it is {@link #isImpure}, other than reading the clock,
+     * randomness or the process's configuration.
+     */
+    boolean doesWork(Bytecode bytecode, JavaCodeUnitAccess<?> access) {
+        return isImpure(bytecode, access) && !JdkEffects.readsProcessState(access.getTarget());
+    }
+
+    /**
      * Whether the call queries a database or another machine: JDBC, the network, a library client, or a package
      * treated as impure, such as an SDK's. Files, the environment and the console are local.
      */
