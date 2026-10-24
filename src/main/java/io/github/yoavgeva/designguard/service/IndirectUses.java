@@ -31,7 +31,7 @@ final class IndirectUses {
     private static final Set<String> WEB_COMPONENTS = Set.of("jakarta.servlet.Filter", "javax.servlet.Filter",
             "jakarta.servlet.http.HttpServlet", "javax.servlet.http.HttpServlet", "org.springframework.web.server.WebFilter");
     private static final Set<String> HTTP_TEST_CLIENTS = Set.of("MockMvc", "MockMvcTester", "WebTestClient",
-            "TestRestTemplate", "RestTestClient", "RestAssured", "RestAssuredMockMvc");
+            "TestRestTemplate", "RestTestClient", "RestAssured", "RestAssuredMockMvc", "HttpClient", "BlockingHttpClient");
     private static final Set<String> INJECTIONS = Set.of("Autowired", "Inject", "Resource");
     private static final Set<String> COMPONENTS = Set.of("Component", "Service", "Repository", "Controller",
             "RestController", "ControllerAdvice", "RestControllerAdvice", "Configuration", "ApplicationScoped",

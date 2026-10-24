@@ -433,6 +433,23 @@ class TestSubjectRuleTest {
                             }
                         }
                         """)
+                .add("Singleton", "package jakarta.inject;\n\n" + RUNTIME + "public @interface Singleton {\n}\n")
+                .add("ThemeProcessor", "package shop;\n\n@jakarta.inject.Singleton\npublic class ThemeProcessor {\n"
+                        + "    public String process(String page) {\n        return page;\n    }\n}\n")
+                .addTest("ThemeProcessorTest", """
+                        package shop;
+
+                        import io.micronaut.http.client.HttpClient;
+                        import io.micronaut.http.client.annotation.Client;
+
+                        @io.micronaut.test.extensions.junit5.annotation.MicronautTest
+                        class ThemeProcessorTest {
+                            @org.junit.jupiter.api.Test
+                            void rendersTheTheme(@Client("/") HttpClient httpClient) {
+                                org.assertj.core.api.Assertions.assertThat(httpClient.toBlocking().retrieve("/")).contains("theme");
+                            }
+                        }
+                        """)
                 .addTest("BaseTest", """
                         package shop;
 

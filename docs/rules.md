@@ -15,8 +15,7 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   JPA's `EntityManager`, Hibernate sessions, Spring's `JdbcTemplate`, `JdbcClient`, R2DBC `DatabaseClient`, Mongo,
   Redis, Elasticsearch and Cassandra templates and transaction templates, jOOQ's `DSLContext`, MyBatis `SqlSession`s
   and `@Mapper`s, `RestTemplate`, `RestClient`, `WebClient`, OkHttp, Apache HttpClient, OpenFeign `@FeignClient`s and
-  Spring HTTP interfaces, MicroProfile `@RegisterRestClient`s, Kafka, AMQP and JMS templates and clients, reactive messaging `Emitter`s, `MailSender` and Quarkus mailers, and from Quarkus: Panache repositories, including the ones a project class implements, the persistence methods an active-record entity inherits from `PanacheEntityBase`, such as `listAll()` and `persist()`, Vert.x SQL and web clients, and Redis data sources; a class that is such a client is service-like; creating one or its builder, as
-  `new RestTemplate()` or `WebClient.builder()` do, isn't an effect, calling it is. Code is effectful directly,
+  Spring HTTP interfaces, MicroProfile `@RegisterRestClient`s, Kafka, AMQP and JMS templates and clients, reactive messaging `Emitter`s, `MailSender` and Quarkus mailers, and from Quarkus: Panache repositories, including the ones a project class implements, the persistence methods an active-record entity inherits from `PanacheEntityBase`, such as `listAll()` and `persist()`, Vert.x SQL and web clients, and Redis data sources, and from Micronaut: Data repositories, the `HttpClient`, declarative `@Client`, `@KafkaClient` and `@RabbitClient` interfaces and `EmailSender`, plus the Lettuce and Jedis Redis clients, Elasticsearch's Java client and AWS SDK clients; a class that is such a client is service-like; creating one or its builder, as `new RestTemplate()`, `WebClient.builder()` or `S3Client.builder()` do, isn't an effect, calling it is. Code is effectful directly,
   through a field holding such a resource, or by calling effectful project code; a call through an interface is
   effectful if any implementation is, except a call on a parameter, which runs whatever implementation the caller
   passed, so `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface
@@ -1304,14 +1303,15 @@ type resolves to it, such as `Streams.failableStream(list)`, in the test or in a
 Expressions resolve against the production sources too, so a factory's result counts even when its classes aren't on
 the test's class path. A field the test's container injects (`@Autowired`, `@Inject`, `@Resource`) typed as an
 interface or superclass of the class uses it, and so does a test of a web controller, controller advice, filter or
-JAX-RS resource or provider that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate` or REST
-Assured. A test named after an interface or abstract class uses it through an implementation, a spy runs the real
-class, a project class the test uses that creates it, as a template dialect creates its processors, or registers it
-by its class, as a Jackson module registers a mixin with `setMixInAnnotation(Money.class, MoneyMixin.class)`, uses it
-too, a `@SpringBootTest` boots the `@SpringBootApplication` class, and requests a booted test (`@SpringBootTest`,
-`@QuarkusTest`, `@MicronautTest`) sends reach any bean: a Spring component or CDI-scoped class, or a class the wiring
-code creates in a `@Bean` method. A test extending a class that declares tests runs them, so it uses what they use,
-as `FruitResourceIT extends FruitResourceTest` does. Tests named after no project class are skipped.
+JAX-RS resource or provider that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate`, REST Assured
+or an `HttpClient`, as Micronaut tests inject one. A test named after an interface or abstract class uses it through
+an implementation, a spy runs the real class, a project class the test uses that creates it, as a template dialect
+creates its processors, or registers it by its class, as a Jackson module registers a mixin with
+`setMixInAnnotation(Money.class, MoneyMixin.class)`, uses it too, a `@SpringBootTest` boots the
+`@SpringBootApplication` class, and requests a booted test (`@SpringBootTest`, `@QuarkusTest`, `@MicronautTest`)
+sends reach any bean: a Spring component or CDI-scoped class, or a class the wiring code creates in a `@Bean` method.
+A test extending a class that declares tests runs them, so it uses what they use, as `FruitResourceIT extends
+FruitResourceTest` does. Tests named after no project class are skipped.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.
 

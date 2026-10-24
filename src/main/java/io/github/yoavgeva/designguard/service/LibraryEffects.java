@@ -17,8 +17,8 @@ import java.util.stream.Stream;
  * Which library APIs touch the outside world, beyond the JDK's: databases, HTTP clients, message brokers and mail. A
  * type counts if it is one of them or extends one, as a Spring Data repository the project declares does: the library
  * implements it at run time, so the project has no code of its own that shows the I/O. So do the interfaces a library
- * implements from annotations: MyBatis {@code @Mapper}s, OpenFeign {@code @FeignClient}s, Spring HTTP interfaces and
- * MicroProfile REST clients. A type the project implements, as a library checking its own code or Hibernate implementing
+ * implements from annotations: MyBatis {@code @Mapper}s, OpenFeign {@code @FeignClient}s, Spring HTTP interfaces,
+ * MicroProfile REST clients and Micronaut's declarative HTTP, Kafka and RabbitMQ clients. A type the project implements, as a library checking its own code or Hibernate implementing
  * JPA's {@code EntityManager} does, is judged by that implementation's code instead, except a Panache repository, whose
  * methods the library supplies. An active-record entity is data, but the persistence methods it inherits from
  * Panache's {@code PanacheEntityBase}, such as {@code listAll()} and {@code persist()}, query.
@@ -66,7 +66,12 @@ final class LibraryEffects {
             "com.mongodb.reactivestreams.client.MongoCollection",
             "org.eclipse.microprofile.reactive.messaging.Emitter", "io.smallrye.reactive.messaging.MutinyEmitter",
             "io.quarkus.mailer.Mailer", "io.quarkus.mailer.reactive.ReactiveMailer",
-            "io.quarkus.redis.datasource.RedisDataSource", "io.quarkus.redis.datasource.ReactiveRedisDataSource");
+            "io.quarkus.redis.datasource.RedisDataSource", "io.quarkus.redis.datasource.ReactiveRedisDataSource",
+            "io.micronaut.data.repository.GenericRepository", "io.micronaut.data.operations.RepositoryOperations",
+            "io.micronaut.http.client.HttpClient", "io.micronaut.email.EmailSender",
+            "io.lettuce.core.AbstractRedisClient", "io.lettuce.core.api.StatefulConnection", "redis.clients.jedis.UnifiedJedis",
+            "redis.clients.jedis.Jedis", "co.elastic.clients.elasticsearch.ElasticsearchClient",
+            "software.amazon.awssdk.core.SdkClient", "com.amazonaws.AmazonWebServiceClient");
     /**
      * Repositories a project class implements without code of its own: the library's default methods, which Quarkus
      * completes at build time, run the queries.
@@ -81,7 +86,8 @@ final class LibraryEffects {
     /** Annotations on a project interface that a library implements with I/O. */
     private static final Set<String> CLIENT_ANNOTATIONS = Set.of("org.apache.ibatis.annotations.Mapper",
             "org.springframework.cloud.openfeign.FeignClient", "org.springframework.web.service.annotation.HttpExchange",
-            "org.eclipse.microprofile.rest.client.inject.RegisterRestClient");
+            "org.eclipse.microprofile.rest.client.inject.RegisterRestClient", "io.micronaut.http.client.annotation.Client",
+            "io.micronaut.configuration.kafka.annotation.KafkaClient", "io.micronaut.rabbitmq.annotation.RabbitClient");
     /** Packages of the annotations on the methods of an HTTP interface, as {@code @GetExchange} and Retrofit's are. */
     private static final Set<String> CLIENT_METHOD_ANNOTATIONS = Set.of("org.springframework.web.service.annotation",
             "retrofit2.http");
@@ -149,13 +155,17 @@ final class LibraryEffects {
                 || target.getRawReturnType().equals(target.getOwner());
     }
 
-    /** Whether the target is a static factory of a client or of its builder, as {@code WebClient.create(url)} is. */
+    /**
+     * Whether the target is a static factory of a client or of its builder, as {@code WebClient.create(url)} and
+     * {@code S3Client.builder()} are.
+     */
     private boolean createsClient(CodeUnitAccessTarget target) {
         JavaClass owner = target.getOwner();
         return target.resolveMember()
                 .filter(member -> member.getModifiers().contains(JavaModifier.STATIC))
                 .map(JavaCodeUnit::getRawReturnType)
-                .filter(type -> type.equals(owner) || type.getName().startsWith(owner.getName() + "$") || isClientType(type))
+                .filter(type -> type.equals(owner) || type.getName().startsWith(owner.getName() + "$") || isClientType(type)
+                        || type.getSimpleName().endsWith("Builder"))
                 .isPresent();
     }
 }
