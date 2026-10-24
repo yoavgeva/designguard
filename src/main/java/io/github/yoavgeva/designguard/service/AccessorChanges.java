@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -30,13 +31,18 @@ import org.objectweb.asm.tree.VarInsnNode;
  * {@code count.incrementAndGet()} do, or through a method of the class it calls. Lazy initialization isn't a change: a
  * change inside code that runs only while a field is still {@code null} or a flag still {@code false}, and that sets
  * that field, as {@code if (name == null) { name = load(); }} or {@code if (!loaded) { ...; loaded = true; }} do. So is
- * caching in a map the method checks first.
+ * caching in a map the method checks first, and a field set only for a while: a flag the accessor sets both
+ * {@code true} and {@code false}, or a field it both sets and clears, itself or through the methods it calls.
  */
 final class AccessorChanges {
 
     private static final Pattern ACCESSOR = Pattern.compile("(get|is|has)[A-Z].*");
     private static final String CONSTRUCTOR = "<init>";
-    private static final Set<Integer> BOTH_FLAGS = Set.of(Opcodes.ICONST_0, Opcodes.ICONST_1);
+    /** How a write sets a flag or reference, which is temporary when a method sets it both ways. */
+    private static final String SET_FALSE = "#false";
+    private static final String SET_TRUE = "#true";
+    private static final String CLEARED = "#null";
+    private static final String SET = "#value";
     /** Methods of collections and atomics that set a value only if there is none, as caching does. */
     private static final Set<String> CACHING = Set.of("computeIfAbsent", "putIfAbsent", "compareAndSet",
             "weakCompareAndSet", "weakCompareAndSetPlain", "weakCompareAndSetVolatile", "compareAndExchange");
@@ -97,19 +103,32 @@ final class AccessorChanges {
     }
 
     private Map<String, List<FieldChange>> accessors() {
-        Map<String, Set<String>> changed = changedFields();
+        Map<String, Set<String>> changed = throughCallees(Body::ownFields);
+        Map<String, Set<String>> writes = throughCallees(Body::writeKinds);
         Map<String, Map<String, FieldChange>> unguarded = unguardedChanges(changed);
         return unguarded.entrySet().stream()
-                .filter(entry -> ACCESSOR.matcher(entry.getKey()).lookingAt() && !entry.getValue().isEmpty())
-                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().values().stream()
+                .filter(entry -> ACCESSOR.matcher(entry.getKey()).lookingAt())
+                .map(entry -> Map.entry(entry.getKey(), entry.getValue().values().stream()
+                        .filter(change -> !isTemporary(change.field(), writes.get(entry.getKey())))
                         .sorted(Comparator.comparingInt(FieldChange::line).thenComparing(FieldChange::field))
-                        .toList()));
+                        .toList()))
+                .filter(entry -> !entry.getValue().isEmpty())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-    /** Every field each method changes, itself or through the methods of the class it calls, guarded or not. */
-    private Map<String, Set<String>> changedFields() {
+    /** Whether the writes set the field both {@code true} and {@code false}, or both to a value and to {@code null}. */
+    private static boolean isTemporary(String field, Set<String> writes) {
+        return writes.contains(field + SET_FALSE) && writes.contains(field + SET_TRUE)
+                || writes.contains(field + CLEARED) && writes.contains(field + SET);
+    }
+
+    /**
+     * What each method has itself or through the methods of the class it calls, as the fields it changes, guarded or
+     * not.
+     */
+    private Map<String, Set<String>> throughCallees(Function<Body, Set<String>> own) {
         Map<String, Set<String>> changed = new ConcurrentHashMap<>();
-        bodies.forEach((key, body) -> changed.put(key, new HashSet<>(body.ownFields())));
+        bodies.forEach((key, body) -> changed.put(key, new HashSet<>(own.apply(body))));
         boolean grew = true;
         while (grew) {
             grew = bodies.entrySet().stream()
@@ -189,7 +208,7 @@ final class AccessorChanges {
         private final List<Event> cachingEvents = new ArrayList<>();
         private final List<Event> callEvents = new ArrayList<>();
         private final Set<String> temporary = new HashSet<>();
-        private final Map<String, Set<Integer>> flags = new ConcurrentHashMap<>();
+        private final Set<String> kinds = new HashSet<>();
         private final List<LazyGuards.Guard> guards;
 
         Body(String owner, MethodNode method, Map<String, Set<String>> reads) {
@@ -207,13 +226,18 @@ final class AccessorChanges {
             }
         }
 
-        /** The changes, without fields the method sets only for a while, restoring them before it returns. */
+        /** The changes, without fields the method restores before it returns. */
         List<Event> changesMade() {
             return changeEvents.stream().filter(change -> !temporary.contains(change.subject())).toList();
         }
 
         List<Event> callsMade() {
             return callEvents;
+        }
+
+        /** How the method itself sets flags and references, as the field's name and how, such as {@code name#null}. */
+        Set<String> writeKinds() {
+            return kinds;
         }
 
         Set<String> ownFields() {
@@ -253,10 +277,7 @@ final class AccessorChanges {
             }
         }
 
-        /**
-         * Notes a field the method sets only for a while: a flag it sets both {@code true} and {@code false}, or a field
-         * it restores from a value it read from it.
-         */
+        /** Notes how the write sets a flag or reference, and whether it restores a value the method read from it. */
         private void recordTemporary(FieldInsnNode write) {
             Set<AbstractInsnNode> values = receivers.stackAt(write, 0);
             boolean restores = values.stream().anyMatch(value -> value instanceof VarInsnNode load
@@ -266,12 +287,17 @@ final class AccessorChanges {
             if (restores) {
                 temporary.add(write.name);
             }
-            int flag = values.size() == 1 ? values.iterator().next().getOpcode() : -1;
-            if ("Z".equals(write.desc) && (flag == Opcodes.ICONST_0 || flag == Opcodes.ICONST_1)) {
-                Set<Integer> set = flags.computeIfAbsent(write.name, name -> new HashSet<>());
-                set.add(flag);
-                if (set.containsAll(BOTH_FLAGS)) {
-                    temporary.add(write.name);
+            Set<Integer> opcodes = values.stream().map(AbstractInsnNode::getOpcode).collect(Collectors.toSet());
+            if ("Z".equals(write.desc) && opcodes.size() == 1) {
+                int flag = opcodes.iterator().next();
+                if (flag == Opcodes.ICONST_0 || flag == Opcodes.ICONST_1) {
+                    kinds.add(write.name + (flag == Opcodes.ICONST_1 ? SET_TRUE : SET_FALSE));
+                }
+            } else if (Type.getType(write.desc).getSort() >= Type.ARRAY && !opcodes.isEmpty()) {
+                if (Set.of(Opcodes.ACONST_NULL).equals(opcodes)) {
+                    kinds.add(write.name + CLEARED);
+                } else if (!opcodes.contains(Opcodes.ACONST_NULL)) {
+                    kinds.add(write.name + SET);
                 }
             }
         }

@@ -504,6 +504,69 @@ class ApiRulesTest {
     }
 
     @Test
+    void fieldsHelpersSetAndClearAroundTheWorkAreNotChanges() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Session", "package shop;\n\npublic class Session {\n    public String mode = \"normal\";\n}\n")
+                .add("Query", """
+                        package shop;
+
+                        public class Query {
+                            private final Session session;
+                            private String savedMode;
+                            private boolean running;
+                            private String last;
+
+                            public Query(Session session) {
+                                this.session = session;
+                            }
+
+                            public String getResult() {
+                                before();
+                                try {
+                                    return "rows" + running;
+                                } finally {
+                                    after();
+                                }
+                            }
+
+                            private void before() {
+                                savedMode = session.mode;
+                                session.mode = "query";
+                                running = true;
+                            }
+
+                            private void after() {
+                                if (savedMode != null) {
+                                    session.mode = savedMode;
+                                    savedMode = null;
+                                }
+                                running = false;
+                            }
+
+                            public String getLast() {
+                                last = session.mode;
+                                return last;
+                            }
+
+                            public String getCleared() {
+                                forget();
+                                return "cleared";
+                            }
+
+                            private void forget() {
+                                last = null;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.api().accessorsChangeNothing().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(
+                        tuple(37, "Query.getLast() changes the field 'last'"),
+                        tuple(42, "Query.getCleared() changes the field 'last' through forget()"));
+    }
+
+    @Test
     void choicesBetweenStringsAreEnums() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Delivery", "package shop;\n\npublic enum Delivery { EXPRESS, PICKUP, STANDARD }\n")
