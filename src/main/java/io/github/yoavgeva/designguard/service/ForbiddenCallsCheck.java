@@ -7,6 +7,7 @@ import io.github.yoavgeva.designguard.model.Violation;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiPredicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -19,11 +20,19 @@ public final class ForbiddenCallsCheck {
     private final String rule;
     private final String verb;
     private final List<ForbiddenCall> forbidden;
+    private final BiPredicate<Bytecode, JavaCodeUnitAccess<?>> allowed;
 
     ForbiddenCallsCheck(String rule, String verb, List<ForbiddenCall> forbidden) {
+        this(rule, verb, forbidden, (bytecode, access) -> false);
+    }
+
+    /** A check that also allows the forbidden uses the predicate accepts, as making an executor's threads. */
+    ForbiddenCallsCheck(String rule, String verb, List<ForbiddenCall> forbidden,
+            BiPredicate<Bytecode, JavaCodeUnitAccess<?>> allowed) {
         this.rule = rule;
         this.verb = verb;
         this.forbidden = List.copyOf(forbidden);
+        this.allowed = allowed;
     }
 
     /**
@@ -45,7 +54,7 @@ public final class ForbiddenCallsCheck {
 
     private Stream<Violation> violations(ProjectClasses classes, ClassFilter filter, JavaClass javaClass) {
         return javaClass.getCodeUnitAccessesFromSelf().stream()
-                .filter(access -> classes.selected(filter, access.getOrigin()))
+                .filter(access -> classes.selected(filter, access.getOrigin()) && !allowed.test(classes.bytecode(), access))
                 .flatMap(access -> match(access).stream())
                 .collect(Collectors.toMap(Match::description, match -> match,
                         (first, second) -> first.line() <= second.line() ? first : second, LinkedHashMap::new))

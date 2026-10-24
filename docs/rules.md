@@ -535,8 +535,10 @@ Fix: read the variable in wiring code and pass the value to the constructor.
 
 `dependencies().noRawThreads()` · **recommended**
 
-Code outside wiring that starts threads by hand is reported: `new Thread(...)`, `Thread.startVirtualThread(...)`,
-and `start` or `unstarted` on a thread builder such as `Thread.ofVirtual()`.
+Code outside wiring that starts threads by hand is reported: `new Thread(...)`, `Thread.startVirtualThread(...)`, and
+`start` or `unstarted` on a thread builder such as `Thread.ofVirtual()`. A thread factory makes an executor's
+threads, so creating them there isn't: a method that takes the work and returns its thread, as
+`ThreadFactory.newThread(Runnable)` does, or a lambda or `Thread::new` an executor takes as its `ThreadFactory`.
 
 Why: raw threads aren't pooled, bounded or shut down, and tests can't run their work synchronously.
 

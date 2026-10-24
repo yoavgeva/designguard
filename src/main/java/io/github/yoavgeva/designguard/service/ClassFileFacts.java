@@ -57,16 +57,18 @@ import org.objectweb.asm.tree.VarInsnNode;
  * @param loops            the calls each method makes once per item: in a loop, or in a lambda it gives a stream
  * @param accessorChanges  for each {@code get}, {@code is} or {@code has} method that changes fields of its class, by
  *                         name and descriptor, the {@link AccessorChanges changes} it makes, lazy initialization aside
+ * @param threadFactoryCalls for each method that creates thread factories for executors, the
+ *                         {@link ThreadFactoryCalls calls} made in them
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
         List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> superCalls,
         Map<String, Set<String>> restoredInterrupts, Map<String, Set<String>> consoleCalls,
         Map<String, Set<String>> parameterCalls, Loops loops,
-        Map<String, List<AccessorChanges.FieldChange>> accessorChanges) {
+        Map<String, List<AccessorChanges.FieldChange>> accessorChanges, Map<String, Set<String>> threadFactoryCalls) {
 
     /** For a class without a class file to read. */
     static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of(),
-            Map.of(), Map.of(), Map.of(), new Loops(Map.of(), Map.of(), Map.of()), Map.of());
+            Map.of(), Map.of(), Map.of(), new Loops(Map.of(), Map.of(), Map.of()), Map.of(), Map.of());
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
@@ -86,6 +88,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         consoleCalls = Map.copyOf(consoleCalls);
         parameterCalls = Map.copyOf(parameterCalls);
         accessorChanges = Map.copyOf(accessorChanges);
+        threadFactoryCalls = Map.copyOf(threadFactoryCalls);
     }
 
     /**
@@ -123,7 +126,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                 new Loops(byMethod(node, method -> Loops.callsInLoops(method, analyses.get(method))),
                         byMethod(node, Loops::iteratedLambdas),
                         byMethod(node, method -> Loops.lambdaBodyCalls(method, captured, analyses.get(method)))),
-                AccessorChanges.of(node));
+                AccessorChanges.of(node), ThreadFactoryCalls.in(node));
     }
 
     /** The non-virtual calls of methods the method makes, keyed with their line: {@code super.m()} and private methods. */
@@ -523,6 +526,69 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             return instruction instanceof MethodInsnNode call
                     && (call.getOpcode() == Opcodes.INVOKEVIRTUAL || call.getOpcode() == Opcodes.INVOKEINTERFACE)
                     && !call.owner.startsWith("java/") && !call.owner.startsWith("javax/");
+        }
+    }
+
+    /**
+     * The calls each method makes inside the thread factories it creates for executors, as
+     * {@code work -> new Thread(work, "checker")} and {@code Thread::new} are. ArchUnit counts the calls in a lambda's body
+     * as the calls of the method that creates it; the class file keeps them apart.
+     */
+    static final class ThreadFactoryCalls {
+
+        private static final String THREAD_FACTORY = "java/util/concurrent/ThreadFactory";
+
+        private ThreadFactoryCalls() {
+        }
+
+        /**
+         * Reads the class's methods.
+         *
+         * @param node the class
+         * @return for each method that creates thread factories, by name and descriptor, the
+         *         {@link #callKey(String, String, int) calls} they make, or the constructor they name
+         */
+        static Map<String, Set<String>> in(ClassNode node) {
+            Map<String, MethodNode> methods = node.methods.stream()
+                    .collect(Collectors.toMap(method -> method.name + method.desc, Function.identity(), (first, second) -> first));
+            return node.methods.stream()
+                    .map(method -> Map.entry(method.name + method.desc, made(node.name, method, methods)))
+                    .filter(entry -> !entry.getValue().isEmpty())
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (first, second) -> first));
+        }
+
+        private static Set<String> made(String owner, MethodNode method, Map<String, MethodNode> methods) {
+            Set<String> calls = new LinkedHashSet<>();
+            int line = 0;
+            for (AbstractInsnNode instruction : method.instructions) {
+                if (instruction instanceof LineNumberNode number) {
+                    line = number.line;
+                }
+                if (instruction instanceof InvokeDynamicInsnNode call && LAMBDA_METAFACTORY.equals(call.bsm.getOwner())
+                        && THREAD_FACTORY.equals(Type.getReturnType(call.desc).getInternalName()) && call.bsmArgs.length > 1
+                        && call.bsmArgs[1] instanceof Handle handle) {
+                    int at = line;
+                    calls.addAll(Optional.ofNullable(owner.equals(handle.getOwner()) ? methods.get(handle.getName() + handle.getDesc()) : null)
+                            .map(ThreadFactoryCalls::callsIn)
+                            .orElseGet(() -> Set.of(callKey(Type.getObjectType(handle.getOwner()).getClassName(),
+                                    handle.getName(), at))));
+                }
+            }
+            return Set.copyOf(calls);
+        }
+
+        private static Set<String> callsIn(MethodNode body) {
+            Set<String> calls = new LinkedHashSet<>();
+            int line = 0;
+            for (AbstractInsnNode instruction : body.instructions) {
+                if (instruction instanceof LineNumberNode number) {
+                    line = number.line;
+                }
+                if (instruction instanceof MethodInsnNode call) {
+                    calls.add(callKey(Type.getObjectType(call.owner).getClassName(), call.name, line));
+                }
+            }
+            return calls;
         }
     }
 }
