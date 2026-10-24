@@ -59,6 +59,29 @@ class BranchingTestsRuleTest {
                                 assertThat(new Cart().total()).isEqualTo(expected(1));
                             }
 
+                            @org.junit.jupiter.api.Test
+                            void totalsWithAFakeSupplier() {
+                                java.util.function.IntSupplier fake = new java.util.function.IntSupplier() {
+                                    @Override
+                                    public int getAsInt() {
+                                        if (System.nanoTime() > 0) {
+                                            return 3;
+                                        }
+                                        return 0;
+                                    }
+                                };
+                                class Fixed implements java.util.function.IntSupplier {
+                                    @Override
+                                    public int getAsInt() {
+                                        for (int round = 0; round < 3; round++) {
+                                            assertThat(round).isNotNegative();
+                                        }
+                                        return 3;
+                                    }
+                                }
+                                assertThat(fake.getAsInt() + new Fixed().getAsInt()).isEqualTo(6);
+                            }
+
                             private int expected(int carts) {
                                 int sum = 0;
                                 for (int cart = 0; cart < carts; cart++) {
