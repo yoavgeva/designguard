@@ -445,6 +445,67 @@ class TypeRulesTest {
                         + "        return catalog.load(\"a\") + catalog.all();\n    }\n}\n")
                 .add("Viewer", "package shop;\n\npublic class Viewer {\n    public String view(Catalog catalog) {\n"
                         + "        return catalog.load(\"a\");\n    }\n}\n")
+                .add("Tally", store.replace("Store", "Tally"))
+                .add("HashTally", """
+                        package shop;
+
+                        import java.util.HashMap;
+                        import java.util.List;
+                        import java.util.Map;
+
+                        public final class HashTally implements Tally {
+                            private final Map<String, String> values = new HashMap<>();
+
+                            public String load(String id) {
+                                return values.get(id);
+                            }
+
+                            public void save(String id, String value) {
+                                values.put(id, value);
+                            }
+
+                            public void delete(String id) {
+                                values.remove(id);
+                            }
+
+                            public List<String> all() {
+                                return List.copyOf(values.values());
+                            }
+                        }
+                        """)
+                .add("Adder", "package shop;\n\npublic class Adder {\n    public void add(Tally tally) {\n"
+                        + "        tally.save(\"a\", \"b\");\n    }\n}\n")
+                .add("Counter", "package shop;\n\npublic class Counter {\n    public int count(Tally tally) {\n"
+                        + "        return tally.all().size();\n    }\n}\n")
+                .add("DiskStore", """
+                        package shop;
+
+                        import java.io.IOException;
+                        import java.io.UncheckedIOException;
+                        import java.nio.file.Files;
+                        import java.nio.file.Path;
+                        import java.util.List;
+
+                        public final class DiskStore implements Store {
+                            public String load(String id) {
+                                try {
+                                    return Files.readString(Path.of(id));
+                                } catch (IOException e) {
+                                    throw new UncheckedIOException(e);
+                                }
+                            }
+
+                            public void save(String id, String value) {
+                            }
+
+                            public void delete(String id) {
+                            }
+
+                            public List<String> all() {
+                                return List.of();
+                            }
+                        }
+                        """)
                 .guard(SHOP);
 
         assertThat(guard.types().interfacesAreFocused().evaluate()).extracting(Violation::message, Violation::fix)

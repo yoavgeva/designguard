@@ -775,7 +775,9 @@ Fix: `enum Status { OPEN, PAID }`, and parameters of type `Status` instead of `i
 `types().interfacesAreFocused()` · **recommended**
 
 Interfaces wider than any of their clients needs are reported: at least four abstract methods, used by at least two
-classes other than their implementations, each of which calls at most half of them.
+classes other than their implementations, each of which calls at most half of them. Value types are left out: an
+interface the project implements without effects, as a collection, a graph or a hash sink is, offers the operations
+of one data type, and nobody fakes it.
 
 Why: every client depends on methods it never uses, and every implementation, fakes included, has to provide them
 all (the interface segregation principle).

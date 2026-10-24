@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
  * Finds interfaces wider than any of their clients needs (the interface segregation principle): an interface with at
  * least four abstract methods, used by at least two classes other than its implementations, where each of them calls
  * at most half of its methods. Each client then depends on methods it never uses, and every implementation has to
- * provide them all.
+ * provide them all. Value types the project implements without effects, as a collection or a sink, are left out.
  */
 public final class FatInterfaceCheck {
 
@@ -33,8 +33,10 @@ public final class FatInterfaceCheck {
      */
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         ProjectClasses classes = code.projectClasses();
+        ServiceLikeClasses serviceLike = code.serviceLike();
         return classes.stream()
-                .filter(type -> type.isInterface() && !type.isAnnotation() && classes.selected(filter, type))
+                .filter(type -> type.isInterface() && !type.isAnnotation() && classes.selected(filter, type)
+                        && !isValue(type, serviceLike))
                 .flatMap(type -> violation(classes, type).stream())
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
@@ -63,6 +65,15 @@ public final class FatInterfaceCheck {
                 "split it into smaller interfaces, one for each role its clients need, and let implementations"
                         + " implement several")
                 .identifiedAs(name + " is wider than any of its clients needs"));
+    }
+
+    /**
+     * Whether the interface is a value type, as a collection, a graph or a sink is: the project implements it, and no
+     * implementation reaches effects. Its clients use the operations of one data type, which nobody fakes.
+     */
+    private static boolean isValue(JavaClass type, ServiceLikeClasses serviceLike) {
+        return !serviceLike.contains(type) && type.getAllSubclasses().stream()
+                .anyMatch(subclass -> !subclass.isInterface() && !subclass.getModifiers().contains(JavaModifier.ABSTRACT));
     }
 
     private static boolean isClient(ProjectClasses classes, JavaClass type, JavaClass origin) {
