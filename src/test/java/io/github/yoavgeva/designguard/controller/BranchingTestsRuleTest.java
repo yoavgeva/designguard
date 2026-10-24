@@ -35,7 +35,15 @@ class BranchingTestsRuleTest {
                             @org.junit.jupiter.api.Test
                             void totalsEachTime() {
                                 for (int round = 0; round < 3; round++) {
-                                    assertThat(new Cart().total()).isEqualTo(3);
+                                    assertThat(new Cart().total()).as("round " + round).isEqualTo(3);
+                                }
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void totalsForEveryCountByIndex() {
+                                int[] counts = {1, 2};
+                                for (int i = 0; i < counts.length; i++) {
+                                    assertThat(new Cart().total() * counts[i]).isPositive();
                                 }
                             }
 
@@ -116,8 +124,8 @@ class BranchingTestsRuleTest {
         assertThat(guard.tests().testsHaveNoLogic().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
                         tuple(9, "test CartTest.totals() has an if: a test should take one path"),
-                        tuple(16, "test CartTest.totalsEachTime() has a for loop: a test should take one path"),
-                        tuple(78, "test CartTest.totalsOnlyPositives() has an if: a test should take one path"));
+                        tuple(24, "test CartTest.totalsForEveryCountByIndex() has a for loop: a test should take one path"),
+                        tuple(86, "test CartTest.totalsOnlyPositives() has an if: a test should take one path"));
         assertThat(guard.tests().testsHaveNoLogic().evaluate().get(0).fix())
                 .isEqualTo("split it into one test per case, or make the cases parameters of a @ParameterizedTest");
     }
