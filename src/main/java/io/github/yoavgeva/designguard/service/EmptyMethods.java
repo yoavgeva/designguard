@@ -5,13 +5,17 @@ import com.github.javaparser.ast.stmt.BlockStmt;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Finds methods with an empty body and no comment explaining why. Overrides and interface default methods are
- * allowed: an empty one is usually a deliberate no-op hook.
+ * Finds methods with an empty body and no comment explaining why. Hooks are allowed: an empty override, interface
+ * default method or overridable method of an abstract class is usually a deliberate no-op, and so is a method whose
+ * Javadoc says it does nothing.
  */
 final class EmptyMethods implements SourceFinder {
+
+    private static final Pattern DOES_NOTHING = Pattern.compile("(?i)\\b(does|do) nothing\\b|\\bno-?op\\b|\\bnothing to\\b");
 
     private final String rule;
 
@@ -40,7 +44,7 @@ final class EmptyMethods implements SourceFinder {
                 && body.get().getStatements().isEmpty()
                 && body.get().getAllContainedComments().isEmpty()
                 && body.get().getOrphanComments().isEmpty()
-                && !method.isDefault()
-                && !Scopes.hasAnnotation(method, "Override");
+                && !Hooks.javadocSays(method, DOES_NOTHING)
+                && !Hooks.isHook(method);
     }
 }

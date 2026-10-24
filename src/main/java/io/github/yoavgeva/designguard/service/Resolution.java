@@ -1,10 +1,12 @@
 package io.github.yoavgeva.designguard.service;
 
+import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.resolution.MethodAmbiguityException;
 import com.github.javaparser.resolution.UnsolvedSymbolException;
+import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedValueDeclaration;
 import com.github.javaparser.resolution.types.ResolvedType;
 import java.util.Locale;
@@ -46,6 +48,23 @@ final class Resolution {
         } catch (UnsolvedSymbolException | MethodAmbiguityException | UnsupportedOperationException | IllegalStateException
                 | IllegalArgumentException e) {
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Whether the method overrides or implements a method of a supertype, with or without {@code @Override}: a
+     * supertype declares a method of the same name and number of parameters. False if a supertype can't be resolved.
+     */
+    static boolean overridesSupertype(MethodDeclaration method) {
+        try {
+            ResolvedMethodDeclaration resolved = method.resolve();
+            return resolved.declaringType().getAllAncestors().stream()
+                    .flatMap(ancestor -> ancestor.getDeclaredMethods().stream())
+                    .anyMatch(inherited -> inherited.getName().equals(resolved.getName())
+                            && inherited.getNoParams() == resolved.getNumberOfParams());
+        } catch (UnsolvedSymbolException | MethodAmbiguityException | UnsupportedOperationException | IllegalStateException
+                | IllegalArgumentException e) {
+            return false;
         }
     }
 

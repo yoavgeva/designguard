@@ -51,6 +51,33 @@ class TodoCommentsTest {
                 """)).extracting(Violation::line).containsExactly(5);
     }
 
+    @Test
+    void reportsMarkersAfterJavadocTagsHtmlAndCommentedOutSlashes() {
+        assertThat(violations(CART, """
+                package shop;
+
+                class Cart {
+                    /**
+                     * Totals the cart.
+                     *
+                     * @deprecated TODO make private
+                     */
+                    int total() {
+                        return 3;
+                    }
+
+                    /** <p>TODO move to Prices.</p> */
+                    int tax() {
+                        // // TODO: charge fees
+                        return 1;
+                    }
+                }
+                """)).extracting(Violation::line, Violation::message).containsExactly(
+                        tuple(4, "TODO left in the code: @deprecated TODO make private"),
+                        tuple(13, "TODO left in the code: <p>TODO move to Prices.</p>"),
+                        tuple(15, "TODO left in the code: // TODO: charge fees"));
+    }
+
     private List<Violation> violations(String typeName, String source) {
         new SourceTree(root).add(typeName, source);
         TodoComments todos = new TodoComments("no-stubs");
