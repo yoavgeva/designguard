@@ -799,7 +799,10 @@ are skipped, since they inherit their signature, and so are setters, whose boole
 booleans that only guard a `throw`, as preconditions like `checkArgument(boolean condition, String message)` do, and
 booleans that only pick a value: a ternary between constants (`out.write(value ? "true" : "false")`), a returned
 ternary between values (`return bool ? 1 : 0;`, `return bool ? yes : no;`), or an `if` and `else` that differ only in
-constants. Passing a picked mode on, as in `load(id, eager ? EAGER : LAZY)`, still chooses a behaviour.
+constants. So are booleans in an overload family for plain values, as `append(boolean)` next to `append(int)` or
+`append(Object)` is: the boolean is one more kind of value the overloads handle. An overload that takes an enum
+instead shows the boolean picks a mode, and passing a picked mode on, as in `load(id, eager ? EAGER : LAZY)`, still
+chooses a behaviour.
 
 Why: such a method does two things, and a call like `print(text, true)` doesn't say which.
 
