@@ -790,8 +790,11 @@ Fix: `public final class PlaceOrder`.
 `api().noFlagArguments()` · **recommended**
 
 Non-private methods with a boolean parameter used directly as an `if` or ternary condition are reported. Overrides
-are skipped, since they inherit their signature. So are booleans that only guard a `throw`, as preconditions like
-`checkArgument(boolean condition, String message)` do.
+are skipped, since they inherit their signature, and so are setters, whose boolean is the value they set. So are
+booleans that only guard a `throw`, as preconditions like `checkArgument(boolean condition, String message)` do, and
+booleans that only pick a value: a ternary between constants (`out.write(value ? "true" : "false")`), a returned
+ternary between values (`return bool ? 1 : 0;`, `return bool ? yes : no;`), or an `if` and `else` that differ only in
+constants. Passing a picked mode on, as in `load(id, eager ? EAGER : LAZY)`, still chooses a behaviour.
 
 Why: such a method does two things, and a call like `print(text, true)` doesn't say which.
 

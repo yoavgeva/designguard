@@ -96,6 +96,57 @@ class FlagArgumentCheckTest {
     }
 
     @Test
+    void allowsBooleansThatOnlyPickAValue() {
+        assertThat(violations("""
+                package shop;
+
+                class Booleans {
+                    static int toInteger(boolean bool) {
+                        return bool ? 1 : 0;
+                    }
+
+                    static String toString(boolean bool, String yes, String no) {
+                        return bool ? yes : no;
+                    }
+
+                    void write(StringBuilder out, boolean value) {
+                        if (value) {
+                            out.append("true");
+                        } else {
+                            out.append("false");
+                        }
+                    }
+
+                    int setBoolean(int holder, boolean flag) {
+                        return flag ? holder | 1 : holder & ~1;
+                    }
+
+                    String label(boolean urgent) {
+                        if (urgent) {
+                            return send("now");
+                        } else {
+                            return queue("later");
+                        }
+                    }
+
+                    String load(String id, boolean eager) {
+                        return send(eager ? EAGER : LAZY) + id;
+                    }
+
+                    private String send(String when) {
+                        return when;
+                    }
+
+                    private String queue(String when) {
+                        return when;
+                    }
+                }
+                """)).extracting(Violation::message).containsExactly(
+                        "Booleans.label() branches on its boolean parameter 'urgent'",
+                        "Booleans.load() branches on its boolean parameter 'eager'");
+    }
+
+    @Test
     void allowsPreconditionsThatOnlyThrowOnTheirBoolean() {
         assertThat(violations("""
                 package shop;
