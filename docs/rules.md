@@ -930,8 +930,9 @@ Fix: make `read` an instance method, and give `Lookup` a `Disk` in its construct
 `api().typedApis()`
 
 Public methods of public classes that take or return untyped data are reported: `Object`, a map to `Object` such as
-`Map<String, Object>`, or a JSON tree from Jackson, Gson, org.json or Jakarta JSON. Type variables, inherited
-signatures such as `equals(Object)` and wiring code are skipped.
+`Map<String, Object>`, or a JSON tree from Jackson, Gson, org.json or Jakarta JSON, unless the project is that
+library and the tree its own model. Type variables, inherited signatures such as `equals(Object)` and wiring code are
+skipped.
 
 Why: callers and the compiler can't tell what to pass or what comes back. A record names the fields and their
 types.

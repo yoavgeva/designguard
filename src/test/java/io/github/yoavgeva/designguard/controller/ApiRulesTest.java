@@ -196,6 +196,21 @@ class ApiRulesTest {
                 "Orders.export() returns an untyped JsonNode");
         assertThat(guard.api().typedApis().evaluate().get(0).fix())
                 .isEqualTo("define a record with named, typed fields and use it instead");
+
+        DesignGuard library = new CompiledProject(directory.resolve("gson")).release(release)
+                .add("JsonArray", """
+                        package com.google.gson;
+
+                        public final class JsonArray {
+                            private final java.util.List<String> elements = new java.util.ArrayList<>();
+
+                            public void addAll(JsonArray array) {
+                                elements.addAll(array.elements);
+                            }
+                        }
+                        """)
+                .guard("com.google.gson");
+        assertThat(library.api().typedApis().evaluate()).isEmpty();
     }
 
     @Test
