@@ -7,7 +7,6 @@ import com.tngtech.archunit.core.domain.JavaMember;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -16,19 +15,19 @@ import java.util.stream.Stream;
 final class ProjectClasses {
 
     private final JavaClasses classes;
-    private final Map<String, String> sourceFiles;
+    private final SourceFiles sourceFiles;
     private final Bytecode compiledCode;
 
     /**
      * Wraps imported classes.
      *
      * @param classes     the classes
-     * @param sourceFiles where each {@link #relativeSourcePath(JavaClass) relative source path} was found
+     * @param sourceFiles where the classes' sources were found
      * @param bytecode    what the classes' code uses and creates
      */
-    ProjectClasses(JavaClasses classes, Map<String, String> sourceFiles, Bytecode bytecode) {
+    ProjectClasses(JavaClasses classes, SourceFiles sourceFiles, Bytecode bytecode) {
         this.classes = classes;
-        this.sourceFiles = Map.copyOf(sourceFiles);
+        this.sourceFiles = sourceFiles;
         this.compiledCode = bytecode;
     }
 
@@ -44,9 +43,14 @@ final class ProjectClasses {
         return compiledCode;
     }
 
-    /** Whether the filter selects the class: by its package, and the annotations on it and the classes around it. */
+    /**
+     * Whether the filter selects the class: by its package, and the annotations on it and the classes around it. Code
+     * the build generates is never selected ({@link SourceFiles#isGenerated(JavaClass)}): rules analyse it, but report
+     * only the code people write.
+     */
     boolean selected(ClassFilter filter, JavaClass javaClass) {
-        return filter.selects(javaClass.getPackageName(), annotationsAround(javaClass).toList());
+        return !sourceFiles.isGenerated(javaClass)
+                && filter.selects(javaClass.getPackageName(), annotationsAround(javaClass).toList());
     }
 
     /**
@@ -54,14 +58,16 @@ final class ProjectClasses {
      * its class and the classes around that.
      */
     boolean selected(ClassFilter filter, JavaMember member) {
+        if (sourceFiles.isGenerated(member.getOwner())) {
+            return false;
+        }
         List<String> annotations = Stream.concat(names(member.getAnnotations()), annotationsAround(member.getOwner()))
                 .toList();
         return filter.selects(member.getOwner().getPackageName(), annotations);
     }
 
     Violation violation(String rule, JavaClass javaClass, int line, String message, String fix) {
-        String relative = relativeSourcePath(javaClass);
-        return new Violation(rule, Violation.Severity.ERROR, sourceFiles.getOrDefault(relative, relative), line, message, fix);
+        return new Violation(rule, Violation.Severity.ERROR, sourceFiles.pathOf(javaClass), line, message, fix);
     }
 
     static List<String> annotationNames(JavaClass javaClass) {
@@ -87,12 +93,5 @@ final class ProjectClasses {
         String packageName = javaClass.getPackageName();
         String local = packageName.isEmpty() ? name : name.substring(packageName.length() + 1);
         return local.replace('$', '.');
-    }
-
-    /** The class's source file relative to a source root, e.g. {@code com/shop/Cart.java}. */
-    static String relativeSourcePath(JavaClass javaClass) {
-        String fileName = javaClass.getSourceCodeLocation().getSourceFileName();
-        String packagePath = javaClass.getPackageName().replace('.', '/');
-        return packagePath.isEmpty() ? fileName : packagePath + "/" + fileName;
     }
 }

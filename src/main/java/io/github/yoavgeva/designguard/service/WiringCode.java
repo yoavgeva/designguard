@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.domain.PackageMatcher;
@@ -17,6 +18,10 @@ import java.util.Set;
 final class WiringCode {
 
     private static final Set<String> WIRING_ANNOTATIONS = Set.of("Configuration", "SpringBootApplication", "Module");
+    private static final Set<String> INJECTIONS = Set.of("Autowired", "Value", "Inject", "Resource", "PersistenceContext",
+            "PersistenceUnit", "ConfigProperty");
+    /** How to fix a field a container injects without it being final. */
+    static final String INJECT_IN_CONSTRUCTOR = "take it as a constructor parameter and make the field final";
 
     private final List<String> patterns;
     private final boolean instanceMainMethods;
@@ -24,6 +29,14 @@ final class WiringCode {
     WiringCode(List<String> patterns, int javaRelease) {
         this.patterns = List.copyOf(patterns);
         this.instanceMainMethods = JavaFeature.INSTANCE_MAIN_METHODS.isAvailableIn(javaRelease);
+    }
+
+    /**
+     * Whether a container injects the field, as {@code @Autowired}, {@code @Value}, {@code @Inject}, {@code @Resource}
+     * and {@code @PersistenceContext} do: it holds a collaborator or a setting, not state.
+     */
+    static boolean isInjected(JavaField field) {
+        return field.getAnnotations().stream().anyMatch(annotation -> INJECTIONS.contains(annotation.getRawType().getSimpleName()));
     }
 
     boolean contains(JavaClass javaClass) {

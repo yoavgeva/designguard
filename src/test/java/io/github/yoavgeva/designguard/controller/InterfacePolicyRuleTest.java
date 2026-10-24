@@ -108,6 +108,25 @@ class InterfacePolicyRuleTest {
     }
 
     @Test
+    void anOverrideTakesWhatItsInterfaceDeclares(@TempDir Path other) {
+        var reconcilers = new CompiledProject(other).release(release)
+                .add("ControllerBuilder", "package shop.extension;\n\npublic class ControllerBuilder {\n"
+                        + "    public String build() {\n        return System.getenv(\"WORKERS\");\n    }\n}\n")
+                .add("Reconciler", "package shop.extension;\n\npublic interface Reconciler {\n"
+                        + "    String setupWith(ControllerBuilder builder);\n}\n")
+                .add("PostReconciler", "package shop.content;\n\npublic class PostReconciler implements shop.extension.Reconciler {\n"
+                        + "    @Override\n    public String setupWith(shop.extension.ControllerBuilder builder) {\n"
+                        + "        return builder.build();\n    }\n}\n")
+                .add("Stats", "package shop.content;\n\npublic class Stats {\n"
+                        + "    public String start(shop.extension.ControllerBuilder builder) {\n        return builder.build();\n    }\n}\n")
+                .guard(SHOP);
+
+        assertThat(reconcilers.dependencies().interfacePolicy(InterfacePolicy.PORTS).evaluate()).extracting(Violation::message)
+                .containsExactly("Stats depends on concrete service-like ControllerBuilder (method start) across slices"
+                        + " content -> extension");
+    }
+
+    @Test
     void slicedByUsesArchUnitCaptureGroups() {
         assertThat(guard.dependencies().interfacePolicy(InterfacePolicy.PORTS).slicedBy("(*)..").evaluate()).isEmpty();
     }

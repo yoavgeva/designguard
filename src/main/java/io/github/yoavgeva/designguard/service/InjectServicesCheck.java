@@ -15,11 +15,11 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Finds services obtained instead of injected: an effectful class (one whose own code does I/O, reads the clock...)
- * created with {@code new}, a service-like class fetched through a static singleton accessor, or a service looked up
- * from a container: Spring's {@code getBean}, {@code ServiceLoader}, JNDI, Guice's {@code Injector} or CDI. Wiring code is
- * exempt, and so is creating objects that only receive their collaborators: a class whose effects all happen in
- * implementations it is given, behind interfaces or abstract methods, brings no effects of its own.
+ * Finds services obtained instead of injected: a service-like class whose own code is effectful (does I/O, reads the
+ * clock...) created with {@code new}, a service-like class fetched through a static singleton accessor, or a service
+ * looked up from a container: Spring's {@code getBean}, {@code ServiceLoader}, JNDI, Guice's {@code Injector} or CDI.
+ * Wiring code is exempt, and so is creating objects that only receive their collaborators: a class whose effects all
+ * happen in implementations it is given, behind interfaces or abstract methods, brings no effects of its own.
  */
 public final class InjectServicesCheck {
 
@@ -59,7 +59,8 @@ public final class InjectServicesCheck {
     private static Stream<Violation> creations(ProjectClasses classes, ClassFilter filter, ServiceLikeClasses serviceLike,
             JavaClass dependent) {
         return classes.bytecode().creationsIn(dependent)
-                .filter(creation -> serviceLike.isEffectfulOnItsOwn(creation.target())
+                .filter(creation -> serviceLike.contains(creation.target())
+                        && serviceLike.isEffectfulOnItsOwn(creation.target())
                         && !Hierarchy.isSelfOrNested(dependent, creation.target())
                         && createdInSelected(classes, filter, dependent, creation))
                 .collect(Collectors.toMap(creation -> creation.target().getName(), creation -> creation,

@@ -2,8 +2,12 @@ package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.expr.BinaryExpr;
+import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.SwitchExpr;
 import com.github.javaparser.ast.stmt.DoStmt;
@@ -18,11 +22,12 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
  * Finds tests with logic ("conditional test logic"): an {@code if} or a {@code switch} in a test method, which makes it
  * check different things on different runs, or a loop around an assertion, which hides which case failed. A loop
- * that only sets up data is fine, and so is logic in helper methods, in classes a test declares, such as a fake, and
+ * that only sets up data is fine, and so is one that repeats a step, and logic in helper methods, in classes a test declares, such as a fake, and
  * in lambdas that assert nothing, which are fakes too; the tests themselves take one path.
  */
 public final class BranchingTestsCheck {
@@ -64,8 +69,33 @@ public final class BranchingTestsCheck {
                         .map(kind -> Map.entry(node, kind.getValue())))
                 .filter(found -> !inClassOf(test, found.getKey()))
                 .filter(found -> LOOPS.stream().noneMatch(loop -> loop.isInstance(found.getKey()))
-                        || found.getKey().findAll(MethodCallExpr.class).stream().anyMatch(UnitTestMethods::isAssertion))
+                        || found.getKey().findAll(MethodCallExpr.class).stream().anyMatch(UnitTestMethods::isAssertion)
+                                && !(found.getKey() instanceof ForStmt loop && isRepetition(loop)))
                 .min(Comparator.comparingInt(found -> Scopes.line(found.getKey())));
+    }
+
+    /**
+     * Whether the loop repeats one step rather than going through cases: it counts with a variable its body uses for
+     * no data but a label, as {@code for (int i = 0; i < MAX_ATTEMPTS; i++)} exhausting attempts with
+     * {@code "wrong-" + i} does. A loop whose counter picks a case, as {@code cases[i]} does, goes through cases.
+     */
+    private static boolean isRepetition(ForStmt loop) {
+        List<String> counters = loop.getInitialization().stream()
+                .flatMap(init -> init.findAll(VariableDeclarator.class).stream())
+                .map(VariableDeclarator::getNameAsString)
+                .toList();
+        return counters.size() == 1 && loop.getBody().findAll(NameExpr.class).stream()
+                .filter(name -> name.getNameAsString().equals(counters.get(0)))
+                .allMatch(BranchingTestsCheck::labels);
+    }
+
+    /** Whether the use only puts the counter in text, as {@code "round " + i} does. */
+    private static boolean labels(NameExpr use) {
+        return use.getParentNode()
+                .filter(parent -> parent instanceof BinaryExpr concatenation
+                        && concatenation.getOperator() == BinaryExpr.Operator.PLUS
+                        && Stream.of(concatenation.getLeft(), concatenation.getRight()).anyMatch(Expression::isStringLiteralExpr))
+                .isPresent();
     }
 
     /** Whether the node is in an anonymous or local class the test declares, or in a lambda that asserts nothing. */

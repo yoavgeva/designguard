@@ -18,6 +18,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class TestSubjectRuleTest {
 
     private static final String SHOP = "shop";
+    private static final String RUNTIME = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n";
     private static final String REPORT = "Report";
     private static final String REPORT_TEST = "ReportTest";
 
@@ -194,6 +195,471 @@ class TestSubjectRuleTest {
                 .guard(SHOP);
 
         assertThat(guard.tests().testsUseTheirSubject().evaluate()).isEmpty();
+    }
+
+    @Test
+    void staticallyImportedMembersAreUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Base64Url", """
+                        package shop;
+
+                        final class Base64Url {
+                            static final String PADDING = "=";
+
+                            private Base64Url() {
+                            }
+
+                            static String encode(String text) {
+                                return java.util.Base64.getUrlEncoder().encodeToString(text.getBytes());
+                            }
+                        }
+                        """)
+                .add("Slugs", """
+                        package shop;
+
+                        final class Slugs {
+                            private Slugs() {
+                            }
+
+                            static String slug(String title) {
+                                return title.toLowerCase(java.util.Locale.ROOT).replace(' ', '-');
+                            }
+                        }
+                        """)
+                .add("Hashes", """
+                        package shop;
+
+                        final class Hashes {
+                            private Hashes() {
+                            }
+
+                            static int hash(String text) {
+                                return text.hashCode();
+                            }
+                        }
+                        """)
+                .addTest("Base64UrlTest", """
+                        package shop;
+
+                        import static org.assertj.core.api.Assertions.assertThat;
+                        import static shop.Base64Url.encode;
+
+                        class Base64UrlTest {
+                            @org.junit.jupiter.api.Test
+                            void encodes() {
+                                assertThat(encode("something")).isEqualTo("c29tZXRoaW5n");
+                            }
+                        }
+                        """)
+                .addTest("SlugsTest", """
+                        package shop;
+
+                        import static org.assertj.core.api.Assertions.assertThat;
+                        import static shop.Slugs.*;
+
+                        class SlugsTest {
+                            @org.junit.jupiter.api.Test
+                            void slugs() {
+                                assertThat(slug("Hello World")).isEqualTo("hello-world");
+                            }
+                        }
+                        """)
+                .addTest("HashesTest", """
+                        package shop;
+
+                        import static org.assertj.core.api.Assertions.assertThat;
+                        import static shop.Base64Url.PADDING;
+
+                        class HashesTest {
+                            @org.junit.jupiter.api.Test
+                            void hashes() {
+                                assertThat(PADDING).isEqualTo("=");
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("HashesTest never uses Hashes, the class it's named after");
+    }
+
+    @Test
+    void webEndpointsAreUsedThroughRequestsAndBeansThroughTheirInterfaces() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("RestController", "package org.springframework.web.bind.annotation;\n\n"
+                        + RUNTIME
+                        + "public @interface RestController {\n}\n")
+                .add("Filter", "package jakarta.servlet;\n\npublic interface Filter {\n    void doFilter(Object request);\n}\n")
+                .add("UserDetailsService", "package org.springframework.security.core.userdetails;\n\n"
+                        + "public interface UserDetailsService {\n    String loadUserByUsername(String name);\n}\n")
+                .add("UserResource", """
+                        package shop;
+
+                        @org.springframework.web.bind.annotation.RestController
+                        public class UserResource {
+                            public String users() {
+                                return "users";
+                            }
+                        }
+                        """)
+                .add("SpaFilter", """
+                        package shop;
+
+                        public class SpaFilter implements jakarta.servlet.Filter {
+                            @Override
+                            public void doFilter(Object request) {
+                                request.hashCode();
+                            }
+                        }
+                        """)
+                .add("DomainUserDetailsService", """
+                        package shop;
+
+                        public class DomainUserDetailsService
+                                implements org.springframework.security.core.userdetails.UserDetailsService {
+                            @Override
+                            public String loadUserByUsername(String name) {
+                                return name;
+                            }
+                        }
+                        """)
+                .add("Reports", "package shop;\n\npublic class Reports {\n    public String report() {\n"
+                        + "        return \"report\";\n    }\n}\n")
+                .addTest("UserResourceIT", """
+                        package shop;
+
+                        import org.springframework.test.web.servlet.MockMvc;
+
+                        class UserResourceIT {
+                            @org.springframework.beans.factory.annotation.Autowired
+                            private MockMvc mvc;
+
+                            @org.junit.jupiter.api.Test
+                            void lists() throws Exception {
+                                mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/users"));
+                            }
+                        }
+                        """)
+                .addTest("SpaFilterIT", """
+                        package shop;
+
+                        class SpaFilterIT {
+                            private org.springframework.test.web.reactive.server.WebTestClient client;
+
+                            @org.junit.jupiter.api.Test
+                            void forwards() {
+                                client.get().uri("/admin").exchange().expectStatus().isOk();
+                            }
+                        }
+                        """)
+                .addTest("DomainUserDetailsServiceIT", """
+                        package shop;
+
+                        import org.springframework.beans.factory.annotation.Autowired;
+                        import org.springframework.security.core.userdetails.UserDetailsService;
+
+                        class DomainUserDetailsServiceIT {
+                            @Autowired
+                            private UserDetailsService service;
+
+                            @org.junit.jupiter.api.Test
+                            void loads() {
+                                org.assertj.core.api.Assertions.assertThat(service.loadUserByUsername("a")).isEqualTo("a");
+                            }
+                        }
+                        """)
+                .addTest("ReportsIT", """
+                        package shop;
+
+                        import org.springframework.test.web.servlet.MockMvc;
+
+                        class ReportsIT {
+                            private MockMvc mvc;
+
+                            @org.junit.jupiter.api.Test
+                            void reports() throws Exception {
+                                mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/reports"));
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("ReportsIT never uses Reports, the class it's named after");
+    }
+
+    @Test
+    void jaxRsResourcesAreUsedThroughRequestsAndTestsInheritTheirSuperclassesUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Path", "package jakarta.ws.rs;\n\n" + RUNTIME + "public @interface Path {\n    String value();\n}\n")
+                .add("FruitResource", "package shop;\n\n@jakarta.ws.rs.Path(\"/fruits\")\npublic class FruitResource {\n"
+                        + "    public String list() {\n        return \"fruits\";\n    }\n}\n")
+                .add("LegumeResource", "package shop;\n\n@jakarta.ws.rs.Path(\"/legumes\")\npublic class LegumeResource {\n"
+                        + "    public String list() {\n        return \"legumes\";\n    }\n}\n")
+                .addTest("FruitResourceTest", """
+                        package shop;
+
+                        import static io.restassured.RestAssured.given;
+
+                        @io.quarkus.test.junit.QuarkusTest
+                        class FruitResourceTest {
+                            @org.junit.jupiter.api.Test
+                            void lists() {
+                                given().when().get("/fruits").then().statusCode(200);
+                            }
+                        }
+                        """)
+                .addTest("FruitResourceIT", """
+                        package shop;
+
+                        @io.quarkus.test.junit.QuarkusIntegrationTest
+                        class FruitResourceIT extends FruitResourceTest {
+                        }
+                        """)
+                .add("ApplicationScoped", "package jakarta.enterprise.context;\n\n" + RUNTIME
+                        + "public @interface ApplicationScoped {\n}\n")
+                .add("FruitService", "package shop;\n\n@jakarta.enterprise.context.ApplicationScoped\npublic class FruitService {\n"
+                        + "    public String all() {\n        return \"fruits\";\n    }\n}\n")
+                .addTest("FruitServiceTest", """
+                        package shop;
+
+                        import static io.restassured.RestAssured.given;
+
+                        @io.quarkus.test.junit.QuarkusTest
+                        class FruitServiceTest {
+                            @org.junit.jupiter.api.Test
+                            void servesTheFruits() {
+                                given().when().get("/fruits").then().statusCode(200);
+                            }
+                        }
+                        """)
+                .add("Singleton", "package jakarta.inject;\n\n" + RUNTIME + "public @interface Singleton {\n}\n")
+                .add("ThemeProcessor", "package shop;\n\n@jakarta.inject.Singleton\npublic class ThemeProcessor {\n"
+                        + "    public String process(String page) {\n        return page;\n    }\n}\n")
+                .addTest("ThemeProcessorTest", """
+                        package shop;
+
+                        import io.micronaut.http.client.HttpClient;
+                        import io.micronaut.http.client.annotation.Client;
+
+                        @io.micronaut.test.extensions.junit5.annotation.MicronautTest
+                        class ThemeProcessorTest {
+                            @org.junit.jupiter.api.Test
+                            void rendersTheTheme(@Client("/") HttpClient httpClient) {
+                                org.assertj.core.api.Assertions.assertThat(httpClient.toBlocking().retrieve("/")).contains("theme");
+                            }
+                        }
+                        """)
+                .addTest("BaseTest", """
+                        package shop;
+
+                        import static io.restassured.RestAssured.given;
+
+                        abstract class BaseTest {
+                            protected int status(String path) {
+                                return given().when().get(path).then().extract().statusCode();
+                            }
+                        }
+                        """)
+                .addTest("LegumeResourceTest", """
+                        package shop;
+
+                        @io.quarkus.test.junit.QuarkusTest
+                        class LegumeResourceTest extends BaseTest {
+                            @org.junit.jupiter.api.Test
+                            void counts() {
+                                org.assertj.core.api.Assertions.assertThat(java.util.List.of("pea")).hasSize(1);
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("LegumeResourceTest never uses LegumeResource, the class it's named after");
+    }
+
+    @Test
+    void implementationsSpiesAndTheBootedApplicationAreUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("SpringBootApplication", "package org.springframework.boot.autoconfigure;\n\n"
+                        + RUNTIME
+                        + "public @interface SpringBootApplication {\n}\n")
+                .add("Component", "package org.springframework.stereotype;\n\n"
+                        + RUNTIME
+                        + "public @interface Component {\n}\n")
+                .add("Application", "package shop;\n\n@org.springframework.boot.autoconfigure.SpringBootApplication\n"
+                        + "public class Application {\n}\n")
+                .add("ViewResolver", "package shop;\n\npublic interface ViewResolver {\n    String resolve(String name);\n}\n")
+                .add("DefaultViewResolver", """
+                        package shop;
+
+                        public class DefaultViewResolver implements ViewResolver {
+                            @Override
+                            public String resolve(String name) {
+                                return name + ".html";
+                            }
+                        }
+                        """)
+                .add("Migrations", """
+                        package shop;
+
+                        public class Migrations {
+                            public int run() {
+                                return 1;
+                            }
+                        }
+                        """)
+                .add("HeadProcessor", """
+                        package shop;
+
+                        @org.springframework.stereotype.Component
+                        public class HeadProcessor {
+                            public String head() {
+                                return "<meta>";
+                            }
+                        }
+                        """)
+                .add("Prices", "package shop;\n\npublic class Prices {\n    public long price() {\n        return 1;\n    }\n}\n")
+                .addTest("ApplicationTests", """
+                        package shop;
+
+                        @org.springframework.boot.test.context.SpringBootTest
+                        class ApplicationTests {
+                            @org.junit.jupiter.api.Test
+                            void contextLoads() {
+                            }
+                        }
+                        """)
+                .addTest("ViewResolverTest", """
+                        package shop;
+
+                        class ViewResolverTest {
+                            @org.mockito.InjectMocks
+                            DefaultViewResolver resolver;
+
+                            @org.junit.jupiter.api.Test
+                            void resolves() {
+                                org.assertj.core.api.Assertions.assertThat(resolver.resolve("post")).isEqualTo("post.html");
+                            }
+                        }
+                        """)
+                .addTest("MigrationsTest", """
+                        package shop;
+
+                        class MigrationsTest {
+                            @org.mockito.InjectMocks
+                            @org.mockito.Spy
+                            Migrations migrations;
+
+                            @org.junit.jupiter.api.Test
+                            void runs() {
+                                org.assertj.core.api.Assertions.assertThat(migrations.run()).isOne();
+                            }
+                        }
+                        """)
+                .addTest("HeadProcessorTest", """
+                        package shop;
+
+                        @org.springframework.boot.test.context.SpringBootTest
+                        class HeadProcessorTest {
+                            @org.springframework.beans.factory.annotation.Autowired
+                            org.springframework.test.web.reactive.server.WebTestClient client;
+
+                            @org.junit.jupiter.api.Test
+                            void writesTheHead() {
+                                client.get().uri("/").exchange().expectStatus().isOk();
+                            }
+                        }
+                        """)
+                .addTest("PricesTest", """
+                        package shop;
+
+                        @org.springframework.boot.test.context.SpringBootTest
+                        class PricesTest {
+                            @org.springframework.beans.factory.annotation.Autowired
+                            org.springframework.test.web.reactive.server.WebTestClient client;
+
+                            @org.junit.jupiter.api.Test
+                            void prices() {
+                                client.get().uri("/prices").exchange().expectStatus().isOk();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("PricesTest never uses Prices, the class it's named after");
+    }
+
+    @Test
+    void beansTheWiringCreatesAndClassesAUsedClassCreatesOrRegistersAreUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Configuration", "package org.springframework.context.annotation;\n\n"
+                        + RUNTIME
+                        + "public @interface Configuration {\n}\n")
+                .add("GeneratorMetaProcessor", "package shop;\n\npublic class GeneratorMetaProcessor {\n"
+                        + "    public String head() {\n        return \"<meta>\";\n    }\n}\n")
+                .add("ThemeConfiguration", "package shop;\n\n@org.springframework.context.annotation.Configuration\n"
+                        + "public class ThemeConfiguration {\n    public GeneratorMetaProcessor generatorMetaProcessor() {\n"
+                        + "        return new GeneratorMetaProcessor();\n    }\n}\n")
+                .add("CommentTagProcessor", "package shop;\n\npublic class CommentTagProcessor {\n"
+                        + "    public String render() {\n        return \"<comment>\";\n    }\n}\n")
+                .add("Dialect", "package shop;\n\npublic class Dialect {\n    public java.util.List<Object> processors() {\n"
+                        + "        return java.util.List.of(new CommentTagProcessor());\n    }\n}\n")
+                .add("Prices", "package shop;\n\npublic class Prices {\n    public long price() {\n        return 1;\n    }\n}\n")
+                .addTest("GeneratorMetaProcessorTest", """
+                        package shop;
+
+                        @org.springframework.boot.test.context.SpringBootTest
+                        class GeneratorMetaProcessorTest {
+                            @org.springframework.beans.factory.annotation.Autowired
+                            org.springframework.test.web.reactive.server.WebTestClient client;
+
+                            @org.junit.jupiter.api.Test
+                            void writesTheGenerator() {
+                                client.get().uri("/").exchange().expectStatus().isOk();
+                            }
+                        }
+                        """)
+                .addTest("CommentTagProcessorTest", """
+                        package shop;
+
+                        class CommentTagProcessorTest {
+                            @org.junit.jupiter.api.Test
+                            void renders() {
+                                org.assertj.core.api.Assertions.assertThat(new Dialect().processors()).hasSize(1);
+                            }
+                        }
+                        """)
+                .addTest("PricesTest", """
+                        package shop;
+
+                        class PricesTest {
+                            @org.junit.jupiter.api.Test
+                            void prices() {
+                                org.assertj.core.api.Assertions.assertThat(new Dialect().processors()).isNotEmpty();
+                            }
+                        }
+                        """)
+                .add("Money", "package shop;\n\npublic record Money(long cents) {\n}\n")
+                .add("MoneyMixin", "package shop;\n\npublic abstract class MoneyMixin {\n    public abstract long cents();\n}\n")
+                .add("ShopModule", "package shop;\n\npublic class ShopModule {\n"
+                        + "    public java.util.Map<Class<?>, Class<?>> mixins() {\n"
+                        + "        return java.util.Map.of(Money.class, MoneyMixin.class);\n    }\n}\n")
+                .addTest("MoneyMixinTest", """
+                        package shop;
+
+                        class MoneyMixinTest {
+                            @org.junit.jupiter.api.Test
+                            void mixesIntoMoney() {
+                                org.assertj.core.api.Assertions.assertThat(new ShopModule().mixins()).containsKey(Money.class);
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("PricesTest never uses Prices, the class it's named after");
     }
 
     @Test

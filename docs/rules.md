@@ -10,23 +10,43 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
 ## Terms
 
 - **Effectful**: code that touches the outside world: I/O, the clock, randomness, the environment, threads and
-  executors, processes, or a package given to `treatingAsImpure(...)`. Code is effectful directly, through a field
-  holding such a resource, or by calling effectful project code; a call through an interface is effectful if any
-  implementation is, except a call on a parameter, which runs whatever implementation the caller passed, so
-  `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface annotated
-  `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do. The clock includes
-  `new Date()` and `Calendar.getInstance()`, and the environment includes `System.getProperties()` and
-  `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an `InetAddress` or a
-  `java.sql.Timestamp` as data, encoding a URL, copying an array, holding a thread or an executor, reading the current
-  thread, and restoring its interrupt flag with `Thread.currentThread().interrupt()` aren't effects; resolving a host
-  name or interrupting another thread is. A stream touches the outside world where it is opened: on a file name, as
-  `new FileReader("prices.txt")` and `new Scanner(file)` are, from a classpath resource, or as the console
-  (`System.out`, `System.err`, `System.in`). Holding, wrapping, reading or writing a stream someone else opened only
-  processes its data, so a parser over a `Reader` or a writer of JSON to a `Writer` is a value.
+  executors, processes, a library's database, HTTP, messaging or mail client, or a package given to
+  `treatingAsImpure(...)`. The library clients are Spring Data repositories, including the ones a project declares,
+  JPA's `EntityManager`, Hibernate sessions, Spring's `JdbcTemplate`, `JdbcClient`, R2DBC `DatabaseClient`, Mongo,
+  Redis, Elasticsearch and Cassandra templates and transaction templates, jOOQ's `DSLContext`, MyBatis `SqlSession`s
+  and `@Mapper`s, `RestTemplate`, `RestClient`, `WebClient`, OkHttp, Apache HttpClient, OpenFeign `@FeignClient`s and
+  Spring HTTP interfaces, MicroProfile `@RegisterRestClient`s, Kafka, AMQP and JMS templates and clients, reactive messaging `Emitter`s, `MailSender` and Quarkus mailers, and from Quarkus: Panache repositories, including the ones a project class implements, the persistence methods an active-record entity inherits from `PanacheEntityBase`, such as `listAll()` and `persist()`, Vert.x SQL and web clients, and Redis data sources, and from Micronaut: Data repositories, the `HttpClient`, declarative `@Client`, `@KafkaClient` and `@RabbitClient` interfaces and `EmailSender`, plus the Lettuce and Jedis Redis clients, Elasticsearch's Java client and AWS SDK clients; a class that is such a client is service-like; creating one or its builder, as `new RestTemplate()`, `WebClient.builder()` or `S3Client.builder()` do, isn't an effect, calling it is. Code is effectful directly,
+  through a field holding such a resource, or by calling effectful project code; a call through an interface is
+  effectful if any implementation is, except a call on a parameter, which runs whatever implementation the caller
+  passed, so `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface
+  annotated `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do. Creating
+  a clock or a random source, as `Clock.systemUTC()`, `new SecureRandom()` and `ThreadLocalRandom.current()` do, isn't
+  an effect; reading the time or a number from it is. The clock includes `new Date()` and `Calendar.getInstance()`,
+  and the environment includes `System.getProperties()` and `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an
+  `InetAddress` or `InetSocketAddress`, a `java.sql.Timestamp` or an options enum such as `StandardOpenOption` as
+  data, extending `SimpleFileVisitor`, encoding a URL, copying an array, holding a thread or an executor, reading the
+  current thread, and restoring its interrupt flag with `Thread.currentThread().interrupt()` aren't effects; resolving
+  a host name, as `new InetSocketAddress(host, port)` does, or interrupting another thread is. A stream touches the
+  outside world where it is opened: on a file name, as `new FileReader("prices.txt")` and `new Scanner(file)` are,
+  from a classpath resource, or as the console (`System.out`, `System.err`, `System.in`). Holding, wrapping, reading
+  or writing a stream someone else opened only processes its data, so a parser over a `Reader` or a writer of JSON to
+  a `Writer` is a value.
 - **Service-like**: a class that is effectful, holds a service, extends a class that is effectful itself or holds one,
-  or is an interface or abstract class with a service-like implementation. A `@FunctionalInterface` isn't, whatever its
-  implementations do, so holding one is like holding a lambda. **Value**: any other class.
+  or is an interface or abstract class with a service-like implementation that isn't safe to create or call: one that
+  implements its methods with effectful code, does I/O anywhere, as when it loads keys at start-up, or holds a
+  service. An implementation that only reads the clock or randomness in methods of its own, as one model among many
+  stamping a token does, leaves the abstraction a value. A `@FunctionalInterface` isn't service-like, whatever its
+  implementations do, so holding one is like holding a lambda. Neither is data that only reads the clock or
+  randomness: a class whose fields hold only data and whose code does no I/O, such as a request that stamps a UUID on
+  what it builds or a stopwatch. It's no shared service, so its state, creating it and depending on it are fine, and
+  the clock and randomness rules report the read; tests may still mock it, to control what it reads. Persistent
+  classes aren't either: JPA `@Entity`, `@Embeddable` and `@MappedSuperclass` classes, `@Document`s and `@MongoEntity`s, and Panache active-record entities are data a
+  store loads and saves, so an entity that stamps its creation date with `LocalDate.now()`, and the entities holding
+  it, aren't services; the clock read is reported where it happens. **Value**: any other class.
 - **Collaborator**: an instance of another project type that a class holds in a field, as injected services are.
+- **Generated code**: classes the build generates, such as MapStruct mappers or OpenAPI models, whose sources lie
+  outside the source roots while other classes' sources are found there. Rules analyse them, so a generated DAO still
+  makes its callers service-like, but report only the code people write.
 - **Wiring code**: code whose job is to assemble the application, which may create and hold concrete services:
   classes with a `main` method, Spring `@Configuration` and `@SpringBootApplication` classes, Dagger `@Module`s,
   and classes in packages given to `wiringIn(...)`. Many rules skip it.
@@ -190,7 +210,11 @@ Fix: call what `shop.orders` exposes, or move `OrderMath` into its API package i
 
 Classes that depend on each other, directly or around a loop, are reported once per cycle, at the first class by
 name. A nested class counts as its top-level class. A type naming its own subtypes, as a sealed type's `permits`
-clause or an interface's factory method does, isn't part of a cycle.
+clause or an interface's factory method does, isn't part of a cycle, nor is an annotation naming the class that
+handles it, as a Bean Validation constraint names its validator with `@Constraint(validatedBy = ...)`, nor is an
+entity's inverse side of a JPA association: a `@OneToMany`, `@OneToOne` or `@ManyToMany` field with `mappedBy`, as
+`Owner.pets` is for `Pet.owner`, is one association with the side that maps it, so the entity's uses of the other
+don't count. Two owning sides, which map the association twice, still form a cycle.
 
 Why: classes in a cycle can only be understood, tested and changed together.
 
@@ -327,7 +351,8 @@ the policy wants an interface is reported:
 - `SERVICES`: any service-like class, even inside one slice.
 - `ALL`: any project class, values included. Exceptions and annotations are exempt.
 
-Wiring code is exempt.
+Wiring code is exempt, and so are overrides: the method an override implements declares its parameters, so a
+reconciler's `setupWith(ControllerBuilder builder)` takes what its interface says.
 
 Why: depending on an interface lets tests pass a fake and lets the implementation change without touching callers.
 
@@ -387,43 +412,49 @@ public class Checkout {
 
 `dependencies().noQueriesInLoops()` · **recommended**
 
-Queries made once per item, the N+1 pattern, are reported. A query is a call on a collaborator that touches the
-outside world and returns a value. The collaborator is the same object for every item: a field, a getter's result,
-a parameter, a static field or a local set before the loop. The query counts when it is made inside a loop, or in a
-lambda or method reference handed to a stream or `forEach`, and is given the item or something made from it, such as
-its id or a key built from it. Commands, which return nothing, aren't queries, and neither is reading the next value
-of the same object, as a parser's `reader.peek()` does, or retrying with a new timeout. Calls on the loop's own items,
-a class's own helpers and static methods are left alone, since that per-item work can't be batched. A call counts
-only if every implementation it may run touches the outside world, so a strategy such as a `Predicate` with pure
+Queries made once per item, the N+1 pattern, are reported. A query is a call on a collaborator that reaches a
+database or another machine, through JDBC, the network, a library client such as a repository or a package given to
+`treatingAsImpure(...)`, and returns a value; reading local files, the environment, the clock or randomness once per
+item isn't a query. The collaborator is the same object for every item: a field, a getter's result, a parameter, a
+static field or a local set before the loop. The query counts when it is made inside a loop, or in a lambda or method
+reference handed to a stream or `forEach`, and is given the item or something made from it, such as its id or a key
+built from it. Commands aren't queries: methods that return nothing, and methods named for a change, as a
+repository's `save` and `delete` are, though they return what they stored, and neither is reading the next value of
+the same object, as a parser's `reader.peek()` does, or retrying with a new timeout. Calls on the loop's own items, a
+class's own helpers and static methods are left alone, since that per-item work can't be batched. A call counts only
+if every implementation it may run touches the outside world, so a strategy such as a `Predicate` with pure
 implementations isn't a query. Wiring code is exempt.
 
 Why: one round trip per item turns a page of 50 orders into 51 database or HTTP calls.
 
 ```java
-public String payAll(List<Long> amounts) {
-    String receipts = "";
-    for (long amount : amounts) {
-        receipts += client.charge(amount);
+public long total(List<String> items) {
+    long total = 0;
+    for (String item : items) {
+        total += prices.priceOf(item);
     }
-    return receipts;
+    return total;
 }
 ```
 
-> Checkout.payAll() queries StripeClient.charge() inside a loop, once per item
+> Checkout.total() queries PriceRepository.priceOf() inside a loop, once per item
 > -> fix: load what the loop needs with one call before it, such as one query for all the keys
 
-Fix: add a batch query to the collaborator, such as `client.chargeAll(amounts)`, and call it once.
+Fix: add a batch query to the collaborator, such as `prices.pricesOf(items)`, and call it once.
 
 ### `constructors-do-no-work`
 
 `dependencies().constructorsDoNoWork()` · **recommended**
 
-Constructors and static initializers that call effectful code are reported: I/O, the clock, an injected
-collaborator. Field initializers run in every constructor, and are reported once. A call to a collaborator counts
-only if every implementation it may run touches the outside world, and calls to JDK interfaces such as
-`Iterator.hasNext()` don't count. Reading a stream the constructor is given, wrapping it, or creating an in-memory
-one such as `StringWriter`, isn't I/O.
-Creating objects is left to `inject-services`, and wiring code is exempt.
+Constructors and static initializers that do work are reported: I/O, printing, threads, or a collaborator that does.
+Reading the clock, randomness, environment variables or system properties is cheap and can't fail, so it isn't work
+here; `inject-clock`, `inject-randomness` and `inject-configuration` report those reads. Field initializers run in
+every constructor, and are reported once. A call to a collaborator counts only if every implementation it may run
+touches the outside world, and calls to JDK interfaces such as `Iterator.hasNext()` don't count. Reading a stream the
+constructor is given, wrapping it, or creating an in-memory one such as `StringWriter`, isn't I/O, and neither is
+creating a client or a clock, as `new RestTemplate()` and `Clock.systemUTC()` do, or configuring a client with a
+setter or a fluent method such as `withTableName(...)`. Creating objects is left to `inject-services`, and wiring
+code is exempt.
 
 Why: a class whose constructor does work can't be created without it, so tests can't create it cheaply, and a
 failure there leaves no object to recover with.
@@ -506,8 +537,10 @@ Fix: read the variable in wiring code and pass the value to the constructor.
 
 `dependencies().noRawThreads()` · **recommended**
 
-Code outside wiring that starts threads by hand is reported: `new Thread(...)`, `Thread.startVirtualThread(...)`,
-and `start` or `unstarted` on a thread builder such as `Thread.ofVirtual()`.
+Code outside wiring that starts threads by hand is reported: `new Thread(...)`, `Thread.startVirtualThread(...)`, and
+`start` or `unstarted` on a thread builder such as `Thread.ofVirtual()`. A thread factory makes an executor's
+threads, so creating them there isn't: a method that takes the work and returns its thread, as
+`ThreadFactory.newThread(Runnable)` does, or a lambda or `Thread::new` an executor takes as its `ThreadFactory`.
 
 Why: raw threads aren't pooled, bounded or shut down, and tests can't run their work synchronously.
 
@@ -633,8 +666,11 @@ Fix: `public record Point(int x, int y) {}`.
 
 `types().valueTypesAreImmutable()`
 
-Values with a non-final instance field are reported. Enums, records, exceptions, wiring code and persistence
-entities are skipped.
+Values with a non-final instance field are reported. A field a container injects, with `@Autowired`, `@Value` and the
+like, is reported as one to take as a constructor parameter. Enums, records, exceptions, wiring code, persistence
+entities and builders are skipped. A builder changes on purpose, and what it builds is the value: it has a `build()`
+that returns something else, or fluent setters that return the builder and either a name ending in `Builder` or a
+`build...` or `create...` method that returns something else.
 
 Why: a value that changes can't be shared or used as a map key, and changes behind its holders' backs.
 
@@ -658,7 +694,9 @@ Fix: `record Tally(int total) { Tally add(int amount) { return new Tally(total +
 `types().servicesAreStateless()`
 
 Service-like classes that hold changing state are reported: a non-final instance field, or a final one holding a
-mutable collection, an atomic or a string builder. Wiring code, enums and records are skipped.
+mutable collection, an atomic or a string builder. A non-final field a container injects, with `@Autowired`, `@Value`,
+`@Inject`, `@Resource` or `@PersistenceContext`, holds a collaborator or a setting, not state, so it is reported as
+one to take as a constructor parameter. Wiring code, enums and records are skipped.
 
 Why: a service is shared by its callers, so its state leaks between them and races under concurrency.
 
@@ -685,7 +723,9 @@ Fix: pass the count in and return the new one, or keep it in a store the service
 Identifiers typed as raw strings, numbers or UUIDs in the given packages are reported: fields, record components,
 and non-private method and constructor parameters named `id` or `somethingId`. The identifier types themselves,
 named `...Id`, are skipped, and so are parameters of methods that override or implement another type's, with or
-without `@Override`, since that type sets the signature.
+without `@Override`, since that type sets the signature. The fix names the type after what the identifier identifies:
+`customerId` after the customer, and a plain `id` after the thing its method names, as `getPet(id)` and
+`findVisitById(id)` do, after a repository's entity, or else after the declaring type.
 
 Why: with one type per identifier, the compiler stops a customer ID from being passed where an order ID belongs.
 
@@ -705,8 +745,14 @@ Fix: `record CustomerId(String value) {}` and `record Customer(CustomerId custom
 
 Groups of `static final` int, long or String constants of one type that enumerate cases are reported. They share a
 name prefix, like `STATUS_OPEN` and `STATUS_PAID`, and their values are a run of numbers from 0 or 1, distinct bit
-flags, or the names themselves. Constants with real values, like `MAX_ITEMS = 50` and `MAX_RETRIES = 3`, don't
-count.
+flags, or the names themselves. Constants with real values, like `MAX_ITEMS = 50` and `MAX_RETRIES = 3`, don't count,
+and neither do String constants that are keys of a format: every use passes one to a lookup, as
+`attributes.getValue(ATTR_PREMAIN_CLASS)` does, and none compares, switches on or assigns one. Nor do constants used
+only in converters, which turn outside input into a type, as `toPermissions(int mode)` does with a file mode's bits,
+or String values with syntax beyond the name, as `"rmi:"` has. Nor do the known values of an open vocabulary:
+constants declared in the class named after their prefix, as `StatusInfo` is for `STATUS_UP`, which holds a value of
+their type and takes any such value from callers, as `StatusInfo.valueOf(String)` takes custom health statuses that
+an enum would reject.
 
 Why: an `int` status accepts any number, and the compiler can't tell when a `switch` misses one (Effective Java,
 item 34).
@@ -728,7 +774,9 @@ Fix: `enum Status { OPEN, PAID }`, and parameters of type `Status` instead of `i
 `types().interfacesAreFocused()` · **recommended**
 
 Interfaces wider than any of their clients needs are reported: at least four abstract methods, used by at least two
-classes other than their implementations, each of which calls at most half of them.
+classes other than their implementations, each of which calls at most half of them. Value types are left out: an
+interface the project implements without effects, as a collection, a graph or a hash sink is, offers the operations
+of one data type, and nobody fakes it.
 
 Why: every client depends on methods it never uses, and every implementation, fakes included, has to provide them
 all (the interface segregation principle).
@@ -811,7 +859,10 @@ ternary between values (`return bool ? 1 : 0;`, `return bool ? yes : no;`), or a
 constants. So are booleans in an overload family for plain values, as `append(boolean)` next to `append(int)` or
 `append(Object)` is: the boolean is one more kind of value the overloads handle. An overload that takes an enum
 instead shows the boolean picks a mode, and passing a picked mode on, as in `load(id, eager ? EAGER : LAZY)`, still
-chooses a behaviour.
+chooses a behaviour. Booleans an HTTP request binds, with Spring's `@RequestParam`, `@PathVariable` or
+`@RequestHeader` or JAX-RS's `@QueryParam` and the like, are skipped, and so are the booleans of a request handler
+(`@GetMapping`, `@GET` and the like), which Spring binds even without an annotation: the HTTP API takes the flag, and
+the handler only receives it.
 
 Why: such a method does two things, and a call like `print(text, true)` doesn't say which.
 
@@ -878,7 +929,8 @@ Fix: `private final @Nullable String name;` and `Optional<String> name() { retur
 Project exception classes that extend `Exception` but not `RuntimeException`, and non-private methods that declare
 a checked exception, are reported. Methods whose signature is inherited, like `AutoCloseable.close()` or an
 override of a generic method such as `write(Writer out, String value)` for `write(Writer out, T value)`, are skipped,
-and so is wiring code.
+and so is wiring code. `InterruptedException` is fine to declare: a blocking method such as a queue's `take()` passes
+the interrupt on to its caller instead of losing it in a wrapper.
 
 Why: checked exceptions don't compose with lambdas and streams, and force every caller to handle what only one
 place can.
@@ -934,8 +986,8 @@ Fix: make `read` an instance method, and give `Lookup` a `Disk` in its construct
 
 Public methods of public classes that take or return untyped data are reported: `Object`, a map to `Object` such as
 `Map<String, Object>`, or a JSON tree from Jackson, Gson, org.json or Jakarta JSON, unless the project is that
-library and the tree its own model. Type variables, inherited signatures such as `equals(Object)` and wiring code are
-skipped.
+library and the tree its own model. Type variables, inherited signatures such as `equals(Object)`, AspectJ `@Around`
+advice, which returns whatever the advised method returns, and wiring code are skipped.
 
 Why: callers and the compiler can't tell what to pass or what comes back. A record names the fields and their
 types.
@@ -957,11 +1009,12 @@ Fix: return a record, such as `record Entry(String key, String value) {}`.
 
 Choices between strings are reported: a `switch` over three or more string literals, or an `if`/`else if` chain
 comparing one value with three or more strings through `equals`, `equalsIgnoreCase` or `Objects.equals`. Converters,
-which turn input strings into a type, are exempt: methods named `parse`, `from`, `valueOf`, `of` or `decode`, and
-methods returning one of the project's enums. So are words from outside the code, which an enum can't own: strings
-with dots or spaces (property keys, class names, SQL), tokens a parser reads, any of which is punctuation such as
-`"("`, single characters such as operators, Java's type names, codes with digits such as SQL states, and method names
-a proxy dispatches on, which include `toString`.
+which turn input strings into a type, are exempt: methods named `parse`, `from`, `valueOf`, `of`, `decode`, `to...`,
+`for...` or `convert...`, as `toBool`, `forExtension` and `convertCondition` are, and methods returning one of the
+project's enums. So are words from outside the code, which an enum can't own: strings with dots or spaces (property
+keys, class names, SQL), tokens a parser reads, any of which is punctuation such as `"("`, single characters such as
+operators, Java's type names, codes with digits such as SQL states, method names a proxy dispatches on, which include
+`toString`, HTTP's method names such as `"GET"` and `"POST"`, and command-line options such as `"--init"`.
 
 Why: a typo in a string compiles, and a missing enum case doesn't.
 
@@ -994,9 +1047,11 @@ still equal to a sentinel, that sets it. That covers `if (name == null) { name =
 loaded = true; }`, `if (cached != null) return cached;` followed by the load, `d != null ? d : (d = load())`, double-
 checked locking, and caching in a map the method checks first or fills with `computeIfAbsent`. A field set only while
 the method runs is fine: a flag it sets both `true` and `false`, or a field it both sets and clears to `null`, as a
-query's `before()` and `after()` do with the mode they save, itself or through the methods it calls. So are `getAnd...` methods, whose names say they change something, a cursor's
-`hasNext()`, which may read ahead, void methods, and methods implementing an interface from outside the project,
-such as JDBC's `Statement.getResultSet()`, whose name the interface dictates.
+query's `before()` and `after()` do with the mode they save, itself or through the methods it calls. So are
+`getAnd...` methods, whose names say they change something, a cursor's `hasNext()`, which may read ahead, void
+methods, a builder's setters, which take a value and return the builder, as Lombok's `isBound(boolean)` does, and
+methods implementing an interface from outside the project, such as JDBC's `Statement.getResultSet()`, whose name the
+interface dictates.
 
 Why: callers read accessors as queries and call them freely, so a hidden change surprises them (command-query
 separation).
@@ -1039,7 +1094,8 @@ Unfinished code is reported:
   and any `NotImplementedException`;
 - methods whose whole body is `throw new UnsupportedOperationException()`, unless the refusal is deliberate: the
   method is `@Deprecated`, a private constructor, a hook such as an override, or its Javadoc says it's unsupported;
-- empty method bodies without a comment or Javadoc saying why, unless the method is a hook.
+- empty method bodies without a comment or Javadoc saying why, unless the method is a hook or an AspectJ `@Pointcut`,
+  whose body is empty by design.
 
 A hook is an override, with or without `@Override`, an interface's default method, a method of an abstract class
 that subclasses may override, or a method that a project subclass, anonymous class or enum constant body overrides.
@@ -1091,8 +1147,10 @@ Fix: fix what the tool reports, here by taking a `List<String>`.
 Package-private or protected methods and constructors that tests in their package call are reported when no
 production code calls them, or when they are marked `@VisibleForTesting` (any annotation of that name), which says
 they were widened for tests. Overrides, members with other annotations, which a framework may call, protected
-constructors, which are there for subclasses, and wiring code are skipped. Code nothing calls is left to
-`no-unused-public-code`.
+constructors, which are there for subclasses, and wiring code are skipped. A constructor no production code calls is
+reported only when production creates the class through another one, which is called, public or annotated: a class's
+only constructor is how its framework, as Spring creates a `@Controller`, and its tests both create it. Code nothing
+calls is left to `no-unused-public-code`.
 
 Why: the method was opened up so tests could reach inside the class, which ties the tests to its internals.
 
@@ -1115,8 +1173,9 @@ Fix: test through the public API, or move the logic into a class of its own that
 
 `guardrails().serviceLikeClassesHaveTests()`
 
-Service-like classes without a test class named `<Name>Test`, `<Name>Tests` or `<Name>IT` are reported. Wiring code is
-skipped. Not in `recommended()`, since projects that test by feature don't follow the convention.
+Service-like classes without a test class named `<Name>Test`, `<Name>Tests` or `<Name>IT` are reported. A test named
+after an interface or superclass of the class counts when it uses the class by name, as `ViewNameResolverTest` testing
+`DefaultViewNameResolver` does. Wiring code is skipped. Not in `recommended()`, since projects that test by feature don't follow the convention.
 
 Why: service-like classes hold the behaviour worth testing, and agents skip writing tests.
 
@@ -1158,14 +1217,17 @@ Tests that prove nothing are reported:
 - tests that assert only in a `catch` block, which pass when nothing is thrown.
 
 Assertions are calls named `assert*`, `verify*`, `expect*` or `fail*`, plus AssertJ's `then`, MockMvc's `andExpect`,
-ArchUnit's and designguard's `check`, Awaitility's `until`, and a thrown `AssertionError`. A call to a helper of the
-test sources that asserts counts too: a method of the test class, of a test superclass, or of a test class the call
-names. So do JUnit 4's `@Test(expected = ...)`, and a test name or comment saying it checks that nothing is thrown,
-such as `shouldNotThrowForAnEmptyCart`, `// nothing thrown` or `// should not blow up`. Constants given to a helper of the tests are its inputs, so only library
-assertions count as asserting on constants. Some comparisons with the same expression on both sides can still fail,
-so they don't count as self-comparisons: `assertEquals(range, range)` on an object, which checks its `equals`,
-expressions with a call or `new`, which run twice, and any comparison in a test whose name mentions `equal`, `hash`
-or `compar`, which checks reflexivity on purpose.
+ArchUnit's and designguard's `check`, Awaitility's `until`, Java's `assert` statements, which Maven, Gradle and IDEs
+enable in tests, a thrown `AssertionError`, and anything thrown when a check fails, as `if (actual != expected) throw
+new IllegalStateException(...)` does. A call to a helper of the test sources that asserts counts too: a method of the
+test class, of a test superclass, or of a test class the call names. So do JUnit 4's `@Test(expected = ...)`, and a
+test name or comment saying it checks that nothing is thrown, such as `shouldNotThrowForAnEmptyCart`, `// nothing
+thrown`, `// should not blow up` or `// concurrent modification won't happen`, and an empty test in a
+`@SpringBootTest` class, like Spring's `contextLoads()`, which checks that the application starts. Constants given to
+a helper of the tests are its inputs, so only library assertions count as asserting on constants. Some comparisons
+with the same expression on both sides can still fail, so they don't count as self-comparisons: `assertEquals(range,
+range)` on an object, which checks its `equals`, expressions with a call or `new`, which run twice, and any
+comparison in a test whose name mentions `equal`, `hash` or `compar`, which checks reflexivity on purpose.
 
 Why: a test that can't fail gives coverage without checking anything. Agents write them to get a suite green.
 
@@ -1209,7 +1271,10 @@ Fix: fix the test or the code, or delete the test if it no longer matters.
 `tests().testsCheckResults()` · **recommended**
 
 Tests that verify queries are reported: `verify(mock).method(...)` where every such method of the mock's type returns
-a value. A verification with a mode, such as `times(1)` or `never()`, counts calls on purpose, so it's fine.
+a value. Commands are fine to verify: methods that return nothing or only a `Void` publisher or future, such as
+`Mono<Void>`, and methods named for a change (`create`, `update`, `save`, `send`, `publish` and the like), which
+reactive clients and repositories make return what they stored. A verification with a mode, such as `times(1)` or
+`never()`, counts calls on purpose, so it's fine.
 
 Why: verifying that a query was called checks how the code works, not what it returns. Stub queries and assert on
 the result, and verify only commands, which return nothing.
@@ -1232,11 +1297,21 @@ Fix: `when(lookup.find("key")).thenReturn("value")`, then assert on the result o
 `tests().testsUseTheirSubject()` · **recommended**
 
 Test classes that don't exercise the class they're named after are reported: `OrderServiceTest` never uses
-`OrderService`, or only mocks it. A use is the class's name in a type, a static call or an annotation, or an
-expression whose type resolves to it, such as `Streams.failableStream(list)`, in the test or in a test-source helper
-class it uses. Expressions resolve against the production sources too, so a factory's result counts even when its
-classes aren't on the test's class path. Tests named after no project class are
-skipped.
+`OrderService`, or only mocks it. A use is the class's name in a type, a static call or an annotation, a member of it
+the test imports statically, as `encode(text)` after `import static shop.Base64Url.encode`, or an expression whose
+type resolves to it, such as `Streams.failableStream(list)`, in the test or in a test-source helper class it uses.
+Expressions resolve against the production sources too, so a factory's result counts even when its classes aren't on
+the test's class path. A field the test's container injects (`@Autowired`, `@Inject`, `@Resource`) typed as an
+interface or superclass of the class uses it, and so does a test of a web controller, controller advice, filter or
+JAX-RS resource or provider that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate`, REST Assured
+or an `HttpClient`, as Micronaut tests inject one. A test named after an interface or abstract class uses it through
+an implementation, a spy runs the real class, a project class the test uses that creates it, as a template dialect
+creates its processors, or registers it by its class, as a Jackson module registers a mixin with
+`setMixInAnnotation(Money.class, MoneyMixin.class)`, uses it too, a `@SpringBootTest` boots the
+`@SpringBootApplication` class, and requests a booted test (`@SpringBootTest`, `@QuarkusTest`, `@MicronautTest`)
+sends reach any bean: a Spring component or CDI-scoped class, or a class the wiring code creates in a `@Bean` method.
+A test extending a class that declares tests runs them, so it uses what they use, as `FruitResourceIT extends
+FruitResourceTest` does. Tests named after no project class are skipped.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.
 
@@ -1261,8 +1336,12 @@ Fix: create a real `Lookup`, and mock only what it calls.
 
 `tests().testsDontMockValues()` · **recommended**
 
-Mocks of values are reported: records, enums and other classes that aren't service-like, and interfaces whose
-implementations are all values. An interface with one abstract method is a role, such as a strategy or a callback,
+Mocks of values are reported: records, enums and other classes that aren't service-like or wiring code, and
+interfaces whose implementations are all values. Data that reads the clock or randomness may be mocked, to control
+what it reads. So may a class that works through a library designguard can't see into: one that extends a library
+class, holds a library object other than data, or calls one of its own, as a search engine over Lucene or a plugin
+manager extending pf4j's does, since that library may do I/O. Calls on parameters belong to the caller, so an entity
+that checks a password with an encoder it is given is still a value. An interface with one abstract method is a role, such as a strategy or a callback,
 which tests mock to see it called, so it isn't a value. Mocks come from Mockito's or EasyMock's `mock(Type.class)`,
 `spy(Type.class)`, `spy(new Type(...))` and `createMock(Type.class)`, and from fields and parameters annotated
 `@Mock`, `@Spy` or Spring's mock-bean annotations.
@@ -1286,10 +1365,12 @@ Fix: `Point point = new Point(0, 0);`.
 
 `tests().testsHaveNoLogic()` · **recommended**
 
-Test methods containing an `if` or a `switch` are reported, since they check different things on different runs.
-So are loops around an assertion, which hide which case failed. A loop that only sets up data is fine, and so is
-logic in helper methods, in classes a test declares, such as an anonymous fake, and in lambdas that assert nothing,
-such as a fake `InvocationHandler`, which run when the code under test calls them.
+Test methods containing an `if` or a `switch` are reported, since they check different things on different runs. So
+are loops around an assertion, which hide which case failed. A loop that only sets up data is fine, and so is a
+counted loop that repeats one step, whose counter labels at most, as `for (int i = 0; i < MAX_ATTEMPTS; i++)`
+exhausting attempts with `"wrong-" + i` does; a counter that picks a case, as `cases[i]` does, still goes through
+cases. So is logic in helper methods, in classes a test declares, such as an anonymous fake, and in lambdas that
+assert nothing, such as a fake `InvocationHandler`, which run when the code under test calls them.
 
 Why: a test should take one path, so a failure points at one case.
 
@@ -1316,8 +1397,10 @@ Fix: one test per case, or a `@ParameterizedTest` with the cases as parameters.
 Test code that reads the system clock is reported: `now()` without a `Clock`, `System.currentTimeMillis()`,
 `nanoTime()`, `new Date()`, `new GregorianCalendar()`, `Calendar.getInstance()` and the system `Clock`s. A reading
 the test overwrites before using it is fine: `Calendar.getInstance()` stored in a variable whose next use is
-`clear()`, `setTime(...)` or `setTimeInMillis(...)`. Test methods, helpers and field initializers are all checked;
-fixture code inside strings isn't code.
+`clear()`, `setTime(...)` or `setTimeInMillis(...)`. Test methods, helpers and field initializers are all checked, in
+the code tests run: the classes that declare tests and the test-source classes they use, such as fixtures and sample
+builders, but not other code that lives in the test sources, such as a Gatling simulation; fixture code inside
+strings isn't code.
 
 Why: a test that reads the clock can pass today and fail at midnight, at month end, or in another time zone.
 
@@ -1329,9 +1412,10 @@ void recounts() {
 ```
 
 > test TallyTest.recounts() reads the system clock through java.time.LocalDate.now()
-> -> fix: pass a fixed Clock, such as Clock.fixed(...), to the code under test
+> -> fix: use a fixed time, such as Instant.parse(...), or pass a fixed Clock, such as Clock.fixed(...), to the code under test
 
-Fix: give the code under test `Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC)`.
+Fix: use a fixed time as test data, such as `Instant.parse("2026-01-01T00:00:00Z")`, and give code that reads the
+clock `Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC)`.
 
 ### `tests-seeded-randomness`
 
@@ -1355,7 +1439,9 @@ Fix: use fixed data, or `new Random(42)`.
 
 `tests().testsDontReadTheEnvironment()` · **recommended**
 
-Test code reading environment variables or system properties is reported.
+Test code reading environment variables or system properties is reported. A property the test saves to restore is
+fine: a variable or field whose every use puts the value back with `System.setProperty(...)` or checks it for null,
+as a test that sets `user.home` itself does in its `finally` block or `@AfterEach` method.
 
 Why: such a test passes on one machine and fails on another, or in CI.
 

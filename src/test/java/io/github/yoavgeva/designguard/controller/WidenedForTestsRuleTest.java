@@ -100,4 +100,77 @@ class WidenedForTestsRuleTest {
         assertThat(guard.guardrails().noWidenedForTests().evaluate()).extracting(Violation::fix).containsOnly(
                 "test through the public API, or move it into a class of its own whose API tests and production both use");
     }
+
+    @Test
+    void aConstructorIsForTestsOnlyWhenProductionCreatesTheClassAnotherWay() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Inject", "package shop;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Inject {\n}\n")
+                .add("CrashController", """
+                        package shop;
+
+                        class CrashController {
+                            String crash() {
+                                throw new IllegalStateException("expected");
+                            }
+
+                            public String page() {
+                                return crash();
+                            }
+                        }
+                        """)
+                .add("Pricing", """
+                        package shop;
+
+                        class Pricing {
+                            private final int rate;
+
+                            Pricing(int rate) {
+                                this.rate = rate;
+                            }
+
+                            public int price(int amount) {
+                                return amount * rate;
+                            }
+                        }
+                        """)
+                .add("Clinic", """
+                        package shop;
+
+                        class Clinic {
+                            private final int rooms;
+
+                            @Inject
+                            Clinic() {
+                                this.rooms = 3;
+                            }
+
+                            Clinic(int rooms) {
+                                this.rooms = rooms;
+                            }
+
+                            public int rooms() {
+                                return rooms;
+                            }
+                        }
+                        """)
+                .addTest("ShopTest", """
+                        package shop;
+
+                        import static org.assertj.core.api.Assertions.assertThat;
+
+                        class ShopTest {
+                            @org.junit.jupiter.api.Test
+                            void works() {
+                                assertThat(new CrashController().page()).isNull();
+                                assertThat(new Pricing(2).price(3)).isEqualTo(6);
+                                assertThat(new Clinic(1).rooms()).isOne();
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.guardrails().noWidenedForTests().evaluate()).extracting(Violation::message)
+                .containsExactly("Clinic(int) is package-private, and only tests call it");
+    }
 }

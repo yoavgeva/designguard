@@ -37,12 +37,13 @@ final class ClassFileReader {
     static ProjectClasses read(ProjectSettings settings) {
         JavaClasses classes = importClasses(settings);
         Map<String, String> sourceFiles = classes.stream()
-                .map(ProjectClasses::relativeSourcePath)
+                .map(SourceFiles::relativePath)
                 .distinct()
                 .collect(Collectors.toMap(relative -> relative, relative -> locate(settings.sourceRoots(), relative)));
         Map<String, ClassFileFacts> facts = classes.stream()
                 .collect(Collectors.toMap(JavaClass::getName, ClassFileReader::readFacts));
-        return new ProjectClasses(classes, sourceFiles, new Bytecode(classes, matchedOutside(classes, facts), facts));
+        Bytecode bytecode = new Bytecode(classes, matchedOutside(classes, facts), facts);
+        return new ProjectClasses(classes, new SourceFiles(sourceFiles), bytecode);
     }
 
     private static JavaClasses importClasses(ProjectSettings settings) {

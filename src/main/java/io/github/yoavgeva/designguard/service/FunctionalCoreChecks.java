@@ -1,6 +1,8 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaCodeUnit;
+import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
 import io.github.yoavgeva.designguard.model.JavaFeature;
 import java.util.List;
 import java.util.Set;
@@ -16,6 +18,8 @@ public final class FunctionalCoreChecks {
             "java.time.LocalDateTime", "java.time.LocalTime", "java.time.ZonedDateTime", "java.time.OffsetDateTime",
             "java.time.OffsetTime", "java.time.Year", "java.time.YearMonth", "java.time.MonthDay");
     private static final String SYSTEM = "java.lang.System";
+    private static final String THREAD = "java.lang.Thread";
+    private static final String RUNNABLE = "java.lang.Runnable";
     private static final String INJECT_RANDOM = "inject a java.util.random.RandomGenerator";
 
     private FunctionalCoreChecks() {
@@ -76,7 +80,7 @@ public final class FunctionalCoreChecks {
 
     /**
      * Forbids starting threads by hand: {@code new Thread(...)}, {@code Thread.startVirtualThread(...)} and
-     * {@code Thread.Builder.start/unstarted}.
+     * {@code Thread.Builder.start/unstarted}. A thread factory, which makes an executor's threads, may create them.
      *
      * @param javaRelease the Java version the code targets: virtual threads are suggested from Java 21
      * @return the check
@@ -88,9 +92,21 @@ public final class FunctionalCoreChecks {
         Set<String> builders = Set.of("java.lang.Thread$Builder", "java.lang.Thread$Builder$OfPlatform",
                 "java.lang.Thread$Builder$OfVirtual");
         return new ForbiddenCallsCheck("no-raw-threads", "starts a thread directly", List.of(
-                ForbiddenCall.of("java.lang.Thread", Set.of(ForbiddenCall.CONSTRUCTOR, "startVirtualThread"), fix),
+                ForbiddenCall.of(THREAD, Set.of(ForbiddenCall.CONSTRUCTOR, "startVirtualThread"), fix),
                 new ForbiddenCall(target -> builders.contains(target.getOwner().getName())
-                        && Set.of("start", "unstarted").contains(target.getName()), target -> fix)));
+                        && Set.of("start", "unstarted").contains(target.getName()), target -> fix)),
+                FunctionalCoreChecks::makesExecutorThreads);
+    }
+
+    /**
+     * Whether the use makes threads for an executor: in a thread factory, a method that takes the work and returns its
+     * thread as {@code ThreadFactory.newThread} does, or a lambda or {@code Thread::new} an executor takes as one.
+     */
+    private static boolean makesExecutorThreads(Bytecode bytecode, JavaCodeUnitAccess<?> access) {
+        JavaCodeUnit origin = access.getOrigin();
+        return THREAD.equals(origin.getRawReturnType().getName())
+                && origin.getRawParameterTypes().stream().map(JavaClass::getName).toList().equals(List.of(RUNNABLE))
+                || bytecode.isCall(Bytecode.CallKind.IN_THREAD_FACTORY, access);
     }
 
     private static boolean isClock(JavaClass parameterType) {

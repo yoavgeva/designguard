@@ -12,6 +12,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class DeterministicTestsRuleTest {
 
+    private static final String SHOP = "shop";
+
     @TempDir
     private Path directory;
 
@@ -49,7 +51,7 @@ class DeterministicTestsRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsUseAFixedClock().evaluate()).extracting(Violation::rule, Violation::line,
                 Violation::message).containsExactly(
@@ -67,10 +69,47 @@ class DeterministicTestsRuleTest {
         assertThat(Stream.of(guard.tests().testsUseAFixedClock(), guard.tests().testsUseSeededRandomness(),
                         guard.tests().testsDontReadTheEnvironment(), guard.tests().testsDontSleep())
                 .map(rule -> rule.evaluate().get(0).fix())).containsExactly(
-                "pass a fixed Clock, such as Clock.fixed(...), to the code under test",
+                "use a fixed time, such as Instant.parse(...), or pass a fixed Clock, such as Clock.fixed(...),"
+                        + " to the code under test",
                 "use fixed data, or a Random with a fixed seed",
                 "pass the value in, so the test doesn't depend on the machine it runs on",
                 "wait for the condition instead, for example with Awaitility, or make time injectable");
+    }
+
+    @Test
+    void onlyCodeTheTestsRunIsTestCode() {
+        DesignGuard guard = new CompiledProject(directory)
+                .add("Cart", "package shop;\n\npublic class Cart {\n    public int total() {\n        return 3;\n    }\n}\n")
+                .addTest("CartSamples", """
+                        package shop;
+
+                        final class CartSamples {
+                            static String region() {
+                                return System.getenv("REGION");
+                            }
+                        }
+                        """)
+                .addTest("CartTest", """
+                        package shop;
+
+                        class CartTest {
+                            @org.junit.jupiter.api.Test
+                            void totals() {
+                                org.assertj.core.api.Assertions.assertThat(CartSamples.region() + new Cart().total()).isNotEmpty();
+                            }
+                        }
+                        """)
+                .addTest("CartSimulation", """
+                        package shop.load;
+
+                        public class CartSimulation {
+                            String baseUrl = System.getProperty("baseURL", "http://localhost:8080");
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsDontReadTheEnvironment().evaluate()).extracting(Violation::message)
+                .containsExactly("CartSamples.region() reads the environment through System.getenv()");
     }
 
     @Test
@@ -109,11 +148,66 @@ class DeterministicTestsRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsUseAFixedClock().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
                         tuple(25, "test CartTest.datesKeepTheTimeOfDay() reads the system clock through Calendar.getInstance()"),
                         tuple(27, "test CartTest.datesKeepTheTimeOfDay() reads the system clock through new GregorianCalendar()"));
+    }
+
+    @Test
+    void propertiesSavedToRestoreAreTheTestsOwn() {
+        DesignGuard guard = new CompiledProject(directory)
+                .add("Paths", "package shop;\n\npublic class Paths {\n    public String home() {\n        return System.getProperty(\"user.home\");\n    }\n}\n")
+                .addTest("PathsTest", """
+                        package shop;
+
+                        import org.junit.jupiter.api.AfterEach;
+                        import org.junit.jupiter.api.BeforeEach;
+                        import org.junit.jupiter.api.Test;
+
+                        class PathsTest {
+                            private String savedTmp;
+
+                            @BeforeEach
+                            void useATempDirectory() {
+                                savedTmp = System.getProperty("java.io.tmpdir");
+                                System.setProperty("java.io.tmpdir", "/work/tmp");
+                            }
+
+                            @AfterEach
+                            void restoreTheTempDirectory() {
+                                System.setProperty("java.io.tmpdir", savedTmp);
+                            }
+
+                            @Test
+                            void homeIsTheUsersHome() {
+                                String oldHome = System.getProperty("user.home");
+                                try {
+                                    System.setProperty("user.home", "/home/ada");
+                                    org.assertj.core.api.Assertions.assertThat(new Paths().home()).isEqualTo("/home/ada");
+                                } finally {
+                                    if (oldHome == null) {
+                                        System.clearProperty("user.home");
+                                    } else {
+                                        System.setProperty("user.home", oldHome);
+                                    }
+                                }
+                            }
+
+                            @Test
+                            void homeIsUnderTheMachinesHome() {
+                                String home = System.getProperty("user.home");
+                                System.setProperty("user.home", home + "/ada");
+                                org.assertj.core.api.Assertions.assertThat(new Paths().home()).endsWith("/ada");
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsDontReadTheEnvironment().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(tuple(38,
+                        "test PathsTest.homeIsUnderTheMachinesHome() reads the environment through System.getProperty()"));
     }
 }

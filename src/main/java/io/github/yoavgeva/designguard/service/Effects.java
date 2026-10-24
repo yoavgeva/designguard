@@ -7,12 +7,13 @@ import com.tngtech.archunit.core.domain.PackageMatcher;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Which code touches the outside world: code that uses an API {@link JdkEffects} lists, or a configured impure
- * package. A method, constructor or lambda is effectful if it uses such an API, reads a field holding such a
+ * Which code touches the outside world: code that uses an API {@link JdkEffects} or {@link LibraryEffects} lists, or a
+ * configured impure package. A method, constructor or lambda is effectful if it uses such an API, reads a field holding such a
  * resource, or calls project code that is effectful; a call through an interface counts as effectful if any
  * implementation is.
  */
@@ -20,15 +21,17 @@ final class Effects {
 
     private final List<PackageMatcher> extraImpurePackages;
     private final Overrides overrides;
+    private final LibraryEffects libraries;
 
-    Effects(List<String> extraImpurePackages, Overrides overrides) {
+    Effects(List<String> extraImpurePackages, Overrides overrides, ProjectClasses classes) {
         this.extraImpurePackages = extraImpurePackages.stream().map(PackageMatcher::of).toList();
         this.overrides = overrides;
+        this.libraries = new LibraryEffects(classes);
     }
 
     /** Whether using this type at all means touching the outside world, like {@code HttpClient} or {@code Random}. */
     boolean isImpureType(JavaClass type) {
-        return JdkEffects.isImpureType(type, extraImpurePackages);
+        return JdkEffects.isImpureType(type, extraImpurePackages) || libraries.isClientType(type);
     }
 
     /** Full names of the effectful methods, constructors and lambdas; a call may run any override of its target. */
@@ -39,12 +42,24 @@ final class Effects {
     }
 
     /**
-     * Full names of the methods and constructors that surely touch the outside world when they run, through the calls
-     * they make themselves: a call to an outside-world API, or to project code whose every implementation with a
-     * body surely does. A call that may run code without effects, such as a strategy with implementations of both
-     * kinds, doesn't count. Calls in the lambdas they create, and methods they only reference, run later if at all.
+     * Full names of the methods, constructors and lambdas that touch the outside world by more than reading the clock or
+     * randomness: I/O, the environment, threads and the like. A call may run any override of its target.
      */
-    Set<String> surelyEffectfulWhenRun(ProjectClasses classes, List<JavaClass> candidates) {
+    Set<String> ioEffectfulCodeUnits(ProjectClasses classes, List<JavaClass> candidates) {
+        Bytecode bytecode = classes.bytecode();
+        return CallGraph.reaching(CallGraph.unitsOf(candidates),
+                unit -> CallGraph.projectCallees(classes, accesses(unit), access -> overrides.mayRun(bytecode, access)),
+                unit -> accesses(unit).anyMatch(access -> isImpure(bytecode, access) && !JdkEffects.readsTimeOrChance(access.getTarget()))
+                        || readsResource(unit, type -> !JdkEffects.isTimeOrChanceType(type)));
+    }
+
+    /**
+     * Full names of the methods and constructors that surely make a counted call when they run, through the calls
+     * they make themselves: a counted call to an outside-world API, or to project code whose every implementation
+     * with a body surely makes one. A call that may run code without one, such as a strategy with implementations of
+     * both kinds, doesn't count. Calls in the lambdas they create, and methods they only reference, run later if at all.
+     */
+    Set<String> surelyWhenRun(ProjectClasses classes, List<JavaClass> candidates, Predicate<JavaCodeUnitAccess<?>> counted) {
         Bytecode bytecode = classes.bytecode();
         List<JavaCodeUnit> units = CallGraph.unitsOf(candidates);
         Set<String> withBodies = CallGraph.withBodies(units);
@@ -55,7 +70,7 @@ final class Effects {
                         .collect(Collectors.toSet()),
                 (first, second) -> Stream.concat(first.stream(), second.stream()).collect(Collectors.toSet())));
         Set<String> seeds = units.stream()
-                .filter(unit -> bytecode.callsMadeBy(unit).anyMatch(call -> isImpure(bytecode, call)))
+                .filter(unit -> bytecode.callsMadeBy(unit).anyMatch(counted))
                 .map(JavaCodeUnit::getFullName)
                 .collect(Collectors.toSet());
         return CallGraph.spreadThroughEvery(calls, seeds);
@@ -84,11 +99,14 @@ final class Effects {
     }
 
     private boolean isDirectlyEffectful(Bytecode bytecode, JavaCodeUnit unit) {
-        boolean impureAccess = accesses(unit).anyMatch(access -> isImpure(bytecode, access));
-        boolean usesImpureResource = unit.getFieldAccesses().stream()
+        return accesses(unit).anyMatch(access -> isImpure(bytecode, access)) || readsResource(unit, type -> true);
+    }
+
+    /** Whether the unit reads a field of {@code System}, or one holding a resource of the kinds counted. */
+    private boolean readsResource(JavaCodeUnit unit, Predicate<JavaClass> counted) {
+        return unit.getFieldAccesses().stream()
                 .anyMatch(access -> "java.lang.System".equals(access.getTargetOwner().getName())
-                        || isImpureType(access.getTarget().getRawType()));
-        return impureAccess || usesImpureResource;
+                        || isImpureType(access.getTarget().getRawType()) && counted.test(access.getTarget().getRawType()));
     }
 
     /** Calls, constructor calls and method references the code unit makes. */
@@ -98,12 +116,33 @@ final class Effects {
 
     /**
      * Whether making the call uses an outside-world API: I/O, the clock, randomness, the environment, threads, or the
-     * console, as {@code System.out.println(...)} does. {@code Thread.currentThread().interrupt()} only restores the
-     * current thread's interrupt flag, so it doesn't.
+     * console, as {@code System.out.println(...)} does, or a library's database, HTTP, messaging or mail client.
+     * {@code Thread.currentThread().interrupt()} only restores the current thread's interrupt flag, so it doesn't.
      */
     boolean isImpure(Bytecode bytecode, JavaCodeUnitAccess<?> access) {
         return JdkEffects.isImpure(access.getTarget(), extraImpurePackages)
                 && !bytecode.isCall(Bytecode.CallKind.RESTORED_INTERRUPT, access)
-                || bytecode.isCall(Bytecode.CallKind.CONSOLE, access);
+                || bytecode.isCall(Bytecode.CallKind.CONSOLE, access)
+                || libraries.isCall(access);
     }
+
+    /**
+     * Whether the call does work, which may be slow or fail: it is {@link #isImpure}, other than reading the clock,
+     * randomness or the process's configuration.
+     */
+    boolean doesWork(Bytecode bytecode, JavaCodeUnitAccess<?> access) {
+        return isImpure(bytecode, access) && !JdkEffects.readsProcessState(access.getTarget());
+    }
+
+    /**
+     * Whether the call queries a database or another machine: JDBC, the network, a library client, or a package
+     * treated as impure, such as an SDK's. Files, the environment and the console are local.
+     */
+    boolean queriesRemotely(JavaCodeUnitAccess<?> access) {
+        String packageName = access.getTargetOwner().getPackageName();
+        return JdkEffects.isImpure(access.getTarget(), extraImpurePackages) && (JdkEffects.reachesRemote(access.getTarget())
+                || extraImpurePackages.stream().anyMatch(matcher -> matcher.matches(packageName)))
+                || libraries.isCall(access);
+    }
+
 }

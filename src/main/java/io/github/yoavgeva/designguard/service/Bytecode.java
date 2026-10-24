@@ -158,7 +158,9 @@ final class Bytecode {
         /** {@code System.out.println(...)} and other calls on a console stream: they use the console. */
         CONSOLE(ClassFileFacts::consoleCalls),
         /** {@code storage.load()} on a parameter: it runs the implementation the caller passed. */
-        ON_PARAMETER(ClassFileFacts::parameterCalls);
+        ON_PARAMETER(ClassFileFacts::parameterCalls),
+        /** {@code new Thread(work)} in a thread factory lambda an executor takes: it makes the executor's threads. */
+        IN_THREAD_FACTORY(ClassFileFacts::threadFactoryCalls);
 
         private final Function<ClassFileFacts, Map<String, Set<String>>> calls;
 

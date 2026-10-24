@@ -16,6 +16,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 @MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class QueriesInLoopsRuleTest {
 
+    private static final String SHOP = "shop";
+
     @Parameter
     private int release;
 
@@ -33,7 +35,7 @@ class QueriesInLoopsRuleTest {
                         public final class EnvPrices implements PriceRepository {
                             @Override
                             public long priceOf(String item) {
-                                return System.getenv(item).length();
+                                return java.sql.DriverManager.getLoginTimeout() + item.length();
                             }
 
                             @Override
@@ -162,7 +164,7 @@ class QueriesInLoopsRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.dependencies().noQueriesInLoops().evaluate()).extracting(Violation::message).containsExactly(
                 "Checkout.total() queries PriceRepository.priceOf() inside a loop, once per item",
@@ -176,6 +178,162 @@ class QueriesInLoopsRuleTest {
                 "Checkout.keyed() queries PriceRepository.priceOf() inside a loop, once per item");
         assertThat(guard.dependencies().noQueriesInLoops().evaluate().get(0).fix()).isEqualTo("load what the loop"
                 + " needs with one call before it, such as one query for all the keys");
+    }
+
+    @Test
+    void repositoriesALibraryImplementsAreQueriedOncePerItemToo() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Repository", "package org.springframework.data.repository;\n\n"
+                        + "public interface Repository<T, ID> {\n}\n")
+                .add("OwnerRepository", "package shop;\n\npublic interface OwnerRepository "
+                        + "extends org.springframework.data.repository.Repository<String, Integer> {\n"
+                        + "    String findById(Integer id);\n}\n")
+                .add("Owners", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Owners {
+                            private final OwnerRepository owners;
+
+                            public Owners(OwnerRepository owners) {
+                                this.owners = owners;
+                            }
+
+                            public List<String> names(List<Integer> ids) {
+                                return ids.stream().map(owners::findById).toList();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().noQueriesInLoops().evaluate()).extracting(Violation::message)
+                .containsExactly("Owners.names() queries OwnerRepository.findById() inside a loop, once per item");
+    }
+
+    @Test
+    void commandsThatReturnWhatTheyStoredAreNoQueries() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Repository", "package org.springframework.data.repository;\n\n"
+                        + "public interface Repository<T, ID> {\n}\n")
+                .add("ColumnRepository", "package shop;\n\npublic interface ColumnRepository "
+                        + "extends org.springframework.data.repository.Repository<String, Long> {\n"
+                        + "    String save(String column);\n\n    boolean deleteByName(String name);\n\n"
+                        + "    String findByName(String name);\n}\n")
+                .add("Columns", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Columns {
+                            private final ColumnRepository columns;
+
+                            public Columns(ColumnRepository columns) {
+                                this.columns = columns;
+                            }
+
+                            public void sync(List<String> names) {
+                                for (String name : names) {
+                                    columns.save(name);
+                                    columns.deleteByName(name);
+                                    columns.findByName(name);
+                                }
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().noQueriesInLoops().evaluate()).extracting(Violation::message)
+                .containsExactly("Columns.sync() queries ColumnRepository.findByName() inside a loop, once per item");
+    }
+
+    @Test
+    void readingTheClockOncePerItemIsNoQuery() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Visit", """
+                        package shop;
+
+                        public class Visit {
+                            private final java.time.LocalDate date = java.time.LocalDate.now();
+                            private final String pet;
+
+                            public Visit(String pet) {
+                                this.pet = pet;
+                            }
+
+                            public String describe() {
+                                return pet + date;
+                            }
+                        }
+                        """)
+                .add("VisitMapper", """
+                        package shop;
+
+                        public class VisitMapper {
+                            public Visit toVisit(String pet) {
+                                return new Visit(pet);
+                            }
+                        }
+                        """)
+                .add("Visits", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Visits {
+                            private final VisitMapper mapper;
+
+                            public Visits(VisitMapper mapper) {
+                                this.mapper = mapper;
+                            }
+
+                            public List<Visit> book(List<String> pets) {
+                                return pets.stream().map(mapper::toVisit).toList();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().noQueriesInLoops().evaluate()).isEmpty();
+    }
+
+    @Test
+    void localFilesAndTheEnvironmentAreNoQueries() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Catalog", """
+                        package shop;
+
+                        public class Catalog {
+                            public boolean isScript(String ref) {
+                                return java.nio.file.Files.isRegularFile(java.nio.file.Path.of(ref));
+                            }
+
+                            public String setting(String key) {
+                                return System.getenv(key);
+                            }
+                        }
+                        """)
+                .add("Aliases", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Aliases {
+                            private final Catalog catalog;
+
+                            public Aliases(Catalog catalog) {
+                                this.catalog = catalog;
+                            }
+
+                            public long scripts(List<String> refs) {
+                                return refs.stream().filter(catalog::isScript).count()
+                                        + refs.stream().map(catalog::setting).count();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().noQueriesInLoops().evaluate()).isEmpty();
     }
 
     @Test
@@ -198,7 +356,7 @@ class QueriesInLoopsRuleTest {
                         public final class EnvRule implements Rule {
                             @Override
                             public boolean test(String value) {
-                                return System.getenv(value) != null;
+                                return java.sql.DriverManager.getLoginTimeout() > value.length();
                             }
                         }
                         """)
@@ -228,11 +386,11 @@ class QueriesInLoopsRuleTest {
 
                         public class Input {
                             public int read() {
-                                return System.getenv("INPUT").length();
+                                return java.sql.DriverManager.getLoginTimeout();
                             }
 
                             public int skip(String until) {
-                                return System.getenv(until).length();
+                                return java.sql.DriverManager.getLoginTimeout() + until.length();
                             }
                         }
                         """)
@@ -251,7 +409,7 @@ class QueriesInLoopsRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.dependencies().noQueriesInLoops().evaluate()).isEmpty();
     }

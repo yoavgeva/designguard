@@ -18,6 +18,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 @MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class FunctionalCoreRulesTest {
 
+    private static final String SHOP = "shop";
+
     @Parameter
     private int release;
 
@@ -98,7 +100,7 @@ class FunctionalCoreRulesTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
     }
 
     @Test
@@ -136,5 +138,57 @@ class FunctionalCoreRulesTest {
             assertThat(violation.message()).isEqualTo("Jobs starts a thread directly through new Thread()");
             assertThat(violation.fix()).isEqualTo("submit the work to an injected ExecutorService, e.g. one from " + executor);
         });
+    }
+
+    @Test
+    void threadFactoriesMakeThreadsForExecutors() {
+        DesignGuard factories = new CompiledProject(directory.resolve("factories")).release(release)
+                .add("Workers", """
+                        package shop;
+
+                        import java.util.concurrent.ExecutorService;
+                        import java.util.concurrent.Executors;
+                        import java.util.concurrent.ThreadFactory;
+
+                        public final class Workers {
+                            private static final ThreadFactory DAEMONS = Thread::new;
+
+                            private Workers() {
+                            }
+
+                            public static ExecutorService checker() {
+                                return Executors.newSingleThreadExecutor(work -> {
+                                    Thread thread = new Thread(work, "checker");
+                                    thread.setDaemon(true);
+                                    return thread;
+                                });
+                            }
+
+                            public static ExecutorService pool() {
+                                return Executors.newFixedThreadPool(2, DAEMONS);
+                            }
+
+                            public static void runNow(Runnable work) {
+                                Runnable started = () -> new Thread(work).start();
+                                started.run();
+                            }
+                        }
+                        """)
+                .add("NamedThreads", """
+                        package shop;
+
+                        import java.util.concurrent.ThreadFactory;
+
+                        public final class NamedThreads implements ThreadFactory {
+                            @Override
+                            public Thread newThread(Runnable work) {
+                                return new Thread(work, "worker");
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(factories.dependencies().noRawThreads().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(tuple(26, "Workers starts a thread directly through new Thread()"));
     }
 }

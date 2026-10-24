@@ -77,6 +77,10 @@ final class LegacyShop {
                             public String charge(long cents) {
                                 return http.toString() + System.getenv("STRIPE_KEY") + cents;
                             }
+
+                            public String fee(long cents) {
+                                return java.sql.DriverManager.getLoginTimeout() + " " + cents;
+                            }
                         }
                         """)
                 .add("Checkout", """
@@ -92,7 +96,7 @@ final class LegacyShop {
                             public String payAll(java.util.List<Long> amounts) {
                                 String receipts = "";
                                 for (long amount : amounts) {
-                                    receipts += client.charge(amount);
+                                    receipts += client.fee(amount);
                                 }
                                 return receipts;
                             }

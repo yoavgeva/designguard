@@ -48,6 +48,43 @@ class FlagArgumentCheckTest {
     }
 
     @Test
+    void allowsBooleansAnHttpRequestBinds() {
+        assertThat(violations("""
+                package shop;
+
+                import org.springframework.web.bind.annotation.RequestParam;
+
+                class OperationResource {
+                    String list(@RequestParam(name = "eagerload", defaultValue = "true") boolean eagerload) {
+                        if (eagerload) {
+                            return "with labels";
+                        }
+                        return "plain";
+                    }
+
+                    @org.springframework.web.bind.annotation.GetMapping("/download")
+                    String download(String name, Boolean delete) {
+                        if (delete) {
+                            return "deleted " + name;
+                        }
+                        return name;
+                    }
+
+                    String find(@jakarta.ws.rs.QueryParam("deep") boolean deep, boolean cached) {
+                        if (deep) {
+                            return "deep";
+                        }
+                        if (cached) {
+                            return "cached";
+                        }
+                        return "shallow";
+                    }
+                }
+                """)).extracting(Violation::message)
+                .containsExactly("OperationResource.find() branches on its boolean parameter 'cached'");
+    }
+
+    @Test
     void reportsNegatedAndTernaryUses() {
         assertThat(violations("""
                 package shop;

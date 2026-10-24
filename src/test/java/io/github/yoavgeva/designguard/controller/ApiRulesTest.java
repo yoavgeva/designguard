@@ -118,6 +118,11 @@ class ApiRulesTest {
                             public void run() throws IllegalStateException {
                                 throw new IllegalStateException("not ready");
                             }
+
+                            public String take() throws InterruptedException {
+                                Thread.sleep(1);
+                                return "next";
+                            }
                         }
                         """)
                 .add("Codec", """
@@ -150,6 +155,19 @@ class ApiRulesTest {
     void publicApisUseTypesNotObjectsOrMaps() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("JsonNode", "package com.fasterxml.jackson.databind;\n\npublic abstract class JsonNode {\n}\n")
+                .add("Around", "package org.aspectj.lang.annotation;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Around {\n    String value();\n}\n")
+                .add("Timing", """
+                        package shop;
+
+                        public class Timing {
+                            @org.aspectj.lang.annotation.Around("execution(* shop..*(..))")
+                            public Object time(java.util.function.Supplier<Object> call) {
+                                return call.get();
+                            }
+                        }
+                        """)
                 .add(ORDER, "package shop;\n\npublic record Order(String name) {\n}\n")
                 .add(ORDERS, """
                         package shop;
@@ -262,6 +280,15 @@ class ApiRulesTest {
                                 copy.count = count;
                                 copy.dirty = dirty;
                                 return copy;
+                            }
+
+                            public static final class Builder {
+                                private boolean bound;
+
+                                public Builder isBound(boolean bound) {
+                                    this.bound = bound;
+                                    return this;
+                                }
                             }
 
                             private volatile String label;
@@ -746,6 +773,72 @@ class ApiRulesTest {
                                         return 0;
                                     default:
                                         return 2;
+                                }
+                            }
+
+                            public static Boolean toBool(String value) {
+                                switch (value) {
+                                    case "true":
+                                    case "yes":
+                                    case "ok":
+                                        return true;
+                                    case "false":
+                                    case "no":
+                                        return false;
+                                    default:
+                                        return null;
+                                }
+                            }
+
+                            public static String convertCondition(String key) {
+                                switch (key) {
+                                    case "consumes":
+                                        return "accept";
+                                    case "produces":
+                                        return "content-type";
+                                    case "headers":
+                                        return "header";
+                                    default:
+                                        return key;
+                                }
+                            }
+
+                            public static String forExtension(String ext) {
+                                switch (ext) {
+                                    case "kt":
+                                        return "kotlin";
+                                    case "groovy":
+                                        return "groovy";
+                                    case "jsh":
+                                        return "jshell";
+                                    default:
+                                        return "java";
+                                }
+                            }
+
+                            public String replacement(String flag) {
+                                switch (flag) {
+                                    case "--init":
+                                        return "init";
+                                    case "--edit":
+                                        return "edit";
+                                    case "--alias":
+                                        return "alias";
+                                    default:
+                                        return null;
+                                }
+                            }
+
+                            public String verb(String method) {
+                                switch (method) {
+                                    case "POST":
+                                        return "create";
+                                    case "PUT":
+                                        return "update";
+                                    case "DELETE":
+                                        return "delete";
+                                    default:
+                                        return "get";
                                 }
                             }
                         }

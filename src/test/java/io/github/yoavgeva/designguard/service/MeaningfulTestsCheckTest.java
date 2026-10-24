@@ -42,8 +42,90 @@ class MeaningfulTestsCheckTest {
                     void respondsOk() throws Exception {
                         mvc.perform(get("/cart")).andExpect(status().isOk());
                     }
+
+                    @Test
+                    void startsEmpty() {
+                        Cart cart = new Cart();
+
+                        assert cart.total() == 0 : "a new cart is empty";
+                    }
+
+                    @Test
+                    void rejectsUnknownItems() {
+                        try {
+                            new Cart().add("unknown");
+                        } catch (IllegalArgumentException expected) {
+                            assertThat(expected.getMessage()).contains("unknown");
+                        }
+                        assert new Cart().total() == 0;
+                    }
                 }
                 """)).isEmpty();
+    }
+
+    @Test
+    void anEmptyTestOfABootedApplicationChecksThatItStarts() {
+        assertThat(violations("""
+                package shop;
+
+                @SpringBootTest
+                class CartTest {
+                    @Test
+                    void contextLoads() {
+                    }
+
+                    @Test
+                    void total() {
+                        new Cart().total();
+                    }
+                }
+                """)).extracting(Violation::message).containsExactly("test CartTest.total() asserts nothing");
+    }
+
+    @Test
+    void aCommentSayingAFailureWontHappenChecksNothingIsThrown() {
+        assertThat(violations("""
+                package shop;
+
+                class CartTest {
+                    @Test
+                    void registersWhileIterating() {
+                        cart.items().forEach(item -> {
+                            // make sure concurrent modification won't happen
+                            cart.add(item);
+                        });
+                    }
+
+                    @Test
+                    void clearsTwice() {
+                        cart.clear();
+                        cart.clear(); // no error should occur
+                    }
+                }
+                """)).isEmpty();
+    }
+
+    @Test
+    void aThrowOnAFailedCheckIsAnAssertion() {
+        assertThat(violations("""
+                package shop;
+
+                class CartTest {
+                    @Test
+                    void resolvesEveryCase() {
+                        Map.of("/a", true, "/b", false).forEach((url, expected) -> {
+                            if (resolver.isResource(url) != expected) {
+                                throw new IllegalStateException(url + " expected " + expected);
+                            }
+                        });
+                    }
+
+                    @Test
+                    void total() {
+                        new Cart().total();
+                    }
+                }
+                """)).extracting(Violation::message).containsExactly("test CartTest.total() asserts nothing");
     }
 
     @Test

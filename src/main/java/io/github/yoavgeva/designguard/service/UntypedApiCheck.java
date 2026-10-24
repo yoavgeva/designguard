@@ -17,11 +17,13 @@ import java.util.stream.Stream;
  * Finds public methods of public classes that take or return untyped data: {@code Object}, a map to {@code Object}
  * such as {@code Map<String, Object>}, or a JSON tree from Jackson, Gson, org.json or Jakarta JSON. A record names
  * the fields and their types, so callers and the compiler know what to pass. Type variables, inherited signatures
- * such as {@code equals(Object)} and wiring code are skipped.
+ * such as {@code equals(Object)}, AspectJ {@code @Around} advice, which returns whatever the advised method returns,
+ * and wiring code are skipped.
  */
 public final class UntypedApiCheck {
 
     private static final String RULE = "typed-apis";
+    private static final String AROUND_ADVICE = "org.aspectj.lang.annotation.Around";
     private static final int MAP_TYPE_ARGUMENTS = 2;
     private static final Set<String> JSON_TREES = Set.of("com.fasterxml.jackson.databind.JsonNode",
             "com.fasterxml.jackson.databind.node.ObjectNode", "com.fasterxml.jackson.databind.node.ArrayNode",
@@ -55,7 +57,8 @@ public final class UntypedApiCheck {
     private static boolean isPublicApi(JavaClass type, JavaMethod method) {
         Set<JavaModifier> modifiers = method.getModifiers();
         return modifiers.contains(JavaModifier.PUBLIC) && !modifiers.contains(JavaModifier.SYNTHETIC)
-                && !modifiers.contains(JavaModifier.BRIDGE) && !Hierarchy.isInherited(type, method);
+                && !modifiers.contains(JavaModifier.BRIDGE) && !Hierarchy.isInherited(type, method)
+                && !method.isAnnotatedWith(AROUND_ADVICE);
     }
 
     private static Stream<String> untyped(ProjectClasses classes, JavaMethod method) {

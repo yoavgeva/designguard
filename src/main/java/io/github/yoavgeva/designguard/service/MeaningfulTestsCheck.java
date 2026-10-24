@@ -4,6 +4,7 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.LiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.stmt.AssertStmt;
 import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.stmt.ThrowStmt;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -19,7 +20,8 @@ import java.util.stream.Stream;
  * {@code catch} block. Assertions are calls named {@code assert*}, {@code verify*}, {@code expect*}, {@code fail*},
  * AssertJ's {@code then}, MockMvc's {@code andExpect}, ArchUnit's and designguard's {@code check}, or Awaitility's
  * {@code until}, a thrown {@code AssertionError}, and helpers of the test sources that assert; JUnit 4's
- * {@code @Test(expected = ...)} counts too, and so does a name or comment saying the test checks that nothing is thrown.
+ * {@code @Test(expected = ...)} counts too, and so does a name or comment saying the test checks that nothing is thrown,
+ * or an empty test in a {@code @SpringBootTest} class, which checks that the application starts.
  * Constants given to a helper of the tests are its inputs, not an assertion on constants.
  */
 public final class MeaningfulTestsCheck {
@@ -31,11 +33,11 @@ public final class MeaningfulTestsCheck {
     private static final Pattern EQUALITY_TEST = Pattern.compile("(?i)equal|hash|compar");
     /**
      * A test's name or comment saying it checks that nothing is thrown, as {@code shouldNotThrowForAnEmptyCart},
-     * "nothing thrown", "doesn't actually throw" or "should not blow up" do: a negation, at most one word, then a
-     * failure.
+     * "nothing thrown", "doesn't actually throw", "should not blow up" and "concurrent modification won't happen" do: a
+     * negation, at most one word, then a failure or its happening.
      */
     private static final Pattern NOTHING_THROWN = Pattern.compile("(?i)(?:\\b(?:not|never|no|nothing|without)|n't)"
-            + "(?:\\s+\\w+)?\\s+(?:throw|exception|error|fail|blow|crash|explode)");
+            + "(?:\\s+\\w+)?\\s+(?:throw|exception|error|fail|blow|crash|explode|happen|occur|raise)");
     /** Where a name in camel case or snake case starts a word. */
     private static final Pattern WORD_START = Pattern.compile("(?<=[a-z0-9])(?=[A-Z])|_");
 
@@ -66,7 +68,7 @@ public final class MeaningfulTestsCheck {
         boolean checksNothingIsThrown = NOTHING_THROWN.matcher(WORD_START.matcher(test.getNameAsString()).replaceAll(" "))
                 .find()
                 || test.getAllContainedComments().stream().anyMatch(comment -> NOTHING_THROWN.matcher(comment.getContent()).find());
-        if (expectsException || checksNothingIsThrown) {
+        if (expectsException || checksNothingIsThrown || checksTheApplicationStarts(test)) {
             return Stream.empty();
         }
         if (!helpers.asserts(test)) {
@@ -82,6 +84,15 @@ public final class MeaningfulTestsCheck {
                         .stream());
         return Stream.of(onlyInCatch(file, name, test, helpers).stream(), constants, newObjects, selfComparisons)
                 .flatMap(violations -> violations);
+    }
+
+    /**
+     * Whether the test is an empty one in a {@code @SpringBootTest} class, as Spring's {@code contextLoads()} is: booting
+     * the application is what it checks.
+     */
+    private static boolean checksTheApplicationStarts(MethodDeclaration test) {
+        return test.getBody().filter(body -> body.getStatements().isEmpty()).isPresent()
+                && Scopes.enclosingType(test).filter(type -> Scopes.hasAnnotation(type, "SpringBootTest")).isPresent();
     }
 
     /** Whether the call is a library assertion, or a check chained onto one, as {@code isEqualTo} is in AssertJ. */
@@ -132,6 +143,7 @@ public final class MeaningfulTestsCheck {
             AssertingHelpers helpers) {
         List<MethodCallExpr> assertions = test.findAll(MethodCallExpr.class).stream().filter(helpers::isAssertion).toList();
         boolean onlyInCatch = test.findAll(ThrowStmt.class).isEmpty()
+                && test.findAll(AssertStmt.class).stream().allMatch(stmt -> Scopes.nearest(stmt, CatchClause.class).isPresent())
                 && assertions.stream().anyMatch(call -> !call.getNameAsString().startsWith("fail"))
                 && assertions.stream().allMatch(call -> Scopes.nearest(call, CatchClause.class).isPresent());
         return onlyInCatch

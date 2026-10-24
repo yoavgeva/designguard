@@ -85,6 +85,22 @@ class StubCheckTest {
     }
 
     @Test
+    void anAspectsPointcutDeclarationIsEmptyByDesign() {
+        assertThat(violations("LimitAspect", """
+                package shop;
+
+                class LimitAspect {
+                    @org.aspectj.lang.annotation.Pointcut("@annotation(shop.Limit)")
+                    public void pointcut() {
+                    }
+
+                    public void limit() {
+                    }
+                }
+                """)).singleElement().extracting(Violation::message).isEqualTo("LimitAspect.limit() has an empty body");
+    }
+
+    @Test
     void methodsThatAProjectSubclassOverridesAreHooks() {
         new SourceTree(root)
                 .add("Handler", """

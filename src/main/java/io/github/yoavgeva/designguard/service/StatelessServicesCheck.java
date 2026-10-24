@@ -16,11 +16,16 @@ import java.util.stream.Stream;
 /**
  * Finds service-like classes that hold changing state: a non-final instance field, or a final one holding a mutable
  * collection, atomic or string builder, by its type or by what a constructor assigns it. A service is shared by its
- * callers, so its state leaks between them and races under concurrency. Wiring code, enums and records are skipped.
+ * callers, so its state leaks between them and races under concurrency. A non-final field a container injects, as
+ * {@code @Autowired}, {@code @Value}, {@code @Inject}, {@code @Resource} and {@code @PersistenceContext} do, holds a
+ * collaborator or setting rather than state, so it is reported as one to take in the constructor. Wiring code, enums
+ * and records are skipped.
  */
 public final class StatelessServicesCheck {
 
     private static final String RULE = "stateless-services";
+    private static final String KEEP_STATE_OUT = "keep state out of services: pass it in and return it as values, or keep"
+            + " it in a store the service calls";
     private static final Set<String> MUTABLE_TYPES = Set.of("java.util.ArrayList", "java.util.LinkedList",
             "java.util.HashMap", "java.util.LinkedHashMap", "java.util.TreeMap", "java.util.HashSet",
             "java.util.LinkedHashSet", "java.util.TreeSet", "java.util.ArrayDeque", "java.util.PriorityQueue",
@@ -52,13 +57,19 @@ public final class StatelessServicesCheck {
                         .filter(field -> !field.getModifiers().contains(JavaModifier.STATIC)
                                 && !field.getModifiers().contains(JavaModifier.SYNTHETIC)
                                 && classes.selected(filter, field))
-                        .flatMap(field -> state(field).stream()
-                                .map(state -> classes.violation(RULE, type, 0, ProjectClasses.nameOf(type)
-                                                + " is service-like, but its field '" + field.getName() + "' " + state,
-                                        "keep state out of services: pass it in and return it as values, or keep it in"
-                                                + " a store the service calls"))))
+                        .flatMap(field -> finding(field).stream()
+                                .map(finding -> classes.violation(RULE, type, 0, ProjectClasses.nameOf(type)
+                                        + " is service-like, but its " + finding.what(), finding.fix()))))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
+    }
+
+    private static Optional<Finding> finding(JavaField field) {
+        if (!field.getModifiers().contains(JavaModifier.FINAL) && WiringCode.isInjected(field)) {
+            return Optional.of(new Finding("injected field '" + field.getName() + "' isn't final",
+                    WiringCode.INJECT_IN_CONSTRUCTOR));
+        }
+        return state(field).map(state -> new Finding("field '" + field.getName() + "' " + state, KEEP_STATE_OUT));
     }
 
     /** What makes the field changing state, if anything. */
@@ -83,5 +94,9 @@ public final class StatelessServicesCheck {
                 .flatMap(access -> access.getOrigin().getConstructorCallsFromSelf().stream()
                         .filter(call -> call.getLineNumber() == access.getLineNumber())
                         .map(JavaAccess::getTargetOwner));
+    }
+
+    /** What is wrong with a field, and how to fix it. */
+    private record Finding(String what, String fix) {
     }
 }

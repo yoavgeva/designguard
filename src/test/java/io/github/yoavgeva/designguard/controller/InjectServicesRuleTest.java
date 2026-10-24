@@ -297,6 +297,39 @@ class InjectServicesRuleTest {
     }
 
     @Test
+    void creatingEntitiesIsCreatingData() {
+        var guard = new CompiledProject(directory).release(release)
+                .add("Entity", "package shop;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Entity {\n}\n")
+                .add("Visit", """
+                        package shop;
+
+                        import java.time.LocalDate;
+
+                        @Entity
+                        public class Visit {
+                            private LocalDate date = LocalDate.now();
+
+                            public LocalDate date() {
+                                return date;
+                            }
+                        }
+                        """)
+                .add("Visits", """
+                        package shop;
+
+                        public class Visits {
+                            public Visit book() {
+                                return new Visit();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().injectServices().evaluate()).isEmpty();
+    }
+
+    @Test
     void creatingObjectsFromInjectedAbstractionsIsFine() {
         var guard = new CompiledProject(directory).release(release)
                 .add("Storage", "package shop;\n\npublic interface Storage {\n    void save(String report);\n}\n")

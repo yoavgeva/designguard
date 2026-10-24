@@ -19,8 +19,10 @@ import java.util.stream.Stream;
 
 /**
  * Finds tests that verify queries: {@code verify(mock).method(...)} where every such method of the mock's type
- * returns a value. Stub queries and assert on the result; verify only commands, methods that return nothing. A
- * verification with a mode, such as {@code times(1)} or {@code never()}, counts calls on purpose and is fine.
+ * returns a value. Stub queries and assert on the result; verify only commands: methods that return nothing, or only a
+ * {@code Void} publisher or future such as {@code Mono<Void>}, and methods named for a change, as {@code update} or
+ * {@code sendCode} are, which may return what they stored, as reactive clients and repositories do. A verification
+ * with a mode, such as {@code times(1)} or {@code never()}, counts calls on purpose and is fine.
  */
 public final class QueryVerificationCheck {
 
@@ -94,8 +96,7 @@ public final class QueryVerificationCheck {
                 .filter(method -> method.getName().equals(call.getNameAsString())
                         && method.getRawParameterTypes().size() == call.getArguments().size())
                 .toList();
-        return !candidates.isEmpty()
-                && candidates.stream().noneMatch(method -> method.getRawReturnType().isEquivalentTo(void.class));
+        return !candidates.isEmpty() && candidates.stream().noneMatch(CommandMethods::isCommand);
     }
 
     private static Violation violation(ParsedFile file, MethodCallExpr call, JavaClass type) {

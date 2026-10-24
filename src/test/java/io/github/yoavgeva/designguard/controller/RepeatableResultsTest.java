@@ -35,11 +35,14 @@ class RepeatableResultsTest {
                 .add("Settings", """
                         package shop.legacy.ties;
 
+                        import java.nio.file.Files;
+                        import java.nio.file.Path;
+
                         public class Settings {
                             private final String region;
 
                             public Settings() {
-                                this.region = System.getenv("REGION") + System.getProperty("zone") + System.lineSeparator();
+                                this.region = Files.isDirectory(Path.of("zone")) + " " + Files.exists(Path.of("eu")) + System.lineSeparator();
                             }
 
                             public String region() {
@@ -124,7 +127,7 @@ class RepeatableResultsTest {
     @Test
     void ofSeveralEffectsOnOneLineTheFirstByNameIsReported() {
         assertThat(guard().dependencies().constructorsDoNoWork().evaluate()).extracting(Violation::message)
-                .contains("Settings does work in its constructor through System.getProperty()");
+                .contains("Settings does work in its constructor through Files.exists()");
     }
 
     private static String report() {

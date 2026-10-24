@@ -68,7 +68,7 @@ class MemberIgnoringContractTest {
                         + "        new Thread(job).start();\n    }\n}\n"), List.of()),
                 member("noQueriesInLoops", g -> g.dependencies().noQueriesInLoops(), List.of(PACKAGE
                                 + "public class Prices {\n    public String priceOf(String item) {\n"
-                                + "        return System.getenv(item);\n    }\n}\n",
+                                + "        return java.sql.DriverManager.getLoginTimeout() + item;\n    }\n}\n",
                         PACKAGE + "public class Checkout {\n    private final Prices prices = null;\n\n    @Legacy\n"
                                 + "    public String payAll(java.util.List<String> items) {\n        String all = \"\";\n"
                                 + "        for (String item : items) {\n            all += prices.priceOf(item);\n        }\n"

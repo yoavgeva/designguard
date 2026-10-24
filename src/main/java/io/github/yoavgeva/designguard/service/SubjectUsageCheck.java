@@ -2,32 +2,33 @@ package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.TypeDeclaration;
-import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.AnnotationExpr;
-import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.tngtech.archunit.core.domain.JavaClass;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
+import io.github.yoavgeva.designguard.service.SuiteTypes.TestType;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Finds test classes that don't exercise the class they're named after: {@code OrderServiceTest} never uses
- * {@code OrderService}, or only mocks it. A use is the class's name in a type, a static call or an annotation, or an
- * expression whose type the symbol solver resolves to it, such as {@code guard.api()}, in the test or in a test-source
- * helper class it uses. Tests named after no project class are skipped.
+ * {@code OrderService}, or only mocks it. A use is the class's name in a type, a static call or an annotation, a
+ * statically imported member of it, or an expression whose type the symbol solver resolves to it, such as
+ * {@code guard.api()}, in the test or in a test-source helper class it uses. A container-injected field typed as an
+ * interface or superclass of it uses it too, and so does a test of a web controller or filter that sends requests
+ * through an HTTP test client such as {@code MockMvc}. Tests named after no project class are skipped.
  */
 public final class SubjectUsageCheck {
 
     private static final String RULE = "tests-use-their-subject";
     private static final Pattern TEST_NAME = Pattern.compile("(.+?)(Test|Tests|IT)");
+    /** How many test superclasses up a test's inherited uses are looked for. */
+    private static final int MAX_SUPERCLASSES = 4;
 
     /**
      * Finds violations in the test sources the filter selects.
@@ -38,15 +39,13 @@ public final class SubjectUsageCheck {
      */
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         SourceTypes types = new SourceTypes(code.projectClasses());
-        List<TestType> tests = code.testSources().files().stream()
-                .flatMap(file -> file.unit().getTypes().stream().map(type -> new TestType(file, type)))
-                .toList();
-        Map<String, TestType> testTypes = tests.stream()
-                .collect(Collectors.toMap(test -> test.type().getNameAsString(), test -> test, (first, second) -> first));
-        return tests.stream()
+        IndirectUses uses = new IndirectUses(types, code.wiring());
+        SuiteTypes tests = new SuiteTypes(code.testSources());
+        Context context = new Context(types, uses, tests);
+        return tests.all().stream()
                 .filter(test -> Scopes.selected(filter, test.file(), test.type()))
                 .flatMap(test -> subject(test.file(), test.type(), types).stream()
-                        .flatMap(subject -> violation(test, subject, types, testTypes).stream()))
+                        .flatMap(subject -> violation(test, subject, context).stream()))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
@@ -56,17 +55,13 @@ public final class SubjectUsageCheck {
         return matcher.matches() ? types.resolve(file.unit(), matcher.group(1)) : Optional.empty();
     }
 
-    private static Optional<Violation> violation(TestType testType, JavaClass subject, SourceTypes types,
-            Map<String, TestType> testTypes) {
+    private static Optional<Violation> violation(TestType testType, JavaClass subject, Context context) {
         ParsedFile file = testType.file();
         TypeDeclaration<?> test = testType.type();
-        List<MockSites.MockSite> mocks = MockSites.in(file.unit()).toList();
-        List<Node> named = namedUses(file, test, subject, types).toList();
-        if (named.stream().anyMatch(use -> !isMock(use, mocks))
-                || helpers(testType, testTypes).anyMatch(helper -> usesReally(helper, subject, types))
-                || resolvedUses(test, subject).anyMatch(use -> !isMock(use, mocks))) {
+        if (uses(testType, subject, context, MAX_SUPERCLASSES)) {
             return Optional.empty();
         }
+        List<Node> named = namedUses(file, test, subject, context.types()).toList();
         String name = ProjectClasses.nameOf(subject);
         String testName = test.getNameAsString();
         return Optional.of(named.isEmpty()
@@ -76,37 +71,36 @@ public final class SubjectUsageCheck {
                         + ", the class it's named after", "test a real " + name + ", and mock only its collaborators"));
     }
 
-    /** The other test-source classes the test names, such as a shared fixture. */
-    private static Stream<TestType> helpers(TestType test, Map<String, TestType> testTypes) {
-        Stream<String> typeNames = test.type().findAll(ClassOrInterfaceType.class).stream().map(ClassOrInterfaceType::getNameAsString);
-        Stream<String> scopes = test.type().findAll(NameExpr.class).stream().map(NameExpr::getNameAsString);
-        return Stream.concat(typeNames, scopes)
-                .distinct()
-                .filter(name -> !name.equals(test.type().getNameAsString()))
-                .flatMap(name -> Optional.ofNullable(testTypes.get(name)).stream());
+    /**
+     * Whether the test uses the subject other than through mocks: by name, through a helper, indirectly, or through a
+     * test superclass whose tests it runs, as an integration test extending the unit test does.
+     */
+    private static boolean uses(TestType testType, JavaClass subject, Context context, int depth) {
+        ParsedFile file = testType.file();
+        TypeDeclaration<?> test = testType.type();
+        SourceTypes types = context.types();
+        List<MockSites.MockSite> mocks = MockSites.in(file.unit()).filter(mock -> !mock.spy()).toList();
+        return namedUses(file, test, subject, types).anyMatch(use -> !MockSites.isMocked(use, mocks))
+                || context.tests().helpersOf(testType).anyMatch(helper -> usesReally(helper, subject, types))
+                || IndirectUses.resolved(test, subject).anyMatch(use -> !MockSites.isMocked(use, mocks))
+                || IndirectUses.isInjectedThroughSupertype(test, subject)
+                || context.uses().isRunByTheApplication(file, test, subject)
+                || context.uses().isCreatedByAUsedClass(file, test, subject)
+                || depth > 0 && context.tests().testSuperclassesOf(testType)
+                        .anyMatch(parent -> uses(parent, subject, context, depth - 1));
     }
 
     /** Whether the helper names the subject other than to mock it. */
     private static boolean usesReally(TestType helper, JavaClass subject, SourceTypes types) {
-        List<MockSites.MockSite> mocks = MockSites.in(helper.file().unit()).toList();
-        return namedUses(helper.file(), helper.type(), subject, types).anyMatch(use -> !isMock(use, mocks));
+        List<MockSites.MockSite> mocks = MockSites.in(helper.file().unit()).filter(mock -> !mock.spy()).toList();
+        return namedUses(helper.file(), helper.type(), subject, types).anyMatch(use -> !MockSites.isMocked(use, mocks));
     }
 
-    /** Whether the use is part of creating a mock, or the type of a variable a mock is assigned to. */
-    private static boolean isMock(Node use, List<MockSites.MockSite> mocks) {
-        boolean declaresMock = use.getParentNode()
-                .filter(VariableDeclarator.class::isInstance)
-                .map(VariableDeclarator.class::cast)
-                .flatMap(VariableDeclarator::getInitializer)
-                .filter(initializer -> mocks.stream().anyMatch(mock -> mock.contains(initializer)))
-                .isPresent();
-        return declaresMock || mocks.stream().anyMatch(mock -> mock.contains(use));
-    }
-
-    /** Types, static-call scopes and annotations that name the subject. */
+    /** Types, static-call scopes, annotations and statically imported members that name the subject. */
     private static Stream<Node> namedUses(ParsedFile file, TypeDeclaration<?> test, JavaClass subject, SourceTypes types) {
         Stream<Node> typeNames = test.findAll(ClassOrInterfaceType.class).stream()
-                .filter(type -> types.resolve(file.unit(), type.getNameWithScope()).filter(subject::equals).isPresent())
+                .filter(type -> types.resolve(file.unit(), type.getNameWithScope())
+                        .filter(named -> IndirectUses.standsFor(named, subject)).isPresent())
                 .map(type -> type);
         Stream<Node> scopes = test.findAll(NameExpr.class).stream()
                 .filter(name -> types.resolve(file.unit(), name.getNameAsString()).filter(subject::equals).isPresent())
@@ -114,18 +108,11 @@ public final class SubjectUsageCheck {
         Stream<Node> annotations = test.findAll(AnnotationExpr.class).stream()
                 .filter(annotation -> types.resolve(file.unit(), annotation.getNameAsString()).filter(subject::equals).isPresent())
                 .map(annotation -> annotation);
-        return Stream.of(typeNames, scopes, annotations).flatMap(uses -> uses);
+        return Stream.of(typeNames, scopes, annotations, IndirectUses.staticallyImported(file, test, subject, types))
+                .flatMap(uses -> uses);
     }
 
-    /** Calls whose result the symbol solver types as the subject, as in {@code guard.api()}. */
-    private static Stream<Node> resolvedUses(TypeDeclaration<?> test, JavaClass subject) {
-        String sourceName = SourceTypes.sourceName(subject);
-        return test.findAll(MethodCallExpr.class).stream()
-                .filter(call -> Resolution.typeOf(call).filter(sourceName::equals).isPresent())
-                .map(call -> call);
-    }
-
-    /** A top-level type in the test sources, and its file. */
-    private record TestType(ParsedFile file, TypeDeclaration<?> type) {
+    /** What a check of one test needs: the source types, indirect uses and the test sources' types. */
+    private record Context(SourceTypes types, IndirectUses uses, SuiteTypes tests) {
     }
 }

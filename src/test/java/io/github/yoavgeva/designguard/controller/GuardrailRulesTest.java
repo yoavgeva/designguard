@@ -46,6 +46,22 @@ class GuardrailRulesTest {
     }
 
     @Test
+    void aTestNamedAfterAnInterfaceTestsTheImplementationsItUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("ViewNameResolver", "package shop;\n\npublic interface ViewNameResolver {\n    String resolve(String name);\n}\n")
+                .add("DefaultViewNameResolver", "package shop;\n\npublic class DefaultViewNameResolver implements ViewNameResolver {\n"
+                        + "    public String resolve(String name) {\n        return System.getenv(name);\n    }\n}\n")
+                .add("ThemeViewNameResolver", "package shop;\n\npublic class ThemeViewNameResolver implements ViewNameResolver {\n"
+                        + "    public String resolve(String name) {\n        return System.getenv(\"THEME\") + name;\n    }\n}\n")
+                .addTest("ViewNameResolverTest", "package shop;\n\nclass ViewNameResolverTest {\n"
+                        + "    private final DefaultViewNameResolver resolver = new DefaultViewNameResolver();\n}\n")
+                .guard(SHOP);
+
+        assertThat(guard.guardrails().serviceLikeClassesHaveTests().evaluate()).extracting(Violation::message).containsExactly(
+                "ThemeViewNameResolver is service-like, but has no test class (looked for ThemeViewNameResolverTest)");
+    }
+
+    @Test
     void unusedPublicCodeIsReported() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Line", "package shop;\n\npublic record Line(int quantity) {\n}\n")
@@ -114,5 +130,68 @@ class GuardrailRulesTest {
                 .guard(SHOP);
 
         assertThat(guard.guardrails().noUnusedPublicCode().evaluate()).isEmpty();
+    }
+
+    @Test
+    void typesAFrameworkFindsAndCreatesAreUsed() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Repository", "package org.springframework.data.repository;\n\n"
+                        + "public interface Repository<T, ID> {\n}\n")
+                .add("ServletInitializer", "package org.springframework.boot.web.servlet.support;\n\n"
+                        + "public abstract class ServletInitializer {\n    protected abstract String sources();\n}\n")
+                .add("ApplicationWebXml", """
+                        package shop;
+
+                        public class ApplicationWebXml extends org.springframework.boot.web.servlet.support.ServletInitializer {
+                            @Override
+                            protected String sources() {
+                                return "shop";
+                            }
+                        }
+                        """)
+                .add("OrderQueries", "package shop;\n\npublic interface OrderQueries {\n    String latest();\n}\n")
+                .add("OrderRepository", "package shop;\n\npublic interface OrderRepository "
+                        + "extends org.springframework.data.repository.Repository<String, Long>, OrderQueries {\n}\n")
+                .add("OrderQueriesImpl", """
+                        package shop;
+
+                        public class OrderQueriesImpl implements OrderQueries {
+                            @Override
+                            public String latest() {
+                                return "latest";
+                            }
+                        }
+                        """)
+                .add("Checkout", """
+                        package shop;
+
+                        final class Checkout {
+                            private final OrderRepository orders;
+
+                            Checkout(OrderRepository orders) {
+                                this.orders = orders;
+                            }
+
+                            String latest() {
+                                return orders.latest();
+                            }
+                        }
+                        """)
+                .add("Pricing", "package shop;\n\npublic interface Pricing {\n    long price();\n}\n")
+                .add("FixedPricing", """
+                        package shop;
+
+                        public class FixedPricing implements Pricing {
+                            @Override
+                            public long price() {
+                                return 1;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.guardrails().noUnusedPublicCode().evaluate()).extracting(Violation::message).containsExactly(
+                "FixedPricing is public, but nothing uses it",
+                "Pricing.price() is public, but nothing calls it");
     }
 }

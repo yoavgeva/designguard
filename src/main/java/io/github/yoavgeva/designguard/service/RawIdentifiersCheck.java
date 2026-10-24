@@ -52,35 +52,37 @@ public final class RawIdentifiersCheck {
      * @return violations ordered by file and line
      */
     public List<Violation> check(JavaSources sources, ClassFilter filter) {
+        IdentifiedThings things = new IdentifiedThings(sources);
         return sources.files().stream()
                 .filter(file -> guardedPackages.stream().anyMatch(matcher -> matcher.matches(file.packageName())))
-                .flatMap(file -> Stream.of(fields(file), components(file), parameters(file)).flatMap(found -> found))
+                .flatMap(file -> Stream.of(fields(file, things), components(file, things), parameters(file, things))
+                        .flatMap(found -> found))
                 .filter(found -> Scopes.selected(filter, found.file(), found.node()))
                 .map(RawIdentifier::violation)
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
 
-    private static Stream<RawIdentifier> fields(ParsedFile file) {
+    private static Stream<RawIdentifier> fields(ParsedFile file, IdentifiedThings things) {
         return file.unit().findAll(FieldDeclaration.class).stream()
                 .filter(field -> !field.isStatic())
                 .flatMap(field -> ownerName(field).stream().flatMap(owner -> field.getVariables().stream()
                         .flatMap(variable -> raw(variable.getType(), variable.getNameAsString()).stream()
-                                .map(type -> new RawIdentifier(file, variable, owner,
+                                .map(type -> new RawIdentifier(file, variable, things.ofMember(owner),
                                         owner + "." + variable.getNameAsString() + " is", variable.getNameAsString(), type)))));
     }
 
-    private static Stream<RawIdentifier> components(ParsedFile file) {
+    private static Stream<RawIdentifier> components(ParsedFile file, IdentifiedThings things) {
         return file.unit().findAll(RecordDeclaration.class).stream()
                 .filter(record -> !ID_TYPE.matcher(record.getNameAsString()).matches())
                 .flatMap(record -> record.getParameters().stream()
                         .flatMap(component -> raw(component.getType(), component.getNameAsString()).stream()
-                                .map(type -> new RawIdentifier(file, component, record.getNameAsString(),
+                                .map(type -> new RawIdentifier(file, component, things.ofMember(record.getNameAsString()),
                                         record.getNameAsString() + "." + component.getNameAsString() + " is",
                                         component.getNameAsString(), type))));
     }
 
-    private static Stream<RawIdentifier> parameters(ParsedFile file) {
+    private static Stream<RawIdentifier> parameters(ParsedFile file, IdentifiedThings things) {
         Stream<Parameter> methods = file.unit().findAll(MethodDeclaration.class).stream()
                 .filter(method -> !method.isPrivate())
                 .flatMap(method -> method.getParameters().stream());
@@ -92,7 +94,7 @@ public final class RawIdentifiersCheck {
                         .stream()
                         .flatMap(callable -> raw(parameter.getType(), parameter.getNameAsString()).stream()
                                 .filter(type -> !overrides(callable))
-                                .map(type -> new RawIdentifier(file, parameter, owner,
+                                .map(type -> new RawIdentifier(file, parameter, things.ofParameter(parameter, callable, owner),
                                         Scopes.describe(callable) + " takes " + parameter.getNameAsString() + " as",
                                         parameter.getNameAsString(), type)))));
     }

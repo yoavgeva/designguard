@@ -17,6 +17,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 @MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class ConstructorWorkRuleTest {
 
+    private static final String SHOP = "shop";
+
     @Parameter
     private int release;
 
@@ -101,7 +103,7 @@ class ConstructorWorkRuleTest {
                         package shop;
 
                         public final class Regions {
-                            private final String region = System.getenv("REGION");
+                            private final boolean cached = java.nio.file.Files.exists(java.nio.file.Path.of("regions"));
                             private final int size;
 
                             public Regions() {
@@ -117,7 +119,7 @@ class ConstructorWorkRuleTest {
                             }
 
                             public String region() {
-                                return region + size;
+                                return cached + " " + size;
                             }
                         }
                         """)
@@ -125,7 +127,7 @@ class ConstructorWorkRuleTest {
                         package shop;
 
                         public final class Config {
-                            public static final String REGION = System.getenv("REGION");
+                            public static final boolean CACHED = java.nio.file.Files.exists(java.nio.file.Path.of("cache"));
 
                             private Config() {
                             }
@@ -136,7 +138,7 @@ class ConstructorWorkRuleTest {
 
                         public abstract class EnvDefaults {
                             public String region() {
-                                return System.getenv("REGION");
+                                return java.nio.file.Files.exists(java.nio.file.Path.of("eu")) ? "eu" : "us";
                             }
                         }
                         """)
@@ -235,7 +237,7 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate())
                 .extracting(Violation::line, Violation::message)
@@ -243,13 +245,13 @@ class ConstructorWorkRuleTest {
                         tuple(7, "Banner does work in its constructor through ShopDefaults.region()"),
                         tuple(8, "Canceller does work in its constructor through Thread.interrupt()"),
                         tuple(12, "Catalog does work in its constructor through Files.readAllLines()"),
-                        tuple(4, "Config does work in its static initializer through System.getenv()"),
+                        tuple(4, "Config does work in its static initializer through Files.exists()"),
                         tuple(11, "Greeter does work in its constructor through PrintStream.println()"),
                         tuple(11, "Journal does work in its constructor through new FileOutputStream()"),
                         tuple(9, "PriceCache does work in its constructor through Storage.load()"),
-                        tuple(4, "Regions does work in its constructor through System.getenv()"),
+                        tuple(4, "Regions does work in its constructor through Files.exists()"),
                         tuple(5, "Reports does work in its constructor through Reports.refresh()"),
-                        tuple(10, "Stamps does work in its constructor through new Date()"));
+                        tuple(17, "Stamps does work in its constructor through InetAddress.getByName()"));
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate().get(2).fix()).isEqualTo(
                 "pass in what Files.readAllLines() produces, or call it from a method when it's needed");
     }
@@ -358,7 +360,218 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();
+    }
+
+    @Test
+    void creatingALibraryClientIsNotWorkButCallingOneIs() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("WebClient", """
+                        package org.springframework.web.reactive.function.client;
+
+                        public interface WebClient {
+                            String get(String uri);
+
+                            static WebClient create(String baseUrl) {
+                                return uri -> baseUrl + uri;
+                            }
+
+                            static Builder builder() {
+                                return WebClient::create;
+                            }
+
+                            interface Builder {
+                                WebClient build(String baseUrl);
+                            }
+                        }
+                        """)
+                .add("RestOperations", "package org.springframework.web.client;\n\npublic interface RestOperations {\n"
+                        + "    String getForObject(String url);\n}\n")
+                .add("RestTemplate", """
+                        package org.springframework.web.client;
+
+                        public class RestTemplate implements RestOperations {
+                            @Override
+                            public String getForObject(String url) {
+                                return url;
+                            }
+
+                            public void setErrorHandler(Object handler) {
+                            }
+
+                            public RestTemplate withRoot(String root) {
+                                return this;
+                            }
+                        }
+                        """)
+                .add("Gateway", """
+                        package shop;
+
+                        import org.springframework.web.client.RestTemplate;
+                        import org.springframework.web.reactive.function.client.WebClient;
+
+                        public final class Gateway {
+                            private final WebClient web;
+                            private final WebClient other;
+                            private final RestTemplate rest;
+
+                            public Gateway(String baseUrl) {
+                                this.web = WebClient.builder().build(baseUrl);
+                                this.other = WebClient.create(baseUrl);
+                                this.rest = new RestTemplate().withRoot(baseUrl);
+                                this.rest.setErrorHandler(baseUrl);
+                            }
+
+                            public String fetch(String uri) {
+                                return web.get(uri) + other.get(uri) + rest.getForObject(uri);
+                            }
+                        }
+                        """)
+                .add("Warmup", """
+                        package shop;
+
+                        import org.springframework.web.client.RestTemplate;
+
+                        public final class Warmup {
+                            private final String status;
+
+                            public Warmup(RestTemplate rest) {
+                                this.status = rest.getForObject("/health");
+                            }
+
+                            public String status() {
+                                return status;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).extracting(Violation::message)
+                .containsExactly("Warmup does work in its constructor through RestTemplate.getForObject()");
+    }
+
+    @Test
+    void adaptersAndEnumsOfIoPackagesAreNotWork() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Copier", """
+                        package shop;
+
+                        import java.io.IOException;
+                        import java.nio.file.FileVisitResult;
+                        import java.nio.file.Files;
+                        import java.nio.file.Path;
+                        import java.nio.file.SimpleFileVisitor;
+                        import java.nio.file.StandardOpenOption;
+                        import java.nio.file.attribute.BasicFileAttributes;
+                        import java.util.Set;
+
+                        public final class Copier {
+                            private final Set<StandardOpenOption> options;
+                            private final SimpleFileVisitor<Path> visitor;
+
+                            public Copier() {
+                                this.options = Set.of(StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                                this.visitor = new SimpleFileVisitor<>() {
+                                    @Override
+                                    public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                                        return FileVisitResult.CONTINUE;
+                                    }
+                                };
+                            }
+
+                            public void copy(Path from) throws IOException {
+                                Files.walkFileTree(from, visitor);
+                            }
+
+                            public Set<StandardOpenOption> options() {
+                                return options;
+                            }
+                        }
+                        """)
+                .add("OpenOptions", """
+                        package shop;
+
+                        import java.nio.file.StandardOpenOption;
+                        import java.util.EnumSet;
+                        import java.util.Set;
+
+                        public final class OpenOptions {
+                            private Set<StandardOpenOption> chosen = EnumSet.noneOf(StandardOpenOption.class);
+
+                            public OpenOptions with(StandardOpenOption option) {
+                                chosen = EnumSet.copyOf(chosen);
+                                chosen.add(option);
+                                return this;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();
+        assertThat(guard.types().servicesAreStateless().evaluate()).isEmpty();
+    }
+
+    @Test
+    void theClockRandomnessAndConfigurationAreNotWork() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Tokens", """
+                        package shop;
+
+                        import java.security.SecureRandom;
+                        import java.time.Clock;
+                        import java.util.Random;
+                        import java.util.concurrent.ThreadLocalRandom;
+
+                        public final class Tokens {
+                            private final Clock clock = Clock.systemUTC();
+                            private final Clock zoned = Clock.systemDefaultZone();
+                            private final SecureRandom secure = new SecureRandom();
+                            private final Random seeded = new Random(42);
+                            private final Random local = ThreadLocalRandom.current();
+
+                            public String next() {
+                                return clock.instant() + "" + zoned.millis() + secure.nextInt() + seeded.nextInt() + local.nextInt();
+                            }
+                        }
+                        """)
+                .add("Session", """
+                        package shop;
+
+                        import java.time.Clock;
+                        import java.time.Instant;
+
+                        public final class Session {
+                            private final Instant started;
+
+                            public Session(Clock clock) {
+                                this.started = Instant.now(clock);
+                            }
+
+                            public Instant started() {
+                                return started;
+                            }
+                        }
+                        """)
+                .add("Entry", """
+                        package shop;
+
+                        import java.time.Instant;
+
+                        public final class Entry {
+                            private static final Instant STARTED = Instant.now();
+                            private static final boolean NATIVE = "runtime".equals(System.getProperty("image"));
+                            private static final boolean ANSI = System.console() != null && !"dumb".equals(System.getenv("TERM"));
+                            private final long stamp = System.currentTimeMillis();
+                            private final String id = java.util.UUID.randomUUID().toString();
+
+                            public String describe() {
+                                return STARTED + " " + NATIVE + ANSI + stamp + id;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();
     }
@@ -456,10 +669,13 @@ class ConstructorWorkRuleTest {
                             private final String query;
                             private final Timestamp created;
                             private final JDBCType type = JDBCType.valueOf("VARCHAR");
+                            private final String client;
 
-                            public Address(String query, long millis) {
+                            public Address(String query, long millis, java.net.InetSocketAddress remote) {
                                 this.query = URLEncoder.encode(query, StandardCharsets.UTF_8);
                                 this.created = new Timestamp(millis);
+                                this.client = remote.isUnresolved() ? remote.getHostString()
+                                        : remote.getAddress().getHostAddress() + ":" + remote.getPort();
                             }
 
                             private static InetAddress loopback() {
@@ -471,7 +687,7 @@ class ConstructorWorkRuleTest {
                             }
 
                             public String describe() {
-                                return LOOPBACK.getHostAddress() + query + created.toLocalDateTime() + type;
+                                return LOOPBACK.getHostAddress() + query + created.toLocalDateTime() + type + client;
                             }
                         }
                         """)
@@ -534,7 +750,7 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();
     }

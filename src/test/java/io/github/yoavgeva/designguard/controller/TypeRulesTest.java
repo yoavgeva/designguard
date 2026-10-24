@@ -36,14 +36,75 @@ class TypeRulesTest {
                 .add("Row", "package shop;\n\n@Entity\npublic class Row {\n    private long id;\n}\n")
                 .add("Entity", "package shop;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
                         + "public @interface Entity {\n}\n")
+                .add("Value", "package org.springframework.beans.factory.annotation;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Value {\n    String value();\n}\n")
+                .add("Order", """
+                        package shop;
+
+                        public final class Order {
+                            private final long total;
+
+                            private Order(long total) {
+                                this.total = total;
+                            }
+
+                            public long total() {
+                                return total;
+                            }
+
+                            public static final class Builder {
+                                private long total;
+
+                                public Builder total(long value) {
+                                    total = value;
+                                    return this;
+                                }
+
+                                public Order build() {
+                                    return new Order(total);
+                                }
+                            }
+
+                            public static final class TotalsBuilder {
+                                private long total;
+
+                                public TotalsBuilder add(long value) {
+                                    total += value;
+                                    return this;
+                                }
+
+                                public long total() {
+                                    return total;
+                                }
+                            }
+
+                            public static final class Options {
+                                private boolean lazy;
+
+                                public Options setLazy(boolean value) {
+                                    lazy = value;
+                                    return this;
+                                }
+
+                                public Order createOrder() {
+                                    return new Order(lazy ? 0 : 1);
+                                }
+                            }
+                        }
+                        """)
+                .add("ErrorTranslator", "package shop;\n\npublic class ErrorTranslator {\n"
+                        + "    @org.springframework.beans.factory.annotation.Value(\"${app.name}\")\n"
+                        + "    private String applicationName;\n}\n")
                 .guard(SHOP);
 
-        assertThat(guard.types().valueTypesAreImmutable().evaluate()).singleElement().satisfies(violation -> {
-            assertThat(violation.rule()).isEqualTo("immutable-values");
-            assertThat(violation.message()).isEqualTo("Money is a value, but its field 'cents' isn't final");
-            assertThat(violation.fix()).isEqualTo("make the field final and return a new Money instead of changing it,"
-                    + " or turn Money into a record");
-        });
+        assertThat(guard.types().valueTypesAreImmutable().evaluate()).extracting(Violation::message, Violation::fix)
+                .containsExactly(
+                        tuple("ErrorTranslator is a value, but its injected field 'applicationName' isn't final",
+                                "take it as a constructor parameter and make the field final"),
+                        tuple("Money is a value, but its field 'cents' isn't final",
+                                "make the field final and return a new Money instead of changing it, or turn Money into a record"));
+        assertThat(guard.types().valueTypesAreImmutable().evaluate()).extracting(Violation::rule).containsOnly("immutable-values");
     }
 
     @Test
@@ -162,11 +223,132 @@ class TypeRulesTest {
                             }
                         }
                         """)
+                .add("Manifests", """
+                        package shop;
+
+                        import java.util.Map;
+
+                        public final class Manifests {
+                            public static final String ATTR_PREMAIN_CLASS = "Premain-Class";
+                            public static final String ATTR_AGENT_CLASS = "Agent-Class";
+                            public static final String ATTR_ADD_OPENS = "Add-Opens";
+
+                            private Manifests() {
+                            }
+
+                            public static String agent(Map<String, String> attributes) {
+                                return attributes.get(ATTR_PREMAIN_CLASS) + attributes.get(Manifests.ATTR_AGENT_CLASS)
+                                        + attributes.getOrDefault(ATTR_ADD_OPENS, "");
+                            }
+
+                            public static boolean isWeb(String channel) {
+                                return Orders.CHANNEL_WEB.equals(channel);
+                            }
+
+                            public static void defaults(java.util.Properties properties, StringBuilder query) {
+                                properties.setProperty(ATTR_ADD_OPENS, "none");
+                                query.append(Queries.QUERY_LIKE).append(Queries.QUERY_EQ);
+                            }
+                        }
+                        """)
+                .add("StatusInfo", """
+                        package shop;
+
+                        public final class StatusInfo {
+                            public static final String STATUS_UP = "UP";
+                            public static final String STATUS_DOWN = "DOWN";
+
+                            private final String status;
+
+                            private StatusInfo(String status) {
+                                this.status = status;
+                            }
+
+                            public static StatusInfo valueOf(String status) {
+                                return new StatusInfo(status.toUpperCase(java.util.Locale.ROOT));
+                            }
+
+                            public static StatusInfo ofUp() {
+                                return valueOf(STATUS_UP);
+                            }
+
+                            public boolean isDown() {
+                                return STATUS_DOWN.equals(status);
+                            }
+                        }
+                        """)
+                .add("Channels", """
+                        package shop;
+
+                        public final class Channels {
+                            public static final String CHANNELS_WEB = "web";
+                            public static final String CHANNELS_STORE = "store";
+
+                            private Channels() {
+                            }
+                        }
+                        """)
+                .add("Lookups", """
+                        package shop;
+
+                        public final class Lookups {
+                            public static final String LOOKUP_RMI = "rmi:";
+                            public static final String LOOKUP_LDAP = "ldap:";
+                            public static final String LOOKUP_LDAPS = "ldaps:";
+
+                            private Lookups() {
+                            }
+
+                            public static boolean isRemote(String target) {
+                                for (String prefix : new String[] {LOOKUP_RMI, LOOKUP_LDAP, LOOKUP_LDAPS}) {
+                                    if (target.startsWith(prefix)) {
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            }
+                        }
+                        """)
+                .add("FileModes", """
+                        package shop;
+
+                        import java.nio.file.attribute.PosixFilePermission;
+                        import java.util.EnumSet;
+                        import java.util.Set;
+
+                        final class FileModes {
+                            private static final int OWNER_READ = 0b100;
+                            private static final int OWNER_WRITE = 0b010;
+                            private static final int OWNER_EXEC = 0b001;
+
+                            private FileModes() {
+                            }
+
+                            static Set<PosixFilePermission> toPermissions(int mode) {
+                                Set<PosixFilePermission> permissions = EnumSet.noneOf(PosixFilePermission.class);
+                                if ((mode & OWNER_READ) != 0) {
+                                    permissions.add(PosixFilePermission.OWNER_READ);
+                                }
+                                if ((mode & OWNER_WRITE) != 0) {
+                                    permissions.add(PosixFilePermission.OWNER_WRITE);
+                                }
+                                if ((mode & OWNER_EXEC) != 0) {
+                                    permissions.add(PosixFilePermission.OWNER_EXECUTE);
+                                }
+                                return permissions;
+                            }
+                        }
+                        """)
+                .add("Queries", "package shop;\n\npublic final class Queries {\n"
+                        + "    public static final String QUERY_LIKE = \"LIKE\";\n    public static final String QUERY_EQ = \"EQ\";\n\n"
+                        + "    private Queries() {\n    }\n}\n")
                 .guard(SHOP);
 
         assertThat(guard.types().enumsOverConstants().evaluate())
                 .extracting(Violation::line, Violation::message, Violation::fix)
                 .containsExactly(
+                        tuple(4, "Channels declares CHANNELS_WEB, CHANNELS_STORE as String constants: make them an enum",
+                                "replace them with an enum, e.g. enum Channels { WEB, STORE }"),
                         tuple(4, "Flags declares FLAG_GIFT, FLAG_EXPRESS, FLAG_FRAGILE as int constants: make them an enum",
                                 "replace them with an enum, e.g. enum Flag { GIFT, EXPRESS, FRAGILE }"),
                         tuple(4, "Orders declares STATUS_OPEN, STATUS_PAID, STATUS_SHIPPED as int constants: make them"
@@ -174,7 +356,9 @@ class TypeRulesTest {
                         tuple(7, "Orders declares CHANNEL_WEB, CHANNEL_IN_STORE as String constants: make them an enum",
                                 "replace them with an enum, e.g. enum Channel { WEB, IN_STORE }"),
                         tuple(17, "Orders declares MODE_OFF, MODE_ON as int constants: make them an enum",
-                                "replace them with an enum, e.g. enum Mode { OFF, ON }"));
+                                "replace them with an enum, e.g. enum Mode { OFF, ON }"),
+                        tuple(4, "Queries declares QUERY_LIKE, QUERY_EQ as String constants: make them an enum",
+                                "replace them with an enum, e.g. enum Query { LIKE, EQ }"));
     }
 
     @Test
@@ -261,6 +445,67 @@ class TypeRulesTest {
                         + "        return catalog.load(\"a\") + catalog.all();\n    }\n}\n")
                 .add("Viewer", "package shop;\n\npublic class Viewer {\n    public String view(Catalog catalog) {\n"
                         + "        return catalog.load(\"a\");\n    }\n}\n")
+                .add("Tally", store.replace("Store", "Tally"))
+                .add("HashTally", """
+                        package shop;
+
+                        import java.util.HashMap;
+                        import java.util.List;
+                        import java.util.Map;
+
+                        public final class HashTally implements Tally {
+                            private final Map<String, String> values = new HashMap<>();
+
+                            public String load(String id) {
+                                return values.get(id);
+                            }
+
+                            public void save(String id, String value) {
+                                values.put(id, value);
+                            }
+
+                            public void delete(String id) {
+                                values.remove(id);
+                            }
+
+                            public List<String> all() {
+                                return List.copyOf(values.values());
+                            }
+                        }
+                        """)
+                .add("Adder", "package shop;\n\npublic class Adder {\n    public void add(Tally tally) {\n"
+                        + "        tally.save(\"a\", \"b\");\n    }\n}\n")
+                .add("Counter", "package shop;\n\npublic class Counter {\n    public int count(Tally tally) {\n"
+                        + "        return tally.all().size();\n    }\n}\n")
+                .add("DiskStore", """
+                        package shop;
+
+                        import java.io.IOException;
+                        import java.io.UncheckedIOException;
+                        import java.nio.file.Files;
+                        import java.nio.file.Path;
+                        import java.util.List;
+
+                        public final class DiskStore implements Store {
+                            public String load(String id) {
+                                try {
+                                    return Files.readString(Path.of(id));
+                                } catch (IOException e) {
+                                    throw new UncheckedIOException(e);
+                                }
+                            }
+
+                            public void save(String id, String value) {
+                            }
+
+                            public void delete(String id) {
+                            }
+
+                            public List<String> all() {
+                                return List.of();
+                            }
+                        }
+                        """)
                 .guard(SHOP);
 
         assertThat(guard.types().interfacesAreFocused().evaluate()).extracting(Violation::message, Violation::fix)
