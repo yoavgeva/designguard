@@ -2,19 +2,22 @@ package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaField;
+import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Finds values with mutable state: classes that aren't service-like (no I/O, clock, randomness...) but have a
  * non-final instance field. A field a container injects is reported as one to take in the constructor. Enums,
- * records, exceptions, wiring code and persistence entities are skipped.
+ * records, exceptions, wiring code, persistence entities and builders, which change on purpose, are skipped.
  */
 public final class ValueImmutabilityCheck {
 
     private static final String RULE = "immutable-values";
+    private static final Pattern FINISHER = Pattern.compile("(build|create)[A-Z].*");
 
     /**
      * Finds violations in the classes the filter selects.
@@ -55,6 +58,28 @@ public final class ValueImmutabilityCheck {
                 && !javaClass.isEnum()
                 && !javaClass.isRecord()
                 && !javaClass.isInterface()
-                && !ServiceLikeClasses.isPersistent(javaClass);
+                && !ServiceLikeClasses.isPersistent(javaClass)
+                && !isBuilder(javaClass);
+    }
+
+    /**
+     * A builder: it changes on purpose, and what it builds is the value. It has a {@code build()} that returns what it
+     * built, or fluent setters, which take a value and return the builder, and either a name ending in
+     * {@code Builder} or a {@code build...} or {@code create...} method that returns something else.
+     */
+    private static boolean isBuilder(JavaClass javaClass) {
+        List<JavaMethod> methods = javaClass.getAllMethods().stream()
+                .filter(method -> !method.getModifiers().contains(JavaModifier.STATIC))
+                .toList();
+        boolean fluent = methods.stream().anyMatch(method -> !method.getRawParameterTypes().isEmpty()
+                && method.getRawReturnType().equals(javaClass));
+        return methods.stream().anyMatch(method -> "build".equals(method.getName()) && finishes(javaClass, method))
+                || fluent && (javaClass.getSimpleName().endsWith("Builder") || methods.stream()
+                        .anyMatch(method -> FINISHER.matcher(method.getName()).matches() && finishes(javaClass, method)));
+    }
+
+    private static boolean finishes(JavaClass builder, JavaMethod method) {
+        return method.getRawParameterTypes().isEmpty() && !method.getRawReturnType().isEquivalentTo(void.class)
+                && !method.getRawReturnType().equals(builder);
     }
 }

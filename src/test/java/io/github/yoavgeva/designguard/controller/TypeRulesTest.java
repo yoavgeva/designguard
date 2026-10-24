@@ -39,6 +39,60 @@ class TypeRulesTest {
                 .add("Value", "package org.springframework.beans.factory.annotation;\n\n"
                         + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
                         + "public @interface Value {\n    String value();\n}\n")
+                .add("Order", """
+                        package shop;
+
+                        public final class Order {
+                            private final long total;
+
+                            private Order(long total) {
+                                this.total = total;
+                            }
+
+                            public long total() {
+                                return total;
+                            }
+
+                            public static final class Builder {
+                                private long total;
+
+                                public Builder total(long value) {
+                                    total = value;
+                                    return this;
+                                }
+
+                                public Order build() {
+                                    return new Order(total);
+                                }
+                            }
+
+                            public static final class TotalsBuilder {
+                                private long total;
+
+                                public TotalsBuilder add(long value) {
+                                    total += value;
+                                    return this;
+                                }
+
+                                public long total() {
+                                    return total;
+                                }
+                            }
+
+                            public static final class Options {
+                                private boolean lazy;
+
+                                public Options setLazy(boolean value) {
+                                    lazy = value;
+                                    return this;
+                                }
+
+                                public Order createOrder() {
+                                    return new Order(lazy ? 0 : 1);
+                                }
+                            }
+                        }
+                        """)
                 .add("ErrorTranslator", "package shop;\n\npublic class ErrorTranslator {\n"
                         + "    @org.springframework.beans.factory.annotation.Value(\"${app.name}\")\n"
                         + "    private String applicationName;\n}\n")

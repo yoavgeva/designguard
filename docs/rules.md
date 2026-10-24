@@ -651,8 +651,10 @@ Fix: `public record Point(int x, int y) {}`.
 `types().valueTypesAreImmutable()`
 
 Values with a non-final instance field are reported. A field a container injects, with `@Autowired`, `@Value` and the
-like, is reported as one to take as a constructor parameter. Enums, records, exceptions, wiring code and persistence
-entities are skipped.
+like, is reported as one to take as a constructor parameter. Enums, records, exceptions, wiring code, persistence
+entities and builders are skipped. A builder changes on purpose, and what it builds is the value: it has a `build()`
+that returns something else, or fluent setters that return the builder and either a name ending in `Builder` or a
+`build...` or `create...` method that returns something else.
 
 Why: a value that changes can't be shared or used as a map key, and changes behind its holders' backs.
 
