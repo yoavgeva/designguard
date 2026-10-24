@@ -445,6 +445,67 @@ class ConstructorWorkRuleTest {
     }
 
     @Test
+    void adaptersAndEnumsOfIoPackagesAreNotWork() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Copier", """
+                        package shop;
+
+                        import java.io.IOException;
+                        import java.nio.file.FileVisitResult;
+                        import java.nio.file.Files;
+                        import java.nio.file.Path;
+                        import java.nio.file.SimpleFileVisitor;
+                        import java.nio.file.StandardOpenOption;
+                        import java.nio.file.attribute.BasicFileAttributes;
+                        import java.util.Set;
+
+                        public final class Copier {
+                            private final Set<StandardOpenOption> options;
+                            private final SimpleFileVisitor<Path> visitor;
+
+                            public Copier() {
+                                this.options = Set.of(StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                                this.visitor = new SimpleFileVisitor<>() {
+                                    @Override
+                                    public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                                        return FileVisitResult.CONTINUE;
+                                    }
+                                };
+                            }
+
+                            public void copy(Path from) throws IOException {
+                                Files.walkFileTree(from, visitor);
+                            }
+
+                            public Set<StandardOpenOption> options() {
+                                return options;
+                            }
+                        }
+                        """)
+                .add("OpenOptions", """
+                        package shop;
+
+                        import java.nio.file.StandardOpenOption;
+                        import java.util.EnumSet;
+                        import java.util.Set;
+
+                        public final class OpenOptions {
+                            private Set<StandardOpenOption> chosen = EnumSet.noneOf(StandardOpenOption.class);
+
+                            public OpenOptions with(StandardOpenOption option) {
+                                chosen = EnumSet.copyOf(chosen);
+                                chosen.add(option);
+                                return this;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();
+        assertThat(guard.types().servicesAreStateless().evaluate()).isEmpty();
+    }
+
+    @Test
     void callsThatMayRunNoEffectsAreNotWork() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Rule", "package shop;\n\npublic interface Rule {\n    boolean test(String value);\n}\n")

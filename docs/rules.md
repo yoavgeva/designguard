@@ -22,8 +22,9 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface annotated
   `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do. The clock includes
   `new Date()` and `Calendar.getInstance()`, and the environment includes `System.getProperties()` and
-  `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an `InetAddress` or a
-  `java.sql.Timestamp` as data, encoding a URL, copying an array, holding a thread or an executor, reading the current
+  `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an `InetAddress`, a
+  `java.sql.Timestamp` or an options enum such as `StandardOpenOption` as data, extending `SimpleFileVisitor`, encoding
+  a URL, copying an array, holding a thread or an executor, reading the current
   thread, and restoring its interrupt flag with `Thread.currentThread().interrupt()` aren't effects; resolving a host
   name or interrupting another thread is. A stream touches the outside world where it is opened: on a file name, as
   `new FileReader("prices.txt")` and `new Scanner(file)` are, from a classpath resource, or as the console

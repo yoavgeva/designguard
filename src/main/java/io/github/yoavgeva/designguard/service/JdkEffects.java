@@ -10,14 +10,14 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Which JDK APIs touch the outside world: I/O, the clock, randomness, the environment, threads, executors or
- * processes, plus the packages a project treats as impure. Holding a thread or an executor, or reading the current
- * thread, isn't an effect; starting, configuring or running work on one is. Using {@code Path}, {@code URI},
- * {@code File}, an {@code InetAddress} or a {@code java.sql.Timestamp} as data is not I/O, and neither are encoding a
- * URL or arrays. A {@code java.io} stream touches the outside world where it is opened: on a file name, as
- * {@code new FileReader("prices.txt")} is, from a classpath resource, or as an object stream, which reads or writes a
- * header. Holding, wrapping, reading or writing a stream someone else opened only processes its data, the way a
- * {@code StringWriter} would.
+ * Which JDK APIs touch the outside world: I/O, the clock, randomness, the environment, threads, executors or processes,
+ * plus the packages a project treats as impure. Holding a thread or an executor, or reading the current thread, isn't
+ * an effect; starting, configuring or running work on one is. Using {@code Path}, {@code URI}, {@code File}, an
+ * {@code InetAddress} or a {@code java.sql.Timestamp} as data is not I/O, and neither are encoding a URL, arrays,
+ * the options enums of I/O packages or extending {@code SimpleFileVisitor}. A {@code java.io} stream touches the
+ * outside world where it is opened: on a file name, as {@code new FileReader("prices.txt")} is, from a classpath
+ * resource, or as an object stream, which reads or writes a header. Holding, wrapping, reading or writing a stream
+ * someone else opened only processes its data, the way a {@code StringWriter} would.
  */
 final class JdkEffects {
 
@@ -67,6 +67,8 @@ final class JdkEffects {
     private static final Map<String, Set<String>> EFFECTS_OF_VALUE_TYPES = Map.ofEntries(
             Map.entry("java.nio.file.Path", Set.of("toRealPath", "register")),
             Map.entry("java.nio.file.Paths", Set.of()),
+            Map.entry("java.nio.file.SimpleFileVisitor", Set.of()),
+            Map.entry("java.nio.file.FileVisitor", Set.of()),
             Map.entry("java.net.URI", Set.of()),
             Map.entry("java.net.URL", Set.of("openConnection", "openStream", "getContent")),
             Map.entry(FILE, Set.of("exists", "isFile", "isDirectory", "isHidden", "canRead", "canWrite", "canExecute",
@@ -137,10 +139,13 @@ final class JdkEffects {
         return TIME_AND_CHANCE_TYPES.contains(type.getName());
     }
 
-    /** Whether using this type at all means touching the outside world, like {@code HttpClient} or {@code Random}. */
+    /**
+     * Whether using this type at all means touching the outside world, like {@code HttpClient} or {@code Random}. An
+     * enum of such a package, as {@code StandardOpenOption} is, only names options.
+     */
     static boolean isImpureType(JavaClass type, List<PackageMatcher> extraImpurePackages) {
         String packageName = type.getPackageName();
-        return canHaveEffects(type) && !EFFECTS_OF_VALUE_TYPES.containsKey(type.getName())
+        return canHaveEffects(type) && !type.isEnum() && !EFFECTS_OF_VALUE_TYPES.containsKey(type.getName())
                 && (IMPURE_PACKAGES.contains(packageName)
                         || IMPURE_TYPES.contains(type.getName())
                         || extraImpurePackages.stream().anyMatch(matcher -> matcher.matches(packageName)));
