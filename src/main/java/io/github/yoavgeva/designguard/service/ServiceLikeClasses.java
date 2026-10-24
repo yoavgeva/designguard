@@ -15,8 +15,9 @@ import java.util.stream.Collectors;
  * is <em>service-like</em>, worth depending on through an interface, if it is effectful, holds a field of an impure
  * JDK type or of a service-like class, or is an abstraction with a service-like implementation. Everything else is a
  * value. Exceptions and annotations are never service-like, and neither are persistent classes, which a store loads
- * and saves as data: JPA entities, embeddables and mapped superclasses, and documents. What their code does, such as
- * reading the clock for a creation date, is reported where it happens.
+ * and saves as data: JPA entities, embeddables and mapped superclasses, and documents, nor data that only reads the
+ * clock or randomness ({@link TimeOrChanceData}). What their code does, such as reading the clock for a creation date,
+ * is reported where it happens.
  */
 final class ServiceLikeClasses {
 
@@ -25,7 +26,9 @@ final class ServiceLikeClasses {
     private final ProjectClasses classes;
     private final Effects effects;
     private final EffectfulAbstractions abstractions;
+    private final Set<String> effectfulOwners;
     private final Set<String> effectfulNames;
+    private final Set<String> timeOrChanceData;
     private final Memo<Set<String>> withBodies;
     private final Memo<Set<String>> surelyEffectfulWhenRun;
     private final Memo<Set<String>> ownEffectsWhenRun;
@@ -37,19 +40,31 @@ final class ServiceLikeClasses {
         this.effects = new Effects(extraImpurePackages, overrides, classes);
         List<JavaClass> candidates = classes.stream().filter(ServiceLikeClasses::canBeServiceLike).toList();
         Set<String> effectfulUnits = effects.effectfulCodeUnits(classes, candidates);
-        this.abstractions = new EffectfulAbstractions(effectfulUnits, effects.ioEffectfulCodeUnits(classes, candidates));
-        this.effectfulNames = Set.copyOf(abstractions.with(candidates, CallGraph.ownersOf(candidates, effectfulUnits),
-                this::holdsAResource));
+        Set<String> ioEffectfulUnits = effects.ioEffectfulCodeUnits(classes, candidates);
+        this.abstractions = new EffectfulAbstractions(effectfulUnits, ioEffectfulUnits);
+        this.effectfulOwners = Set.copyOf(CallGraph.ownersOf(candidates, effectfulUnits));
+        this.effectfulNames = Set.copyOf(abstractions.with(candidates, effectfulOwners, this::holdsAResource));
         this.withBodies = new Memo<>(() -> CallGraph.withBodies(CallGraph.unitsOf(candidates)));
         this.surelyEffectfulWhenRun = new Memo<>(() -> effects.surelyEffectfulWhenRun(classes, candidates));
         this.ownEffectsWhenRun = new Memo<>(() -> effects.ownEffectsWhenRun(classes, candidates));
         this.effectfulOnTheirOwnNames = new Memo<>(() -> Set.copyOf(effects.effectfulOnTheirOwn(classes, candidates)));
-        this.serviceLikeNames = Set.copyOf(serviceLike(candidates));
+        Set<String> first = serviceLike(candidates, Set.of());
+        this.timeOrChanceData = new TimeOrChanceData(classes::isProject, effects::isImpureType, first, ioEffectfulUnits)
+                .among(candidates);
+        this.serviceLikeNames = Set.copyOf(timeOrChanceData.isEmpty() ? first : serviceLike(candidates, timeOrChanceData));
     }
 
     /** Whether the class is worth depending on through an interface. */
     boolean contains(JavaClass javaClass) {
         return serviceLikeNames.contains(javaClass.getName());
+    }
+
+    /**
+     * Whether the class is data that only reads the clock or randomness, as a request stamping a UUID on what it builds
+     * is: not service-like, but worth mocking to control what it reads. See {@link TimeOrChanceData}.
+     */
+    boolean isTimeOrChanceData(JavaClass javaClass) {
+        return timeOrChanceData.contains(javaClass.getName());
     }
 
     /** Whether the class's own code touches the outside world, directly or through project code it calls. */
@@ -102,11 +117,15 @@ final class ServiceLikeClasses {
      * The effectful classes, those holding an impure resource or a service-like class, and the subclasses of those
      * whose own code or fields make them service-like, which inherit both, until none is added; then the interfaces and
      * abstract classes with such a subclass. A class whose code is effectful only through overrides, as a base class
-     * calling its own abstract method is, passes nothing on to its subclasses. Persistent classes are left out.
+     * calling its own abstract method is, passes nothing on to its subclasses. Persistent classes and the excluded ones
+     * are left out.
      */
-    private Set<String> serviceLike(List<JavaClass> candidates) {
-        List<JavaClass> services = candidates.stream().filter(type -> !isPersistent(type)).toList();
-        Set<String> result = namesAmong(services, effectfulNames);
+    private Set<String> serviceLike(List<JavaClass> candidates, Set<String> excluded) {
+        List<JavaClass> services = candidates.stream()
+                .filter(type -> !isPersistent(type) && !excluded.contains(type.getName()))
+                .toList();
+        Set<String> result = new HashSet<>(abstractions.with(services, namesAmong(services, effectfulOwners),
+                this::holdsAResource));
         Set<String> inherited = namesAmong(services, effectfulOnTheirOwnNames.get());
         services.stream()
                 .filter(this::holdsAResource)

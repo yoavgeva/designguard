@@ -43,10 +43,11 @@ public final class MockedValuesCheck {
 
     /**
      * A class that isn't service-like, or an abstraction whose project implementations all are values. An interface
-     * with one abstract method is a role, such as a strategy or callback, which tests mock to see it called.
+     * with one abstract method is a role, such as a strategy or callback, which tests mock to see it called, and data
+     * that reads the clock or randomness is mocked to control what it reads.
      */
     private static boolean isValue(ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass type) {
-        if (serviceLike.contains(type) || isRole(type)) {
+        if (serviceLike.contains(type) || serviceLike.isTimeOrChanceData(type) || isRole(type)) {
             return false;
         }
         return Hierarchy.isConcrete(type) || classes.stream()

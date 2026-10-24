@@ -617,6 +617,55 @@ class ServiceLikeClassesRuleTest {
                             }
                         }
                         """)
+                .add("Ticker", """
+                        package shop;
+
+                        public final class Ticker {
+                            private final java.time.Clock clock = java.time.Clock.systemUTC();
+                            private long last;
+
+                            public void tick() {
+                                last = clock.millis();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
+                "Ticker is service-like, but its field 'last' isn't final");
+    }
+
+    @Test
+    void dataThatOnlyReadsTheClockOrRandomnessIsNoSharedService() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Ref", "package shop;\n\npublic record Ref(String kind, String name) {\n}\n")
+                .add("CommentRequest", """
+                        package shop;
+
+                        import java.util.List;
+                        import java.util.UUID;
+
+                        public class CommentRequest {
+                            private String raw;
+                            private Ref subject;
+                            private List<String> tags;
+
+                            public String toComment() {
+                                return UUID.randomUUID() + raw + subject + tags;
+                            }
+                        }
+                        """)
+                .add("CommentDraft", """
+                        package shop;
+
+                        public class CommentDraft {
+                            private CommentRequest request;
+
+                            public void edit(CommentRequest edited) {
+                                request = edited;
+                            }
+                        }
+                        """)
                 .add("Stopwatch", """
                         package shop;
 
@@ -628,10 +677,55 @@ class ServiceLikeClassesRuleTest {
                             }
                         }
                         """)
+                .add("Tokens", """
+                        package shop;
+
+                        public final class Tokens {
+                            public String next() {
+                                return java.util.UUID.randomUUID().toString();
+                            }
+                        }
+                        """)
+                .add("Uploader", """
+                        package shop;
+
+                        public final class Uploader {
+                            private String last;
+
+                            public void upload(byte[] bytes) throws java.io.IOException {
+                                last = java.util.UUID.randomUUID().toString();
+                                java.nio.file.Files.write(java.nio.file.Path.of(last), bytes);
+                            }
+                        }
+                        """)
+                .add("Comments", """
+                        package shop;
+
+                        public final class Comments {
+                            public String draft(CommentRequest request) {
+                                return new CommentRequest().toComment() + new Stopwatch() + new Uploader() + request;
+                            }
+                        }
+                        """)
+                .addTest("CommentsTest", """
+                        package shop;
+
+                        class CommentsTest {
+                            @org.junit.jupiter.api.Test
+                            void drafts() {
+                                CommentRequest request = org.mockito.Mockito.mock(CommentRequest.class);
+                                Stopwatch stopwatch = org.mockito.Mockito.mock(Stopwatch.class);
+                                Tokens tokens = org.mockito.Mockito.mock(Tokens.class);
+                            }
+                        }
+                        """)
                 .guard(SHOP);
 
         assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
-                "Stopwatch is service-like, but its field 'started' isn't final");
+                "Uploader is service-like, but its field 'last' isn't final");
+        assertThat(guard.dependencies().injectServices().evaluate()).extracting(Violation::message).containsExactly(
+                "Comments creates service-like Uploader with new");
+        assertThat(guard.tests().testsDontMockValues().evaluate()).isEmpty();
     }
 
     /** A project with a storage interface whose one implementation reads the environment, so both are service-like. */

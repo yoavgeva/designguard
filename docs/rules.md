@@ -35,7 +35,10 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   implements its methods with effectful code, does I/O anywhere, as when it loads keys at start-up, or holds a service.
   An implementation that only reads the clock or randomness in methods of its own, as one model among many stamping a
   token does, leaves the abstraction a value. A `@FunctionalInterface` isn't service-like, whatever its implementations
-  do, so holding one is like holding a lambda. Persistent classes aren't either: JPA `@Entity`,
+  do, so holding one is like holding a lambda. Neither is data that only reads the clock or randomness: a class whose
+  fields hold only data and whose code does no I/O, such as a request that stamps a UUID on what it builds or a
+  stopwatch. It's no shared service, so its state, creating it and depending on it are fine, and the clock and
+  randomness rules report the read; tests may still mock it, to control what it reads. Persistent classes aren't either: JPA `@Entity`,
   `@Embeddable` and `@MappedSuperclass` classes and `@Document`s are data a store loads and saves, so an entity that
   stamps its creation date with `LocalDate.now()`, and the entities holding it, aren't services; the clock read is
   reported where it happens. **Value**: any other class.
@@ -1297,7 +1300,8 @@ Fix: create a real `Lookup`, and mock only what it calls.
 `tests().testsDontMockValues()` · **recommended**
 
 Mocks of values are reported: records, enums and other classes that aren't service-like or wiring code, and
-interfaces whose implementations are all values. An interface with one abstract method is a role, such as a strategy or a callback,
+interfaces whose implementations are all values. Data that reads the clock or randomness may be mocked, to control
+what it reads. An interface with one abstract method is a role, such as a strategy or a callback,
 which tests mock to see it called, so it isn't a value. Mocks come from Mockito's or EasyMock's `mock(Type.class)`,
 `spy(Type.class)`, `spy(new Type(...))` and `createMock(Type.class)`, and from fields and parameters annotated
 `@Mock`, `@Spy` or Spring's mock-bean annotations.
