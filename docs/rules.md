@@ -1046,8 +1046,8 @@ comment saying why.
 `NOSONAR` · **recommended**
 
 Warnings silenced instead of fixed are reported, in production and test code: `@SuppressWarnings`, SpotBugs'
-`@SuppressFBWarnings`, and comments starting with `NOPMD`, `NOSONAR`, `noinspection` or `CHECKSTYLE:OFF`. Mentions in
-prose don't count.
+`@SuppressFBWarnings`, and comments starting with `NOPMD`, `NOSONAR` or a variant such as `NOSONARLINT`, `noinspection`
+or `CHECKSTYLE:OFF`. Allowing `NOSONAR` allows its variants. Mentions in prose don't count.
 
 Why: agents silence warnings to get a build green, and the problem stays.
 
