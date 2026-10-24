@@ -208,7 +208,8 @@ Fix: call what `shop.orders` exposes, or move `OrderMath` into its API package i
 
 Classes that depend on each other, directly or around a loop, are reported once per cycle, at the first class by
 name. A nested class counts as its top-level class. A type naming its own subtypes, as a sealed type's `permits`
-clause or an interface's factory method does, isn't part of a cycle.
+clause or an interface's factory method does, isn't part of a cycle, nor is an annotation naming the class that
+handles it, as a Bean Validation constraint names its validator with `@Constraint(validatedBy = ...)`.
 
 Why: classes in a cycle can only be understood, tested and changed together.
 
@@ -407,14 +408,15 @@ public class Checkout {
 `dependencies().noQueriesInLoops()` · **recommended**
 
 Queries made once per item, the N+1 pattern, are reported. A query is a call on a collaborator that touches the
-outside world and returns a value. The collaborator is the same object for every item: a field, a getter's result,
-a parameter, a static field or a local set before the loop. The query counts when it is made inside a loop, or in a
+outside world and returns a value. The collaborator is the same object for every item: a field, a getter's result, a
+parameter, a static field or a local set before the loop. The query counts when it is made inside a loop, or in a
 lambda or method reference handed to a stream or `forEach`, and is given the item or something made from it, such as
-its id or a key built from it. Commands, which return nothing, aren't queries, and neither is reading the next value
-of the same object, as a parser's `reader.peek()` does, or retrying with a new timeout. Calls on the loop's own items,
-a class's own helpers and static methods are left alone, since that per-item work can't be batched. A call counts
-only if every implementation it may run touches the outside world, so a strategy such as a `Predicate` with pure
-implementations isn't a query. Wiring code is exempt.
+its id or a key built from it. Commands aren't queries: methods that return nothing, and methods named for a change,
+as a repository's `save` and `delete` are, though they return what they stored, and neither is reading the next value
+of the same object, as a parser's `reader.peek()` does, or retrying with a new timeout. Calls on the loop's own
+items, a class's own helpers and static methods are left alone, since that per-item work can't be batched. A call
+counts only if every implementation it may run touches the outside world, so a strategy such as a `Predicate` with
+pure implementations isn't a query. Wiring code is exempt.
 
 Why: one round trip per item turns a page of 50 orders into 51 database or HTTP calls.
 
@@ -437,12 +439,12 @@ Fix: add a batch query to the collaborator, such as `client.chargeAll(amounts)`,
 
 `dependencies().constructorsDoNoWork()` · **recommended**
 
-Constructors and static initializers that call effectful code are reported: I/O, the clock, an injected
-collaborator. Field initializers run in every constructor, and are reported once. A call to a collaborator counts
-only if every implementation it may run touches the outside world, and calls to JDK interfaces such as
-`Iterator.hasNext()` don't count. Reading a stream the constructor is given, wrapping it, or creating an in-memory
-one such as `StringWriter`, isn't I/O.
-Creating objects is left to `inject-services`, and wiring code is exempt.
+Constructors and static initializers that call effectful code are reported: I/O, the clock, an injected collaborator.
+Field initializers run in every constructor, and are reported once. A call to a collaborator counts only if every
+implementation it may run touches the outside world, and calls to JDK interfaces such as `Iterator.hasNext()` don't
+count. Reading a stream the constructor is given, wrapping it, or creating an in-memory one such as `StringWriter`,
+isn't I/O, and neither is creating a client or a clock, as `new RestTemplate()` and `Clock.systemUTC()` do, or
+configuring a client with a setter. Creating objects is left to `inject-services`, and wiring code is exempt.
 
 Why: a class whose constructor does work can't be created without it, so tests can't create it cheaply, and a
 failure there leaves no object to recover with.
@@ -837,8 +839,10 @@ ternary between values (`return bool ? 1 : 0;`, `return bool ? yes : no;`), or a
 constants. So are booleans in an overload family for plain values, as `append(boolean)` next to `append(int)` or
 `append(Object)` is: the boolean is one more kind of value the overloads handle. An overload that takes an enum
 instead shows the boolean picks a mode, and passing a picked mode on, as in `load(id, eager ? EAGER : LAZY)`, still
-chooses a behaviour. Booleans an HTTP request binds, with Spring's `@RequestParam`, `@PathVariable` or `@RequestHeader`
-or JAX-RS's `@QueryParam` and the like, are skipped: the HTTP API takes the flag, and the handler only receives it.
+chooses a behaviour. Booleans an HTTP request binds, with Spring's `@RequestParam`, `@PathVariable` or
+`@RequestHeader` or JAX-RS's `@QueryParam` and the like, are skipped, and so are the booleans of a request handler
+(`@GetMapping`, `@GET` and the like), which Spring binds even without an annotation: the HTTP API takes the flag, and
+the handler only receives it.
 
 Why: such a method does two things, and a call like `print(text, true)` doesn't say which.
 
@@ -985,11 +989,12 @@ Fix: return a record, such as `record Entry(String key, String value) {}`.
 
 Choices between strings are reported: a `switch` over three or more string literals, or an `if`/`else if` chain
 comparing one value with three or more strings through `equals`, `equalsIgnoreCase` or `Objects.equals`. Converters,
-which turn input strings into a type, are exempt: methods named `parse`, `from`, `valueOf`, `of` or `decode`, and
-methods returning one of the project's enums. So are words from outside the code, which an enum can't own: strings
-with dots or spaces (property keys, class names, SQL), tokens a parser reads, any of which is punctuation such as
-`"("`, single characters such as operators, Java's type names, codes with digits such as SQL states, and method names
-a proxy dispatches on, which include `toString`.
+which turn input strings into a type, are exempt: methods named `parse`, `from`, `valueOf`, `of`, `decode` or
+`to...`, as `toBool` is, and methods returning one of the project's enums. So are words from outside the code, which
+an enum can't own: strings with dots or spaces (property keys, class names, SQL), tokens a parser reads, any of which
+is punctuation such as `"("`, single characters such as operators, Java's type names, codes with digits such as SQL
+states, method names a proxy dispatches on, which include `toString`, and HTTP's method names such as `"GET"` and
+`"POST"`.
 
 Why: a typo in a string compiles, and a missing enum case doesn't.
 
@@ -1069,7 +1074,8 @@ Unfinished code is reported:
   and any `NotImplementedException`;
 - methods whose whole body is `throw new UnsupportedOperationException()`, unless the refusal is deliberate: the
   method is `@Deprecated`, a private constructor, a hook such as an override, or its Javadoc says it's unsupported;
-- empty method bodies without a comment or Javadoc saying why, unless the method is a hook.
+- empty method bodies without a comment or Javadoc saying why, unless the method is a hook or an AspectJ `@Pointcut`,
+  whose body is empty by design.
 
 A hook is an override, with or without `@Override`, an interface's default method, a method of an abstract class
 that subclasses may override, or a method that a project subclass, anonymous class or enum constant body overrides.

@@ -397,6 +397,9 @@ class ConstructorWorkRuleTest {
                             public String getForObject(String url) {
                                 return url;
                             }
+
+                            public void setErrorHandler(Object handler) {
+                            }
                         }
                         """)
                 .add("Gateway", """
@@ -414,6 +417,7 @@ class ConstructorWorkRuleTest {
                                 this.web = WebClient.builder().build(baseUrl);
                                 this.other = WebClient.create(baseUrl);
                                 this.rest = new RestTemplate();
+                                this.rest.setErrorHandler(baseUrl);
                             }
 
                             public String fetch(String uri) {

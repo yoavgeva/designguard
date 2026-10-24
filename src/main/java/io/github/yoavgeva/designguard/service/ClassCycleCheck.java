@@ -18,7 +18,8 @@ import java.util.stream.Stream;
 /**
  * Finds classes that depend on each other, directly or around a loop. A nested class counts as its top-level class,
  * and a type naming its own subtypes, as a sealed type's {@code permits} clause or an interface's factory method does,
- * isn't part of a cycle. Each set of classes in a cycle is reported once, at the first class by name.
+ * isn't part of a cycle, nor is an annotation naming the class that handles it, as a Bean Validation constraint names
+ * its validator. Each set of classes in a cycle is reported once, at the first class by name.
  */
 public final class ClassCycleCheck {
 
@@ -46,7 +47,8 @@ public final class ClassCycleCheck {
                 .map(node -> nestedByTop.getOrDefault(node, List.of(node)).stream()
                         .flatMap(member -> classes.bytecode().dependenciesFrom(member))
                         .map(dependency -> topLevelOf(dependency.target()))
-                        .filter(target -> !target.equals(node) && !target.isAssignableTo(node.getName()))
+                        .filter(target -> !target.equals(node) && !target.isAssignableTo(node.getName())
+                                && !handles(target, node))
                         .flatMap(target -> Stream.ofNullable(indexes.get(target.getName())))
                         .distinct()
                         .toList())
@@ -59,6 +61,18 @@ public final class ClassCycleCheck {
                 .map(members -> violation(classes, members.stream().map(nodes::get).toList()))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
+    }
+
+    /**
+     * Whether the class handles the annotation type, which names it in an annotation of its own, as
+     * {@code @Constraint(validatedBy = XssValidator.class)} names a validator and {@code @JsonSerialize(using = ...)} a
+     * serializer: the handler reads the annotation, and the two make one unit.
+     */
+    private static boolean handles(JavaClass handler, JavaClass annotation) {
+        return annotation.isAnnotation() && annotation.getAnnotations().stream()
+                .flatMap(meta -> meta.getProperties().values().stream())
+                .flatMap(value -> value instanceof Object[] values ? Arrays.stream(values) : Stream.of(value))
+                .anyMatch(handler::equals);
     }
 
     private static JavaClass topLevelOf(JavaClass type) {

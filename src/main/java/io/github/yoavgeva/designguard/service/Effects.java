@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -21,6 +22,8 @@ import java.util.stream.Stream;
  * implementation is.
  */
 final class Effects {
+
+    private static final Pattern SETTER = Pattern.compile("set[A-Z].*");
 
     private final List<PackageMatcher> extraImpurePackages;
     private final Overrides overrides;
@@ -135,12 +138,17 @@ final class Effects {
 
     /**
      * Whether the access calls a library client, such as a repository or a REST client. Creating one or its builder, as
-     * {@code new RestTemplate()} and {@code WebClient.builder()} do, isn't I/O.
+     * {@code new RestTemplate()} and {@code WebClient.builder()} do, isn't I/O, and neither is configuring one with a
+     * setter, as {@code redisTemplate.setKeySerializer(...)} does.
      */
     private boolean callsLibraryClient(JavaCodeUnitAccess<?> access) {
         CodeUnitAccessTarget target = access.getTarget();
         return isLibraryClient(access.getTargetOwner()) && !JavaConstructor.CONSTRUCTOR_NAME.equals(target.getName())
-                && !createsClient(target);
+                && !createsClient(target) && !configures(target);
+    }
+
+    private static boolean configures(CodeUnitAccessTarget target) {
+        return SETTER.matcher(target.getName()).matches() && target.getRawReturnType().isEquivalentTo(void.class);
     }
 
     /** Whether the target is a static factory of a client or of its builder, as {@code WebClient.create(url)} is. */

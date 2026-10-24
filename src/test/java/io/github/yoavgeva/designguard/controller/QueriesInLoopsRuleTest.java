@@ -16,6 +16,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 @MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class QueriesInLoopsRuleTest {
 
+    private static final String SHOP = "shop";
+
     @Parameter
     private int release;
 
@@ -162,7 +164,7 @@ class QueriesInLoopsRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.dependencies().noQueriesInLoops().evaluate()).extracting(Violation::message).containsExactly(
                 "Checkout.total() queries PriceRepository.priceOf() inside a loop, once per item",
@@ -203,10 +205,46 @@ class QueriesInLoopsRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.dependencies().noQueriesInLoops().evaluate()).extracting(Violation::message)
                 .containsExactly("Owners.names() queries OwnerRepository.findById() inside a loop, once per item");
+    }
+
+    @Test
+    void commandsThatReturnWhatTheyStoredAreNoQueries() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Repository", "package org.springframework.data.repository;\n\n"
+                        + "public interface Repository<T, ID> {\n}\n")
+                .add("ColumnRepository", "package shop;\n\npublic interface ColumnRepository "
+                        + "extends org.springframework.data.repository.Repository<String, Long> {\n"
+                        + "    String save(String column);\n\n    boolean deleteByName(String name);\n\n"
+                        + "    String findByName(String name);\n}\n")
+                .add("Columns", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Columns {
+                            private final ColumnRepository columns;
+
+                            public Columns(ColumnRepository columns) {
+                                this.columns = columns;
+                            }
+
+                            public void sync(List<String> names) {
+                                for (String name : names) {
+                                    columns.save(name);
+                                    columns.deleteByName(name);
+                                    columns.findByName(name);
+                                }
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().noQueriesInLoops().evaluate()).extracting(Violation::message)
+                .containsExactly("Columns.sync() queries ColumnRepository.findByName() inside a loop, once per item");
     }
 
     @Test
@@ -282,7 +320,7 @@ class QueriesInLoopsRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.dependencies().noQueriesInLoops().evaluate()).isEmpty();
     }

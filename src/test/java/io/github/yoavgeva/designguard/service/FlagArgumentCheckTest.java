@@ -62,6 +62,14 @@ class FlagArgumentCheckTest {
                         return "plain";
                     }
 
+                    @org.springframework.web.bind.annotation.GetMapping("/download")
+                    String download(String name, Boolean delete) {
+                        if (delete) {
+                            return "deleted " + name;
+                        }
+                        return name;
+                    }
+
                     String find(@jakarta.ws.rs.QueryParam("deep") boolean deep, boolean cached) {
                         if (deep) {
                             return "deep";

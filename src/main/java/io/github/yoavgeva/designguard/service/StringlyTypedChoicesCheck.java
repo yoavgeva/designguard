@@ -25,18 +25,20 @@ import java.util.stream.Stream;
 
 /**
  * Finds choices between strings that an enum models with type safety: a {@code switch} over three or more string
- * literals, or an {@code if}/{@code else if} chain comparing one value with three or more strings through
- * {@code equals}. A typo in a string compiles; a missing enum case doesn't. Converters, which turn input strings into
- * a type, are exempt: methods named {@code parse}, {@code from}, {@code valueOf}, {@code of} or {@code decode}, and
- * methods returning one of the project's enums. So are words from outside the code, which an enum can't own: strings
- * with dots or spaces, such as property keys or SQL, single characters, Java's type names, codes with digits, such as
- * SQL states, and method names a proxy dispatches on.
+ * literals, or an {@code if}/{@code else if} chain comparing one value with three or more strings through {@code
+ * equals}. A typo in a string compiles; a missing enum case doesn't. Converters, which turn input strings into a type,
+ * are exempt: methods named {@code parse}, {@code from}, {@code valueOf}, {@code of}, {@code decode} or {@code to...},
+ * as {@code toBool} is, and methods returning one of the project's enums. So are words from outside the code, which an
+ * enum can't own: strings with dots or spaces, such as property keys or SQL, single characters, Java's type names,
+ * codes with digits, such as SQL states, method names a proxy dispatches on, and HTTP's method names.
  */
 public final class StringlyTypedChoicesCheck {
 
     private static final String RULE = "no-stringly-typed-choices";
     private static final int MIN_STRINGS = 3;
-    private static final Pattern CONVERTER = Pattern.compile("(parse|from|valueOf|of|decode).*");
+    private static final Pattern CONVERTER = Pattern.compile("(parse|from|valueOf|of|decode|to(?=[A-Z])).*");
+    private static final Set<String> HTTP_METHODS = Set.of("GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
+            "TRACE", "PATCH");
     private static final Pattern NOT_IDENTIFIER = Pattern.compile("[^A-Za-z0-9]+");
     private static final Set<String> EQUALS = Set.of("equals", "equalsIgnoreCase");
     private static final Set<String> PRIMITIVES = Set.of("boolean", "byte", "char", "short", "int", "long", "float",
@@ -138,11 +140,12 @@ public final class StringlyTypedChoicesCheck {
      * Whether the strings are words of a vocabulary from outside the code, which an enum can't own: property keys,
      * class names or SQL, which have dots or spaces, tokens a parser reads, any of which is punctuation such as
      * {@code "("}, single characters such as operators, Java's type names, codes such as SQL states, which all have
-     * digits, or method names a proxy dispatches on, which include {@code toString}.
+     * digits, method names a proxy dispatches on, which include {@code toString}, or HTTP's method names.
      */
     private static boolean isOutsideVocabulary(List<String> strings) {
         return strings.stream().anyMatch(string -> SYNTAX.matcher(string).find() || OBJECT_METHODS.contains(string))
                 || strings.stream().allMatch(string -> string.length() <= 1 || DIGIT.matcher(string).find())
+                || strings.stream().allMatch(string -> HTTP_METHODS.contains(string.toUpperCase(Locale.ROOT)))
                 || strings.stream().filter(PRIMITIVES::contains).count() * 2 >= strings.size();
     }
 

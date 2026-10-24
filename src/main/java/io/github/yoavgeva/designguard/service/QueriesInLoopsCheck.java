@@ -4,6 +4,7 @@ import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
+import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
@@ -15,8 +16,9 @@ import java.util.stream.Stream;
 /**
  * Finds queries made once per item, the N+1 pattern: inside a loop, or in a lambda or method reference handed to a
  * stream or {@code forEach}, code calls a collaborator, an instance of another project type, whose call touches the
- * outside world and returns a value. Commands, which return nothing, are left alone, and so are a class's own helpers
- * and static methods, which do per-item work that can't be batched, such as reading files. Wiring code is exempt.
+ * outside world and returns a value. Commands, which return nothing or are named for a change as {@code save} and
+ * {@code delete} are, are left alone, and so are a class's own helpers and static methods, which do per-item work that
+ * can't be batched, such as reading files. Wiring code is exempt.
  */
 public final class QueriesInLoopsCheck {
 
@@ -53,13 +55,17 @@ public final class QueriesInLoopsCheck {
                 .map(access -> violation(classes, type, unit, access));
     }
 
-    /** An instance method of another project type that returns a value; the caller checks it touches the outside world. */
+    /**
+     * An instance method of another project type that returns a value and isn't a command, as {@code save} is though it
+     * returns what it stored; the caller checks it touches the outside world.
+     */
     private static boolean isQuery(ProjectClasses classes, JavaClass type, CodeUnitAccessTarget target) {
         JavaClass owner = target.getOwner();
         return classes.isProject(owner) && !Hierarchy.isSelfOrNested(type, owner)
                 && !ForbiddenCall.CONSTRUCTOR.equals(target.getName())
                 && !target.getRawReturnType().isEquivalentTo(void.class)
-                && target.resolveMember().filter(member -> member.getModifiers().contains(JavaModifier.STATIC)).isEmpty();
+                && target.resolveMember().filter(member -> member.getModifiers().contains(JavaModifier.STATIC)
+                        || member instanceof JavaMethod method && CommandMethods.isCommand(method)).isEmpty();
     }
 
     private static Violation violation(ProjectClasses classes, JavaClass type, JavaCodeUnit unit,

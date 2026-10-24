@@ -23,7 +23,8 @@ import java.util.stream.Stream;
  * boolean that only picks a value is data: {@code bool ? 1 : 0}, or an {@code if} and {@code else} that differ only in
  * a constant, as {@code out.append("true")} and {@code out.append("false")} do. So is a boolean an overload takes
  * where the other overloads take other types, as {@code append(boolean)} next to {@code append(int)} does, and one an
- * HTTP request binds, as {@code @RequestParam} and {@code @QueryParam} do: the API takes it, not the method.
+ * HTTP request binds, as {@code @RequestParam} and {@code @QueryParam} do, or as a request handler's simple parameters
+ * are bound without one: the API takes it, not the method.
  */
 public final class FlagArgumentCheck {
 
@@ -33,6 +34,9 @@ public final class FlagArgumentCheck {
     private static final Set<String> REQUEST_BINDINGS = Set.of("RequestParam", "PathVariable", "RequestHeader",
             "CookieValue", "MatrixVariable", "RequestAttribute", "SessionAttribute", "QueryParam", "PathParam",
             "HeaderParam", "FormParam", "CookieParam", "MatrixParam");
+    /** Annotations of Spring MVC and JAX-RS request handlers, whose simple parameters the request binds. */
+    private static final Set<String> HANDLERS = Set.of("RequestMapping", "GetMapping", "PostMapping", "PutMapping",
+            "DeleteMapping", "PatchMapping", "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD");
     private static final Set<String> PLAIN_VALUES = Set.of("String", "CharSequence", "Object", "Character", "Byte",
             "Short", "Integer", "Long", "Float", "Double", "java.lang.String", "java.lang.Object");
 
@@ -67,8 +71,9 @@ public final class FlagArgumentCheck {
                                 .filter(choice -> !ValueChoices.isValue(choice))
                                 .map(ConditionalExpr::getCondition))
                 .toList();
+        boolean handlesRequests = HANDLERS.stream().anyMatch(handler -> Scopes.hasAnnotation(method, handler));
         return method.getParameters().stream()
-                .filter(parameter -> isBoolean(parameter) && parameter.getAnnotations().stream()
+                .filter(parameter -> isBoolean(parameter) && !handlesRequests && parameter.getAnnotations().stream()
                         .noneMatch(annotation -> REQUEST_BINDINGS.contains(annotation.getName().getIdentifier())))
                 .filter(parameter -> !isOverloadedForOtherTypes(method, method.getParameters().indexOf(parameter)))
                 .filter(parameter -> conditions.stream().anyMatch(condition -> isJust(condition, parameter)))

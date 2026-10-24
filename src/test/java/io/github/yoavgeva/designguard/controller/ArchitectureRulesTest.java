@@ -94,6 +94,12 @@ class ArchitectureRulesTest {
                 .add("Circle", "package shop.shapes;\n\npublic record Circle(double radius) implements Shape {\n}\n")
                 .add("Cart", "package shop;\n\npublic class Cart {\n    public record Item(Cart cart) {\n    }\n\n"
                         + "    public Item first() {\n        return new Item(this);\n    }\n}\n")
+                .add("Constraint", "package shop.validation;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Constraint {\n    Class<?>[] validatedBy();\n}\n")
+                .add("Xss", "package shop.xss;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "@shop.validation.Constraint(validatedBy = XssValidator.class)\npublic @interface Xss {\n    String message();\n}\n")
+                .add("XssValidator", "package shop.xss;\n\npublic class XssValidator {\n"
+                        + "    public boolean isValid(String value, Xss annotation) {\n        return annotation.message().isEmpty();\n    }\n}\n")
                 .guard(SHOP);
 
         assertThat(guard.architecture().classesHaveNoCycles().evaluate()).extracting(Violation::message).containsExactly(

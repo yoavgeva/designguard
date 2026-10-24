@@ -775,6 +775,33 @@ class ApiRulesTest {
                                         return 2;
                                 }
                             }
+
+                            public static Boolean toBool(String value) {
+                                switch (value) {
+                                    case "true":
+                                    case "yes":
+                                    case "ok":
+                                        return true;
+                                    case "false":
+                                    case "no":
+                                        return false;
+                                    default:
+                                        return null;
+                                }
+                            }
+
+                            public String verb(String method) {
+                                switch (method) {
+                                    case "POST":
+                                        return "create";
+                                    case "PUT":
+                                        return "update";
+                                    case "DELETE":
+                                        return "delete";
+                                    default:
+                                        return "get";
+                                }
+                            }
                         }
                         """)
                 .guard(SHOP);

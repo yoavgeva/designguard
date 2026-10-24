@@ -11,7 +11,8 @@ import java.util.stream.Stream;
 /**
  * Finds methods with an empty body and no comment explaining why. Hooks are allowed: an empty override, interface
  * default method, overridable method of an abstract class or method a subclass overrides is usually a deliberate
- * no-op, and so is a method whose Javadoc says it does nothing.
+ * no-op, and so is a method whose Javadoc says it does nothing. An AspectJ {@code @Pointcut} declares a pointcut, so
+ * its body is empty by design.
  */
 final class EmptyMethods implements SourceFinder {
 
@@ -48,6 +49,7 @@ final class EmptyMethods implements SourceFinder {
                 && body.get().getAllContainedComments().isEmpty()
                 && body.get().getOrphanComments().isEmpty()
                 && !Hooks.javadocSays(method, DOES_NOTHING)
-                && !Hooks.isHook(method, overridden);
+                && !Hooks.isHook(method, overridden)
+                && !Scopes.hasAnnotation(method, "Pointcut");
     }
 }
