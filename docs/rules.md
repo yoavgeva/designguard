@@ -1238,8 +1238,10 @@ Fix: create a real `Lookup`, and mock only what it calls.
 `tests().testsDontMockValues()` · **recommended**
 
 Mocks of values are reported: records, enums and other classes that aren't service-like, and interfaces whose
-implementations are all values. Mocks come from Mockito's or EasyMock's `mock(Type.class)`, `spy(Type.class)` and
-`createMock(Type.class)`, and from fields and parameters annotated `@Mock`, `@Spy` or Spring's mock-bean annotations.
+implementations are all values. An interface with one abstract method is a role, such as a strategy or a callback,
+which tests mock to see it called, so it isn't a value. Mocks come from Mockito's or EasyMock's `mock(Type.class)`,
+`spy(Type.class)`, `spy(new Type(...))` and `createMock(Type.class)`, and from fields and parameters annotated
+`@Mock`, `@Spy` or Spring's mock-bean annotations.
 
 Why: a value is cheap and safe to create, so a test should use a real one. A mock of a value tests the mock.
 

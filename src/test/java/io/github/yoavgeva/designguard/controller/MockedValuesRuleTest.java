@@ -33,6 +33,9 @@ class MockedValuesRuleTest {
                 .add("Shape", "package shop.shapes;\n\npublic sealed interface Shape permits Circle {\n}\n")
                 .add("Circle", "package shop.shapes;\n\npublic record Circle(double radius) implements Shape {\n}\n")
                 .add("Notifier", "package shop;\n\npublic interface Notifier {\n    void send(String text);\n}\n")
+                .add("Pricing", "package shop;\n\npublic interface Pricing {\n    long price(String item);\n}\n")
+                .add("FlatPricing", "package shop;\n\npublic record FlatPricing(long cents) implements Pricing {\n"
+                        + "    public long price(String item) {\n        return cents;\n    }\n}\n")
                 .add("PaymentGateway", "package shop;\n\npublic interface PaymentGateway {\n    void charge(Money price);\n}\n")
                 .add("StripeGateway", """
                         package shop;
@@ -85,6 +88,8 @@ class MockedValuesRuleTest {
                                 Notifier notifier = mock(Notifier.class);
                                 Checkout checkout = mock(Checkout.class);
                                 java.util.List<?> names = mock(java.util.List.class);
+                                Pricing pricing = mock(Pricing.class);
+                                Money spied = org.mockito.Mockito.spy(new Money(5));
                                 new Checkout(gateway).pay(price);
                             }
                         }
@@ -96,7 +101,8 @@ class MockedValuesRuleTest {
                         tuple(14, "CheckoutTest mocks Money, which is a value"),
                         tuple(18, "CheckoutTest mocks Status, which is a value"),
                         tuple(19, "CheckoutTest mocks Order.Line, which is a value"),
-                        tuple(20, "CheckoutTest mocks Shape, which is a value"));
+                        tuple(20, "CheckoutTest mocks Shape, which is a value"),
+                        tuple(25, "CheckoutTest mocks Money, which is a value"));
         assertThat(guard.tests().testsDontMockValues().evaluate().get(0).fix())
                 .isEqualTo("use a real Money instead; mock only service-like types");
     }
