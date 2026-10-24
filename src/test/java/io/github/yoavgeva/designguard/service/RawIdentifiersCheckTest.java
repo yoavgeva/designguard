@@ -54,19 +54,47 @@ class RawIdentifiersCheckTest {
                         public interface OwnerRepository extends org.springframework.data.repository.Repository<Owner, Integer> {
                             Owner findById(Integer id);
                         }
+                        """)
+                .add("Pet", "package shop;\n\npublic class Pet {\n}\n")
+                .add("Visit", "package shop;\n\npublic class Visit {\n}\n")
+                .add("PetType", "package shop;\n\npublic class PetType {\n    private Integer id;\n}\n")
+                .add("OwnerDTO", "package shop;\n\npublic class OwnerDTO {\n    private Integer id;\n}\n")
+                .add("AdminOwnerDTO", "package shop;\n\npublic class AdminOwnerDTO {\n    private Integer id;\n}\n")
+                .add("OwnerFindService", """
+                        package shop;
+
+                        public class OwnerFindService {
+                            public String findById(Integer id) {
+                                return "owner " + id;
+                            }
+
+                            public String partialUpdatePet(Integer id) {
+                                return "pet " + id;
+                            }
+
+                            public String findOneWithEagerRelationships(Integer id) {
+                                return "owner " + id;
+                            }
+                        }
                         """);
 
         List<Violation> violations = new RawIdentifiersCheck(List.of("shop..")).check(SourceReader.read(List.of(root)),
                 ClassFilter.ALL);
 
         assertThat(violations).extracting(Violation::message, Violation::fix).containsExactly(
+                tuple("AdminOwnerDTO.id is a raw Integer identifier", OWNER_ID),
                 tuple("Owner.id is a raw Integer identifier", OWNER_ID),
                 tuple("Owner.getPet() takes id as a raw Integer identifier", fix("PetId")),
                 tuple("Owner.findVisitById() takes id as a raw Integer identifier", fix("VisitId")),
                 tuple("Owner.rename() takes id as a raw Integer identifier", OWNER_ID),
                 tuple("Owner.setId() takes id as a raw Integer identifier", OWNER_ID),
                 tuple("Owner.setPetId() takes id as a raw Integer identifier", fix("PetId")),
-                tuple("OwnerRepository.findById() takes id as a raw Integer identifier", OWNER_ID));
+                tuple("OwnerDTO.id is a raw Integer identifier", OWNER_ID),
+                tuple("OwnerFindService.findById() takes id as a raw Integer identifier", OWNER_ID),
+                tuple("OwnerFindService.partialUpdatePet() takes id as a raw Integer identifier", fix("PetId")),
+                tuple("OwnerFindService.findOneWithEagerRelationships() takes id as a raw Integer identifier", OWNER_ID),
+                tuple("OwnerRepository.findById() takes id as a raw Integer identifier", OWNER_ID),
+                tuple("PetType.id is a raw Integer identifier", fix("PetTypeId")));
     }
 
     private static String fix(String type) {
