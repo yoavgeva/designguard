@@ -1022,8 +1022,8 @@ Unfinished code is reported:
   method is `@Deprecated`, a private constructor, a hook such as an override, or its Javadoc says it's unsupported;
 - empty method bodies without a comment or Javadoc saying why, unless the method is a hook.
 
-A hook is an override, with or without `@Override`, an interface's default method, or a method of an abstract class
-that subclasses may override.
+A hook is an override, with or without `@Override`, an interface's default method, a method of an abstract class
+that subclasses may override, or a method that a project subclass, anonymous class or enum constant body overrides.
 
 Why: AI agents leave placeholders that compile and pass review at a glance.
 

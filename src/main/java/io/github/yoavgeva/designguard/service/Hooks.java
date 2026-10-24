@@ -17,10 +17,10 @@ final class Hooks {
 
     /**
      * Whether the callable is a hook: it overrides or implements a supertype's method, with or without
-     * {@code @Override}, is an interface's default method, or is a method of an abstract class that subclasses may
-     * override.
+     * {@code @Override}, is an interface's default method, is a method of an abstract class that subclasses may
+     * override, or is overridden by one of the project's subclasses.
      */
-    static boolean isHook(CallableDeclaration<?> callable) {
+    static boolean isHook(CallableDeclaration<?> callable, OverriddenMethods overridden) {
         if (!(callable instanceof MethodDeclaration method)) {
             return false;
         }
@@ -30,7 +30,7 @@ final class Hooks {
                         && declaration.hasModifier(Modifier.Keyword.ABSTRACT))
                 .isPresent();
         return Scopes.hasAnnotation(method, "Override") || method.isDefault() || overridable && inAbstractClass
-                || Resolution.overridesSupertype(method);
+                || overridden.isOverridden(method) || Resolution.overridesSupertype(method);
     }
 
     /** Whether the callable's Javadoc has a match for the pattern. */

@@ -158,8 +158,9 @@ class PlaceholderThrowsTest {
 
     private List<Violation> violations(String typeName, String source) {
         new SourceTree(root).add(typeName, source);
-        PlaceholderThrows placeholders = new PlaceholderThrows("no-stubs");
-        return SourceReader.read(List.of(root)).files().stream()
+        JavaSources sources = SourceReader.read(List.of(root));
+        PlaceholderThrows placeholders = new PlaceholderThrows("no-stubs", OverriddenMethods.in(sources));
+        return sources.files().stream()
                 .flatMap(file -> placeholders.find(file, ClassFilter.ALL))
                 .toList();
     }

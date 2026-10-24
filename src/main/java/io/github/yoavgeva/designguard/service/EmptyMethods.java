@@ -10,41 +10,44 @@ import java.util.stream.Stream;
 
 /**
  * Finds methods with an empty body and no comment explaining why. Hooks are allowed: an empty override, interface
- * default method or overridable method of an abstract class is usually a deliberate no-op, and so is a method whose
- * Javadoc says it does nothing.
+ * default method, overridable method of an abstract class or method a subclass overrides is usually a deliberate
+ * no-op, and so is a method whose Javadoc says it does nothing.
  */
 final class EmptyMethods implements SourceFinder {
 
     private static final Pattern DOES_NOTHING = Pattern.compile("(?i)\\b(does|do) nothing\\b|\\bno-?op\\b|\\bnothing to\\b");
 
     private final String rule;
+    private final OverriddenMethods overridden;
 
     /**
      * Configures the finder.
      *
-     * @param rule the rule id its violations carry
+     * @param rule       the rule id its violations carry
+     * @param overridden the methods the project's subclasses override
      */
-    EmptyMethods(String rule) {
+    EmptyMethods(String rule, OverriddenMethods overridden) {
         this.rule = rule;
+        this.overridden = overridden;
     }
 
     @Override
     public Stream<Violation> find(ParsedFile file, ClassFilter filter) {
         return file.unit().findAll(MethodDeclaration.class).stream()
-                .filter(EmptyMethods::hasEmptyBody)
+                .filter(this::hasEmptyBody)
                 .filter(method -> Scopes.selected(filter, file, method))
                 .map(method -> Scopes.violation(rule, file, method.getName(),
                         Scopes.describe(method) + " has an empty body",
                         "implement it, or say in a comment inside the body why doing nothing is correct"));
     }
 
-    private static boolean hasEmptyBody(MethodDeclaration method) {
+    private boolean hasEmptyBody(MethodDeclaration method) {
         Optional<BlockStmt> body = method.getBody();
         return body.isPresent()
                 && body.get().getStatements().isEmpty()
                 && body.get().getAllContainedComments().isEmpty()
                 && body.get().getOrphanComments().isEmpty()
                 && !Hooks.javadocSays(method, DOES_NOTHING)
-                && !Hooks.isHook(method);
+                && !Hooks.isHook(method, overridden);
     }
 }

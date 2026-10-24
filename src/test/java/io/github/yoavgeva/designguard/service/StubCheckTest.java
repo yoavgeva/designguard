@@ -85,6 +85,73 @@ class StubCheckTest {
     }
 
     @Test
+    void methodsThatAProjectSubclassOverridesAreHooks() {
+        new SourceTree(root)
+                .add("Handler", """
+                        package shop;
+
+                        public class Handler {
+                            void begin(String sql) {
+                            }
+
+                            void end(String sql) {
+                            }
+
+                            void flush() {
+                            }
+
+                            String describe() {
+                                throw new UnsupportedOperationException();
+                            }
+
+                            void close() {
+                            }
+
+                            Handler copy() {
+                                return new Handler() {
+                                    @Override
+                                    void close() {
+                                        System.out.println("closed");
+                                    }
+                                };
+                            }
+                        }
+                        """)
+                .add("SqlHandler", """
+                        package shop;
+
+                        public class SqlHandler extends Handler {
+                            @Override
+                            void begin(String sql) {
+                                System.out.println(sql);
+                            }
+
+                            void end(String sql, int line) {
+                                System.out.println(sql + line);
+                            }
+                        }
+                        """)
+                .add("ServerHandler", """
+                        package shop;
+
+                        public final class ServerHandler extends SqlHandler {
+                            @Override
+                            void flush() {
+                                System.out.println("flushed");
+                            }
+
+                            @Override
+                            String describe() {
+                                return "server";
+                            }
+                        }
+                        """);
+
+        assertThat(new StubCheck().check(SourceReader.read(List.of(root)), ClassFilter.ALL))
+                .singleElement().extracting(Violation::message).isEqualTo("Handler.end() has an empty body");
+    }
+
+    @Test
     void appliesTheFilter() {
         new SourceTree(root).add(CART, """
                 package shop.legacy;

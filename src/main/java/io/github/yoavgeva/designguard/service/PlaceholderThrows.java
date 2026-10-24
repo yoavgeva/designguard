@@ -18,7 +18,7 @@ import java.util.stream.Stream;
  * "TODO" do, or it throws a {@code NotImplementedException}. A {@code throw new UnsupportedOperationException()} is
  * one if it is the whole body and nothing says the refusal is deliberate: a message, a Javadoc that says the method
  * is unsupported, {@code @Deprecated}, a private constructor, or a hook such as an override, which may refuse an
- * operation like a read-only {@code Iterator.remove()}.
+ * operation like a read-only {@code Iterator.remove()}, or a method a subclass overrides.
  */
 final class PlaceholderThrows implements SourceFinder {
 
@@ -29,14 +29,17 @@ final class PlaceholderThrows implements SourceFinder {
     private static final String REFUSAL = "UnsupportedOperationException";
 
     private final String rule;
+    private final OverriddenMethods overridden;
 
     /**
      * Configures the finder.
      *
-     * @param rule the rule id its violations carry
+     * @param rule       the rule id its violations carry
+     * @param overridden the methods the project's subclasses override
      */
-    PlaceholderThrows(String rule) {
+    PlaceholderThrows(String rule, OverriddenMethods overridden) {
         this.rule = rule;
+        this.overridden = overridden;
     }
 
     @Override
@@ -50,7 +53,7 @@ final class PlaceholderThrows implements SourceFinder {
                         "implement it, or delete the method until it is needed"));
     }
 
-    private static boolean isPlaceholder(ThrowStmt stmt, ObjectCreationExpr creation) {
+    private boolean isPlaceholder(ThrowStmt stmt, ObjectCreationExpr creation) {
         String type = creation.getType().getNameAsString();
         boolean saysNotImplemented = creation.getArguments().stream()
                 .filter(StringLiteralExpr.class::isInstance)
@@ -70,9 +73,9 @@ final class PlaceholderThrows implements SourceFinder {
         return body.filter(block -> block.getStatements().size() == 1 && block.getStatement(0).equals(stmt)).isPresent();
     }
 
-    private static boolean isDeliberate(CallableDeclaration<?> callable) {
+    private boolean isDeliberate(CallableDeclaration<?> callable) {
         return Scopes.hasAnnotation(callable, "Deprecated") || Hooks.javadocSays(callable, UNSUPPORTED)
-                || callable instanceof ConstructorDeclaration && callable.isPrivate() || Hooks.isHook(callable);
+                || callable instanceof ConstructorDeclaration && callable.isPrivate() || Hooks.isHook(callable, overridden);
     }
 
     private static String ownerName(ThrowStmt stmt) {
