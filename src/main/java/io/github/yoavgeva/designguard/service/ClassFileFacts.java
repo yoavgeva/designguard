@@ -20,12 +20,14 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LineNumberNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 /**
  * What ArchUnit doesn't import from a class file: the Java version it was compiled for, the classes its code creates
@@ -49,18 +51,20 @@ import org.objectweb.asm.tree.TypeInsnNode;
  *                         they run exactly the method they name, not an override
  * @param restoredInterrupts for each method and constructor that calls {@code Thread.currentThread().interrupt()},
  *                         the {@link #callKey(String, String, int) calls} of {@code interrupt()}
+ * @param consoleCalls     for each method and constructor that uses {@code System.out}, {@code System.err} or
+ *                         {@code System.in}, the {@link ConsoleCalls calls} it makes on them
  * @param loops            the calls each method makes once per item: in a loop, or in a lambda it gives a stream
  * @param accessorChanges  for each {@code get}, {@code is} or {@code has} method that changes fields of its class, by
  *                         name and descriptor, the {@link AccessorChanges changes} it makes, lazy initialization aside
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
         List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> superCalls,
-        Map<String, Set<String>> restoredInterrupts, Loops loops,
+        Map<String, Set<String>> restoredInterrupts, Map<String, Set<String>> consoleCalls, Loops loops,
         Map<String, List<AccessorChanges.FieldChange>> accessorChanges) {
 
     /** For a class without a class file to read. */
     static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of(),
-            Map.of(), new Loops(Map.of(), Map.of(), Map.of()), Map.of());
+            Map.of(), Map.of(), new Loops(Map.of(), Map.of(), Map.of()), Map.of());
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
@@ -77,6 +81,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         directCalls = Map.copyOf(directCalls);
         superCalls = Map.copyOf(superCalls);
         restoredInterrupts = Map.copyOf(restoredInterrupts);
+        consoleCalls = Map.copyOf(consoleCalls);
         accessorChanges = Map.copyOf(accessorChanges);
     }
 
@@ -107,7 +112,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         Map<String, Integer> captured = Loops.capturedSlots(node);
         return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
                 byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::superCalls),
-                byMethod(node, ClassFileFacts::restoredInterrupts),
+                byMethod(node, ClassFileFacts::restoredInterrupts), byMethod(node, method -> ConsoleCalls.in(node.name, method)),
                 new Loops(byMethod(node, method -> Loops.callsInLoops(node.name, method)),
                         byMethod(node, Loops::iteratedLambdas),
                         byMethod(node, method -> Loops.lambdaBodyCalls(node.name, method, captured))),
@@ -405,6 +410,55 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                 lines[index] = line;
             }
             return lines;
+        }
+    }
+
+    /**
+     * The calls a method makes on {@code System.out}, {@code System.err} or {@code System.in}, directly or through a
+     * local that holds one: they write to or read from the console, unlike the same calls on a stream it is given.
+     */
+    static final class ConsoleCalls {
+
+        private static final Set<String> CONSOLE_STREAMS = Set.of("out", "err", "in");
+
+        private ConsoleCalls() {
+        }
+
+        /**
+         * The method's calls on a console stream, keyed with their line.
+         *
+         * @param owner  the internal name of the method's class
+         * @param method the method
+         * @return the {@link #callKey(String, String, int) calls}; none if it never reads a console stream
+         */
+        static Set<String> in(String owner, MethodNode method) {
+            if (StreamSupport.stream(method.instructions.spliterator(), false).noneMatch(ConsoleCalls::isConsole)) {
+                return Set.of();
+            }
+            Receivers receivers = Receivers.of(owner, method);
+            Set<String> calls = new LinkedHashSet<>();
+            int line = 0;
+            for (AbstractInsnNode instruction : method.instructions) {
+                if (instruction instanceof LineNumberNode number) {
+                    line = number.line;
+                }
+                if (instruction instanceof MethodInsnNode call && call.getOpcode() != Opcodes.INVOKESTATIC
+                        && receivers.stackAt(call, Type.getArgumentTypes(call.desc).length).stream()
+                                .anyMatch(source -> isConsole(source) || holdsConsole(receivers, source))) {
+                    calls.add(callKey(Type.getObjectType(call.owner).getClassName(), call.name, line));
+                }
+            }
+            return Set.copyOf(calls);
+        }
+
+        private static boolean holdsConsole(Receivers receivers, AbstractInsnNode source) {
+            return source instanceof VarInsnNode load && receivers.storesOf(load).stream()
+                    .anyMatch(store -> receivers.stackAt(store, 0).stream().anyMatch(ConsoleCalls::isConsole));
+        }
+
+        private static boolean isConsole(AbstractInsnNode instruction) {
+            return instruction instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETSTATIC
+                    && "java/lang/System".equals(field.owner) && CONSOLE_STREAMS.contains(field.name);
         }
     }
 }

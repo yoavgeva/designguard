@@ -200,6 +200,25 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
+                .add("Greeter", """
+                        package shop;
+
+                        import java.io.PrintStream;
+
+                        public final class Greeter {
+                            private final String name;
+
+                            public Greeter(String name) {
+                                this.name = name;
+                                PrintStream out = System.err;
+                                out.println("hello " + name);
+                            }
+
+                            public String name() {
+                                return name;
+                            }
+                        }
+                        """)
                 .add("Canceller", """
                         package shop;
 
@@ -225,6 +244,7 @@ class ConstructorWorkRuleTest {
                         tuple(8, "Canceller does work in its constructor through Thread.interrupt()"),
                         tuple(12, "Catalog does work in its constructor through Files.readAllLines()"),
                         tuple(4, "Config does work in its static initializer through System.getenv()"),
+                        tuple(11, "Greeter does work in its constructor through PrintStream.println()"),
                         tuple(11, "Journal does work in its constructor through new FileOutputStream()"),
                         tuple(9, "PriceCache does work in its constructor through Storage.load()"),
                         tuple(4, "Regions does work in its constructor through System.getenv()"),

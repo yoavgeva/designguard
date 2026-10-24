@@ -12,29 +12,42 @@ import java.util.Set;
  * processes, plus the packages a project treats as impure. Holding a thread or an executor, or reading the current
  * thread, isn't an effect; starting, configuring or running work on one is. Using {@code Path}, {@code URI},
  * {@code File}, an {@code InetAddress} or a {@code java.sql.Timestamp} as data is not I/O, and neither are encoding a
- * URL, in-memory streams such as {@code StringWriter}, arrays, or wrapping a stream: only creating one on a file name,
- * or an object stream, which reads or writes a header, is.
+ * URL or arrays. A {@code java.io} stream touches the outside world where it is opened: on a file name, as
+ * {@code new FileReader("prices.txt")} is, from a classpath resource, or as an object stream, which reads or writes a
+ * header. Holding, wrapping, reading or writing a stream someone else opened only processes its data, the way a
+ * {@code StringWriter} would.
  */
 final class JdkEffects {
 
     private static final String CONSTRUCTOR = "<init>";
     private static final Set<String> IMPURE_PACKAGES =
-            Set.of("java.io", "java.nio.file", "java.nio.channels", "java.net", "java.net.http", "java.sql", "javax.sql");
+            Set.of("java.nio.file", "java.nio.channels", "java.net", "java.net.http", "java.sql", "javax.sql");
     private static final Set<String> IMPURE_TYPES = Set.of("java.time.Clock", "java.time.InstantSource",
             "java.util.Random", "java.security.SecureRandom", "java.util.concurrent.ThreadLocalRandom",
             "java.util.random.RandomGenerator", "java.lang.ProcessBuilder", "java.lang.Runtime",
-            "java.lang.IO");
+            "java.lang.IO", "java.io.Console");
     private static final Set<String> IMPURE_CALLS = Set.of("java.lang.System.currentTimeMillis",
             "java.lang.System.nanoTime", "java.lang.System.getenv", "java.lang.System.getProperty",
             "java.lang.System.getProperties", "java.lang.Integer.getInteger", "java.lang.Long.getLong",
             "java.lang.Boolean.getBoolean", "java.lang.Math.random", "java.util.UUID.randomUUID",
-            "java.util.Calendar.getInstance");
+            "java.util.Calendar.getInstance", "java.lang.System.console", "java.lang.Class.getResourceAsStream",
+            "java.lang.ClassLoader.getResourceAsStream", "java.lang.ClassLoader.getSystemResourceAsStream",
+            "java.lang.Module.getResourceAsStream");
     /** Types whose constructor without parameters reads the clock. */
     private static final Set<String> CLOCK_CONSTRUCTORS = Set.of("java.util.Date", "java.util.GregorianCalendar");
     /** What an {@code InetAddress} does that resolves names or reaches the network. */
     private static final Set<String> RESOLVES = Set.of("getByName", "getAllByName", "getLocalHost", "getHostName",
             "getCanonicalHostName", "isReachable");
     private static final Set<String> HEADER_STREAMS = Set.of("java.io.ObjectInputStream", "java.io.ObjectOutputStream");
+    private static final String FILE = "java.io.File";
+    /** What the first parameter of a {@code java.io} constructor that opens a file is: its name or its {@code File}. */
+    private static final Set<String> FILE_NAMES = Set.of(String.class.getName(), FILE);
+    /** Types outside {@code java.io} whose constructor opens a file, by the first parameter types that name it. */
+    private static final Map<String, Set<String>> OPENING_CONSTRUCTORS = Map.of(
+            "java.util.Scanner", Set.of(FILE, "java.nio.file.Path"),
+            "java.util.zip.ZipFile", FILE_NAMES,
+            "java.util.jar.JarFile", FILE_NAMES,
+            "java.util.Formatter", FILE_NAMES);
     private static final Set<String> RUNS_WORK = Set.of("execute", "submit", "invokeAll", "invokeAny", "schedule",
             "scheduleAtFixedRate", "scheduleWithFixedDelay", "shutdown", "shutdownNow", "close", "awaitTermination");
     private static final Set<String> STARTS_POOLS = Set.of(CONSTRUCTOR, "execute", "submit", "invokeAll", "invokeAny",
@@ -50,9 +63,11 @@ final class JdkEffects {
             Map.entry("java.nio.file.Paths", Set.of()),
             Map.entry("java.net.URI", Set.of()),
             Map.entry("java.net.URL", Set.of("openConnection", "openStream", "getContent")),
-            Map.entry("java.io.File", Set.of("exists", "isFile", "isDirectory", "canRead", "canWrite", "length",
-                    "lastModified", "list", "listFiles", "delete", "deleteOnExit", "mkdir", "mkdirs", "createNewFile",
-                    "renameTo", "getCanonicalPath", "getCanonicalFile", "setLastModified", "setReadOnly")),
+            Map.entry(FILE, Set.of("exists", "isFile", "isDirectory", "isHidden", "canRead", "canWrite", "canExecute",
+                    "length", "lastModified", "list", "listFiles", "listRoots", "delete", "deleteOnExit", "mkdir",
+                    "mkdirs", "createNewFile", "createTempFile", "renameTo", "getCanonicalPath", "getCanonicalFile",
+                    "setLastModified", "setReadOnly", "setReadable", "setWritable", "setExecutable", "getTotalSpace",
+                    "getFreeSpace", "getUsableSpace")),
             Map.entry("java.net.InetAddress", RESOLVES),
             Map.entry("java.net.Inet4Address", RESOLVES),
             Map.entry("java.net.Inet6Address", RESOLVES),
@@ -119,8 +134,8 @@ final class JdkEffects {
         if (EFFECTS_OF_VALUE_TYPES.containsKey(name)) {
             return EFFECTS_OF_VALUE_TYPES.get(name).contains(target.getName());
         }
-        if (CONSTRUCTOR.equals(target.getName())
-                && ("java.io".equals(owner.getPackageName()) || CLOCK_CONSTRUCTORS.contains(name))) {
+        if (CONSTRUCTOR.equals(target.getName()) && ("java.io".equals(owner.getPackageName())
+                || CLOCK_CONSTRUCTORS.contains(name) || OPENING_CONSTRUCTORS.containsKey(name))) {
             return touchesTheWorldOnCreation(target);
         }
         return isImpureType(owner, extraImpurePackages)
@@ -129,18 +144,18 @@ final class JdkEffects {
     }
 
     /**
-     * Whether creating the stream or date touches the outside world: a stream that opens the file it is given by
-     * name, as {@code new FileReader("prices.txt")} does, or reads or writes an object stream's header, or a date
-     * made without arguments, which reads the clock. Wrapping a stream doesn't.
+     * Whether creating the stream or date touches the outside world: a stream or file that opens the file its first
+     * parameter names, as {@code new FileReader("prices.txt")} or {@code new Scanner(file)} do, an object stream,
+     * which reads or writes a header, or a date made without arguments, which reads the clock.
      */
     private static boolean touchesTheWorldOnCreation(CodeUnitAccessTarget constructor) {
+        String owner = constructor.getOwner().getName();
         List<JavaClass> parameters = constructor.getRawParameterTypes();
-        if (CLOCK_CONSTRUCTORS.contains(constructor.getOwner().getName())) {
+        if (CLOCK_CONSTRUCTORS.contains(owner)) {
             return parameters.isEmpty();
         }
-        return HEADER_STREAMS.contains(constructor.getOwner().getName())
-                || parameters.stream().findFirst()
-                        .filter(first -> first.isEquivalentTo(String.class) || first.isEquivalentTo(java.io.File.class))
-                        .isPresent();
+        Set<String> names = OPENING_CONSTRUCTORS.getOrDefault(owner, FILE_NAMES);
+        return HEADER_STREAMS.contains(owner)
+                || parameters.stream().findFirst().filter(first -> names.contains(first.getName())).isPresent();
     }
 }

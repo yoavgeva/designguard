@@ -97,11 +97,13 @@ final class Effects {
     }
 
     /**
-     * Whether making the call uses an outside-world API: I/O, the clock, randomness, the environment, threads.
-     * {@code Thread.currentThread().interrupt()} only restores the current thread's interrupt flag, so it doesn't.
+     * Whether making the call uses an outside-world API: I/O, the clock, randomness, the environment, threads, or the
+     * console, as {@code System.out.println(...)} does. {@code Thread.currentThread().interrupt()} only restores the
+     * current thread's interrupt flag, so it doesn't.
      */
     boolean isImpure(Bytecode bytecode, JavaCodeUnitAccess<?> access) {
         return JdkEffects.isImpure(access.getTarget(), extraImpurePackages)
-                && !bytecode.isCall(Bytecode.CallKind.RESTORED_INTERRUPT, access);
+                && !bytecode.isCall(Bytecode.CallKind.RESTORED_INTERRUPT, access)
+                || bytecode.isCall(Bytecode.CallKind.CONSOLE, access);
     }
 }

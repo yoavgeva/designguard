@@ -16,7 +16,10 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   `System.getProperties()` and `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an `InetAddress` or a
   `java.sql.Timestamp` as data, encoding a URL, copying an array, holding a thread or an executor, reading the current
   thread, and restoring its interrupt flag with `Thread.currentThread().interrupt()` aren't effects; resolving a host
-  name or interrupting another thread is.
+  name or interrupting another thread is. A stream touches the outside world where it is opened: on a file name, as
+  `new FileReader("prices.txt")` and `new Scanner(file)` are, from a classpath resource, or as the console
+  (`System.out`, `System.err`, `System.in`). Holding, wrapping, reading or writing a stream someone else opened only
+  processes its data, so a parser over a `Reader` or a writer of JSON to a `Writer` is a value.
 - **Service-like**: a class that is effectful, holds a service, or is an interface with a service-like
   implementation. **Value**: any other class.
 - **Collaborator**: an instance of another project type that a class holds in a field, as injected services are.
@@ -414,7 +417,8 @@ Fix: add a batch query to the collaborator, such as `client.chargeAll(amounts)`,
 Constructors and static initializers that call effectful code are reported: I/O, the clock, an injected
 collaborator. Field initializers run in every constructor, and are reported once. A call to a collaborator counts
 only if every implementation it may run touches the outside world, and calls to JDK interfaces such as
-`Iterator.hasNext()` don't count. Wrapping a stream, or creating an in-memory one such as `StringWriter`, isn't I/O.
+`Iterator.hasNext()` don't count. Reading a stream the constructor is given, wrapping it, or creating an in-memory
+one such as `StringWriter`, isn't I/O.
 Creating objects is left to `inject-services`, and wiring code is exempt.
 
 Why: a class whose constructor does work can't be created without it, so tests can't create it cheaply, and a

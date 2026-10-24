@@ -52,6 +52,111 @@ class InjectServicesRuleTest {
     }
 
     @Test
+    void streamsTheCallerOpensAreDataButOpeningOneIsAService() {
+        var guard = new CompiledProject(directory).release(release)
+                .add("Escaper", """
+                        package shop;
+
+                        import java.io.IOException;
+                        import java.io.Writer;
+
+                        public final class Escaper {
+                            public void translate(CharSequence text, Writer out) throws IOException {
+                                out.write(text.toString().replace("<", "&lt;"));
+                            }
+                        }
+                        """)
+                .add("JsonOut", """
+                        package shop;
+
+                        import java.io.IOException;
+                        import java.io.Writer;
+
+                        public final class JsonOut {
+                            private final Writer out;
+
+                            public JsonOut(Writer out) {
+                                this.out = out;
+                            }
+
+                            public void name(String name) throws IOException {
+                                out.write('"' + name + '"');
+                            }
+                        }
+                        """)
+                .add("Banner", """
+                        package shop;
+
+                        import java.io.IOException;
+                        import java.io.InputStream;
+
+                        public final class Banner {
+                            public byte[] text() throws IOException {
+                                try (InputStream in = Banner.class.getResourceAsStream("/banner.txt")) {
+                                    return in.readAllBytes();
+                                }
+                            }
+                        }
+                        """)
+                .add("Lines", """
+                        package shop;
+
+                        import java.io.File;
+                        import java.io.FileNotFoundException;
+                        import java.util.Scanner;
+
+                        public final class Lines {
+                            public String first(File file) throws FileNotFoundException {
+                                try (Scanner scanner = new Scanner(file)) {
+                                    return scanner.nextLine();
+                                }
+                            }
+                        }
+                        """)
+                .add("Prompt", """
+                        package shop;
+
+                        public final class Prompt {
+                            public String ask() {
+                                return System.console().readLine("name? ");
+                            }
+                        }
+                        """)
+                .add("Scratch", """
+                        package shop;
+
+                        import java.io.File;
+                        import java.io.IOException;
+
+                        public final class Scratch {
+                            public File create() throws IOException {
+                                return File.createTempFile("shop", ".txt");
+                            }
+                        }
+                        """)
+                .add("Report", """
+                        package shop;
+
+                        import java.io.IOException;
+                        import java.io.StringWriter;
+
+                        public final class Report {
+                            public String render() throws IOException {
+                                StringWriter out = new StringWriter();
+                                new Escaper().translate("<b>", out);
+                                new JsonOut(out).name("total");
+                                return out + new String(new Banner().text()) + new Lines() + new Prompt() + new Scratch();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().injectServices().evaluate()).extracting(Violation::message).containsExactly(
+                "Report creates service-like Banner with new", "Report creates service-like Lines with new",
+                "Report creates service-like Prompt with new", "Report creates service-like Scratch with new");
+    }
+
+    @Test
     void flagsStaticSingletonAccess() {
         var guard = ShopFixture.write(directory).release(release)
                 .add("Registry", """
