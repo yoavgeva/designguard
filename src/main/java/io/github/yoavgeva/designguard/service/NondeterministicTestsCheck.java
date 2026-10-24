@@ -144,7 +144,8 @@ public final class NondeterministicTestsCheck {
     /** What a nondeterministic call does, and how to make the test fixed. */
     private enum Kind {
         CLOCK("tests-fixed-clock", "reads the system clock",
-                "pass a fixed Clock, such as Clock.fixed(...), to the code under test"),
+                "use a fixed time, such as Instant.parse(...), or pass a fixed Clock, such as Clock.fixed(...), to the"
+                        + " code under test"),
         RANDOMNESS("tests-seeded-randomness", "uses unseeded randomness", "use fixed data, or a Random with a fixed seed"),
         ENVIRONMENT("tests-no-environment", "reads the environment",
                 "pass the value in, so the test doesn't depend on the machine it runs on"),

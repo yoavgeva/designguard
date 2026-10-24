@@ -1408,9 +1408,10 @@ void recounts() {
 ```
 
 > test TallyTest.recounts() reads the system clock through java.time.LocalDate.now()
-> -> fix: pass a fixed Clock, such as Clock.fixed(...), to the code under test
+> -> fix: use a fixed time, such as Instant.parse(...), or pass a fixed Clock, such as Clock.fixed(...), to the code under test
 
-Fix: give the code under test `Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC)`.
+Fix: use a fixed time as test data, such as `Instant.parse("2026-01-01T00:00:00Z")`, and give code that reads the
+clock `Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC)`.
 
 ### `tests-seeded-randomness`
 

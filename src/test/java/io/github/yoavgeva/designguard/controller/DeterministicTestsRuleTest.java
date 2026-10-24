@@ -69,7 +69,8 @@ class DeterministicTestsRuleTest {
         assertThat(Stream.of(guard.tests().testsUseAFixedClock(), guard.tests().testsUseSeededRandomness(),
                         guard.tests().testsDontReadTheEnvironment(), guard.tests().testsDontSleep())
                 .map(rule -> rule.evaluate().get(0).fix())).containsExactly(
-                "pass a fixed Clock, such as Clock.fixed(...), to the code under test",
+                "use a fixed time, such as Instant.parse(...), or pass a fixed Clock, such as Clock.fixed(...),"
+                        + " to the code under test",
                 "use fixed data, or a Random with a fixed seed",
                 "pass the value in, so the test doesn't depend on the machine it runs on",
                 "wait for the condition instead, for example with Awaitility, or make time injectable");
