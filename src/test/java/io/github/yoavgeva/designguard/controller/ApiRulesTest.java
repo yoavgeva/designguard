@@ -701,6 +701,20 @@ class ApiRulesTest {
                                         return 0;
                                 }
                             }
+
+                            public int depth(String token) {
+                                switch (token) {
+                                    case "(":
+                                        return 1;
+                                    case ")":
+                                        return -1;
+                                    case "select":
+                                    case "from":
+                                        return 0;
+                                    default:
+                                        return 2;
+                                }
+                            }
                         }
                         """)
                 .guard(SHOP);

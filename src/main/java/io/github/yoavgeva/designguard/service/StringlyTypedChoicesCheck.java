@@ -43,6 +43,8 @@ public final class StringlyTypedChoicesCheck {
             "double", "void");
     private static final Set<String> OBJECT_METHODS = Set.of("toString", "hashCode", "equals", "getClass");
     private static final Pattern DIGIT = Pattern.compile("\\d");
+    /** A character that no identifier-like word has: punctuation, quotes, brackets, dots or spaces. */
+    private static final Pattern SYNTAX = Pattern.compile("[^\\p{L}\\p{N}_-]");
 
     /**
      * Finds violations in the sources the filter selects.
@@ -134,12 +136,12 @@ public final class StringlyTypedChoicesCheck {
 
     /**
      * Whether the strings are words of a vocabulary from outside the code, which an enum can't own: property keys,
-     * class names or SQL, which have dots or spaces, single characters such as operators, Java's type names, codes
-     * such as SQL states, which all have digits, or method names a proxy dispatches on, which include
-     * {@code toString}.
+     * class names or SQL, which have dots or spaces, tokens a parser reads, any of which is punctuation such as
+     * {@code "("}, single characters such as operators, Java's type names, codes such as SQL states, which all have
+     * digits, or method names a proxy dispatches on, which include {@code toString}.
      */
     private static boolean isOutsideVocabulary(List<String> strings) {
-        return strings.stream().anyMatch(string -> string.contains(".") || string.contains(" ") || OBJECT_METHODS.contains(string))
+        return strings.stream().anyMatch(string -> SYNTAX.matcher(string).find() || OBJECT_METHODS.contains(string))
                 || strings.stream().allMatch(string -> string.length() <= 1 || DIGIT.matcher(string).find())
                 || strings.stream().filter(PRIMITIVES::contains).count() * 2 >= strings.size();
     }

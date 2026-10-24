@@ -948,8 +948,9 @@ Choices between strings are reported: a `switch` over three or more string liter
 comparing one value with three or more strings through `equals`, `equalsIgnoreCase` or `Objects.equals`. Converters,
 which turn input strings into a type, are exempt: methods named `parse`, `from`, `valueOf`, `of` or `decode`, and
 methods returning one of the project's enums. So are words from outside the code, which an enum can't own: strings
-with dots or spaces (property keys, class names, SQL), single characters such as operators, Java's type names, codes
-with digits such as SQL states, and method names a proxy dispatches on, which include `toString`.
+with dots or spaces (property keys, class names, SQL), tokens a parser reads, any of which is punctuation such as
+`"("`, single characters such as operators, Java's type names, codes with digits such as SQL states, and method names
+a proxy dispatches on, which include `toString`.
 
 Why: a typo in a string compiles, and a missing enum case doesn't.
 
