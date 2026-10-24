@@ -179,6 +179,37 @@ class QueriesInLoopsRuleTest {
     }
 
     @Test
+    void repositoriesALibraryImplementsAreQueriedOncePerItemToo() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Repository", "package org.springframework.data.repository;\n\n"
+                        + "public interface Repository<T, ID> {\n}\n")
+                .add("OwnerRepository", "package shop;\n\npublic interface OwnerRepository "
+                        + "extends org.springframework.data.repository.Repository<String, Integer> {\n"
+                        + "    String findById(Integer id);\n}\n")
+                .add("Owners", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Owners {
+                            private final OwnerRepository owners;
+
+                            public Owners(OwnerRepository owners) {
+                                this.owners = owners;
+                            }
+
+                            public List<String> names(List<Integer> ids) {
+                                return ids.stream().map(owners::findById).toList();
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.dependencies().noQueriesInLoops().evaluate()).extracting(Violation::message)
+                .containsExactly("Owners.names() queries OwnerRepository.findById() inside a loop, once per item");
+    }
+
+    @Test
     void strategiesAndReadingAStreamAreNotQueries() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Rule", "package shop;\n\npublic interface Rule {\n    boolean test(String value);\n}\n")

@@ -259,6 +259,181 @@ class ServiceLikeClassesRuleTest {
     }
 
     @Test
+    void repositoriesAndClientsOfLibrariesTouchTheOutsideWorld() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Repository", "package org.springframework.data.repository;\n\n"
+                        + "public interface Repository<T, ID> {\n}\n")
+                .add("CrudRepository", "package org.springframework.data.repository;\n\n"
+                        + "public interface CrudRepository<T, ID> extends Repository<T, ID> {\n    T save(T entity);\n}\n")
+                .add("JdbcOperations", "package org.springframework.jdbc.core;\n\npublic interface JdbcOperations {\n"
+                        + "    int update(String sql);\n}\n")
+                .add("Mapper", "package org.apache.ibatis.annotations;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\npublic @interface Mapper {\n}\n")
+                .add("Mapper", "package org.mapstruct;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\npublic @interface Mapper {\n}\n")
+                .add("ArticleRepository", "package shop;\n\npublic interface ArticleRepository "
+                        + "extends org.springframework.data.repository.CrudRepository<String, Long> {\n"
+                        + "    String findBySlug(String slug);\n}\n")
+                .add("OrderMapper", "package shop;\n\n@org.apache.ibatis.annotations.Mapper\npublic interface OrderMapper {\n"
+                        + "    String find(long id);\n}\n")
+                .add("OrderDtoMapper", "package shop;\n\n@org.mapstruct.Mapper\npublic interface OrderDtoMapper {\n"
+                        + "    String toDto(String order);\n}\n")
+                .add("UpperDtoMapper", """
+                        package shop;
+
+                        public final class UpperDtoMapper implements OrderDtoMapper {
+                            @Override
+                            public String toDto(String order) {
+                                return order.toUpperCase(java.util.Locale.ROOT);
+                            }
+                        }
+                        """)
+                .add("Articles", """
+                        package shop;
+
+                        public final class Articles {
+                            private final ArticleRepository repository;
+                            private int lookups;
+
+                            public Articles(ArticleRepository repository) {
+                                this.repository = repository;
+                            }
+
+                            public String find(String slug) {
+                                lookups++;
+                                return repository.findBySlug(slug);
+                            }
+                        }
+                        """)
+                .add("Archive", """
+                        package shop;
+
+                        public final class Archive {
+                            private int archived;
+
+                            public int archive(org.springframework.jdbc.core.JdbcOperations jdbc) {
+                                archived += jdbc.update("update article set archived = true");
+                                return archived;
+                            }
+                        }
+                        """)
+                .add("Orders", """
+                        package shop;
+
+                        public final class Orders {
+                            private final OrderMapper mapper;
+                            private String last;
+
+                            public Orders(OrderMapper mapper) {
+                                this.mapper = mapper;
+                            }
+
+                            public String find(long id) {
+                                last = mapper.find(id);
+                                return last;
+                            }
+                        }
+                        """)
+                .add("Converter", """
+                        package shop;
+
+                        public final class Converter {
+                            private final OrderDtoMapper mapper;
+                            private String last;
+
+                            public Converter(OrderDtoMapper mapper) {
+                                this.mapper = mapper;
+                            }
+
+                            public String convert(String order) {
+                                last = mapper.toDto(order);
+                                return last;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
+                "Archive is service-like, but its field 'archived' isn't final",
+                "Articles is service-like, but its field 'lookups' isn't final",
+                "Orders is service-like, but its field 'last' isn't final");
+    }
+
+    @Test
+    void aLibraryTypeTheProjectImplementsIsJudgedByThatCode() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("JdbcOperations", "package org.springframework.jdbc.core;\n\npublic interface JdbcOperations {\n"
+                        + "    int update(String sql);\n}\n")
+                .add("EntityManager", "package jakarta.persistence;\n\npublic interface EntityManager {\n"
+                        + "    void persist(Object entity);\n}\n")
+                .add("CountingJdbc", """
+                        package org.springframework.jdbc.core;
+
+                        public final class CountingJdbc implements JdbcOperations {
+                            @Override
+                            public int update(String sql) {
+                                return sql.length();
+                            }
+                        }
+                        """)
+                .add("Batch", """
+                        package org.springframework.jdbc.core;
+
+                        public final class Batch {
+                            private final JdbcOperations jdbc;
+                            private int rows;
+
+                            public Batch(JdbcOperations jdbc) {
+                                this.jdbc = jdbc;
+                            }
+
+                            public int run(String sql) {
+                                rows += jdbc.update(sql);
+                                return rows;
+                            }
+                        }
+                        """)
+                .add("MemorySession", """
+                        package org.springframework.jdbc.memory;
+
+                        import jakarta.persistence.EntityManager;
+                        import java.util.ArrayList;
+                        import java.util.List;
+
+                        public final class MemorySession implements EntityManager {
+                            private final List<Object> entities = new ArrayList<>();
+
+                            @Override
+                            public void persist(Object entity) {
+                                entities.add(entity);
+                            }
+                        }
+                        """)
+                .add("Saver", """
+                        package org.springframework.jdbc.memory;
+
+                        import jakarta.persistence.EntityManager;
+
+                        public final class Saver {
+                            private final EntityManager session;
+                            private int saved;
+
+                            public Saver(EntityManager session) {
+                                this.session = session;
+                            }
+
+                            public void save(Object entity) {
+                                saved++;
+                                session.persist(entity);
+                            }
+                        }
+                        """)
+                .guard("org.springframework.jdbc");
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).isEmpty();
+    }
+
+    @Test
     void persistentClassesAreDataEvenWhenTheyReadTheClock() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Entity", "package shop;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"

@@ -34,7 +34,7 @@ final class ServiceLikeClasses {
 
     ServiceLikeClasses(ProjectClasses classes, List<String> extraImpurePackages) {
         this.classes = classes;
-        this.effects = new Effects(extraImpurePackages, overrides);
+        this.effects = new Effects(extraImpurePackages, overrides, classes);
         List<JavaClass> candidates = classes.stream().filter(ServiceLikeClasses::canBeServiceLike).toList();
         this.effectfulNames = Set.copyOf(withAbstractions(candidates,
                 CallGraph.ownersOf(candidates, effects.effectfulCodeUnits(classes, candidates))));

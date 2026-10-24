@@ -17,6 +17,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 @MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class ConstructorWorkRuleTest {
 
+    private static final String SHOP = "shop";
+
     @Parameter
     private int release;
 
@@ -235,7 +237,7 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate())
                 .extracting(Violation::line, Violation::message)
@@ -358,9 +360,88 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();
+    }
+
+    @Test
+    void creatingALibraryClientIsNotWorkButCallingOneIs() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("WebClient", """
+                        package org.springframework.web.reactive.function.client;
+
+                        public interface WebClient {
+                            String get(String uri);
+
+                            static WebClient create(String baseUrl) {
+                                return uri -> baseUrl + uri;
+                            }
+
+                            static Builder builder() {
+                                return WebClient::create;
+                            }
+
+                            interface Builder {
+                                WebClient build(String baseUrl);
+                            }
+                        }
+                        """)
+                .add("RestOperations", "package org.springframework.web.client;\n\npublic interface RestOperations {\n"
+                        + "    String getForObject(String url);\n}\n")
+                .add("RestTemplate", """
+                        package org.springframework.web.client;
+
+                        public class RestTemplate implements RestOperations {
+                            @Override
+                            public String getForObject(String url) {
+                                return url;
+                            }
+                        }
+                        """)
+                .add("Gateway", """
+                        package shop;
+
+                        import org.springframework.web.client.RestTemplate;
+                        import org.springframework.web.reactive.function.client.WebClient;
+
+                        public final class Gateway {
+                            private final WebClient web;
+                            private final WebClient other;
+                            private final RestTemplate rest;
+
+                            public Gateway(String baseUrl) {
+                                this.web = WebClient.builder().build(baseUrl);
+                                this.other = WebClient.create(baseUrl);
+                                this.rest = new RestTemplate();
+                            }
+
+                            public String fetch(String uri) {
+                                return web.get(uri) + other.get(uri) + rest.getForObject(uri);
+                            }
+                        }
+                        """)
+                .add("Warmup", """
+                        package shop;
+
+                        import org.springframework.web.client.RestTemplate;
+
+                        public final class Warmup {
+                            private final String status;
+
+                            public Warmup(RestTemplate rest) {
+                                this.status = rest.getForObject("/health");
+                            }
+
+                            public String status() {
+                                return status;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).extracting(Violation::message)
+                .containsExactly("Warmup does work in its constructor through RestTemplate.getForObject()");
     }
 
     @Test
@@ -534,7 +615,7 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();
     }

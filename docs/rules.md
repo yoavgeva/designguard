@@ -10,7 +10,13 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
 ## Terms
 
 - **Effectful**: code that touches the outside world: I/O, the clock, randomness, the environment, threads and
-  executors, processes, or a package given to `treatingAsImpure(...)`. Code is effectful directly, through a field
+  executors, processes, a library's database, HTTP, messaging or mail client, or a package given to
+  `treatingAsImpure(...)`. The library clients are Spring Data repositories, including the ones a project declares,
+  JPA's `EntityManager`, Hibernate sessions, Spring's `JdbcTemplate`, `JdbcClient`, R2DBC `DatabaseClient`, Mongo,
+  Redis, Elasticsearch and Cassandra templates and transaction templates, jOOQ's `DSLContext`, MyBatis `SqlSession`s and
+  `@Mapper`s, `RestTemplate`, `RestClient`, `WebClient`, OkHttp, Apache HttpClient, OpenFeign `@FeignClient`s and
+  Spring HTTP interfaces, Kafka, AMQP and JMS templates and clients, and `MailSender`; creating one or its builder,
+  as `new RestTemplate()` or `WebClient.builder()` do, isn't an effect, calling it is. Code is effectful directly, through a field
   holding such a resource, or by calling effectful project code; a call through an interface is effectful if any
   implementation is, except a call on a parameter, which runs whatever implementation the caller passed, so
   `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface annotated
@@ -661,7 +667,9 @@ Fix: `record Tally(int total) { Tally add(int amount) { return new Tally(total +
 `types().servicesAreStateless()`
 
 Service-like classes that hold changing state are reported: a non-final instance field, or a final one holding a
-mutable collection, an atomic or a string builder. Wiring code, enums and records are skipped.
+mutable collection, an atomic or a string builder. A non-final field a container injects, with `@Autowired`, `@Value`,
+`@Inject`, `@Resource` or `@PersistenceContext`, holds a collaborator or a setting, not state, so it is reported as
+one to take as a constructor parameter. Wiring code, enums and records are skipped.
 
 Why: a service is shared by its callers, so its state leaks between them and races under concurrency.
 

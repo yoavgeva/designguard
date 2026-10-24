@@ -1,8 +1,11 @@
 package io.github.yoavgeva.designguard.service;
 
+import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
+import com.tngtech.archunit.core.domain.JavaConstructor;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.domain.PackageMatcher;
 import java.util.List;
 import java.util.Map;
@@ -11,8 +14,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Which code touches the outside world: code that uses an API {@link JdkEffects} lists, or a configured impure
- * package. A method, constructor or lambda is effectful if it uses such an API, reads a field holding such a
+ * Which code touches the outside world: code that uses an API {@link JdkEffects} or {@link LibraryEffects} lists, or a
+ * configured impure package. A method, constructor or lambda is effectful if it uses such an API, reads a field holding such a
  * resource, or calls project code that is effectful; a call through an interface counts as effectful if any
  * implementation is.
  */
@@ -20,15 +23,21 @@ final class Effects {
 
     private final List<PackageMatcher> extraImpurePackages;
     private final Overrides overrides;
+    private final LibraryEffects libraries;
 
-    Effects(List<String> extraImpurePackages, Overrides overrides) {
+    Effects(List<String> extraImpurePackages, Overrides overrides, ProjectClasses classes) {
         this.extraImpurePackages = extraImpurePackages.stream().map(PackageMatcher::of).toList();
         this.overrides = overrides;
+        this.libraries = new LibraryEffects(classes);
     }
 
     /** Whether using this type at all means touching the outside world, like {@code HttpClient} or {@code Random}. */
     boolean isImpureType(JavaClass type) {
-        return JdkEffects.isImpureType(type, extraImpurePackages);
+        return JdkEffects.isImpureType(type, extraImpurePackages) || isLibraryClient(type);
+    }
+
+    private boolean isLibraryClient(JavaClass type) {
+        return JdkEffects.canHaveEffects(type) && libraries.isImpureType(type);
     }
 
     /** Full names of the effectful methods, constructors and lambdas; a call may run any override of its target. */
@@ -98,12 +107,33 @@ final class Effects {
 
     /**
      * Whether making the call uses an outside-world API: I/O, the clock, randomness, the environment, threads, or the
-     * console, as {@code System.out.println(...)} does. {@code Thread.currentThread().interrupt()} only restores the
-     * current thread's interrupt flag, so it doesn't.
+     * console, as {@code System.out.println(...)} does, or a library's database, HTTP, messaging or mail client.
+     * {@code Thread.currentThread().interrupt()} only restores the current thread's interrupt flag, so it doesn't.
      */
     boolean isImpure(Bytecode bytecode, JavaCodeUnitAccess<?> access) {
         return JdkEffects.isImpure(access.getTarget(), extraImpurePackages)
                 && !bytecode.isCall(Bytecode.CallKind.RESTORED_INTERRUPT, access)
-                || bytecode.isCall(Bytecode.CallKind.CONSOLE, access);
+                || bytecode.isCall(Bytecode.CallKind.CONSOLE, access)
+                || callsLibraryClient(access);
+    }
+
+    /**
+     * Whether the access calls a library client, such as a repository or a REST client. Creating one or its builder, as
+     * {@code new RestTemplate()} and {@code WebClient.builder()} do, isn't I/O.
+     */
+    private boolean callsLibraryClient(JavaCodeUnitAccess<?> access) {
+        CodeUnitAccessTarget target = access.getTarget();
+        return isLibraryClient(access.getTargetOwner()) && !JavaConstructor.CONSTRUCTOR_NAME.equals(target.getName())
+                && !createsClient(target);
+    }
+
+    /** Whether the target is a static factory of a client or of its builder, as {@code WebClient.create(url)} is. */
+    private boolean createsClient(CodeUnitAccessTarget target) {
+        JavaClass owner = target.getOwner();
+        return target.resolveMember()
+                .filter(member -> member.getModifiers().contains(JavaModifier.STATIC))
+                .map(JavaCodeUnit::getRawReturnType)
+                .filter(type -> type.equals(owner) || type.getName().startsWith(owner.getName() + "$") || isLibraryClient(type))
+                .isPresent();
     }
 }
