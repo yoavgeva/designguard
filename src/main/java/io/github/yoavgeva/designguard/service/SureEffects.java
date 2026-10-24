@@ -7,7 +7,7 @@ import java.util.Set;
 
 /**
  * Which calls surely touch the outside world when they are made: those that call an outside-world API, or project code
- * whose every implementation surely does. What counts as such a call is all effects, or only I/O.
+ * whose every implementation surely does. What counts as such a call is all effects, or only remote queries.
  */
 final class SureEffects {
 
@@ -16,7 +16,7 @@ final class SureEffects {
     private final Overrides overrides;
     private final Memo<Set<String>> withBodies;
     private final Memo<Set<String>> effectfulWhenRun;
-    private final Memo<Set<String>> ioWhenRun;
+    private final Memo<Set<String>> remoteWhenRun;
 
     SureEffects(ProjectClasses classes, Effects effects, Overrides overrides, List<JavaClass> candidates) {
         this.classes = classes;
@@ -25,8 +25,7 @@ final class SureEffects {
         this.withBodies = new Memo<>(() -> CallGraph.withBodies(CallGraph.unitsOf(candidates)));
         this.effectfulWhenRun = new Memo<>(() -> effects.surelyWhenRun(classes, candidates,
                 call -> effects.isImpure(classes.bytecode(), call)));
-        this.ioWhenRun = new Memo<>(() -> effects.surelyWhenRun(classes, candidates,
-                call -> effects.doesIo(classes.bytecode(), call)));
+        this.remoteWhenRun = new Memo<>(() -> effects.surelyWhenRun(classes, candidates, effects::queriesRemotely));
     }
 
     /**
@@ -39,9 +38,12 @@ final class SureEffects {
         return effects.isImpure(classes.bytecode(), call) || surely(call, effectfulWhenRun);
     }
 
-    /** Whether making the call surely does I/O right away: {@link #runsEffects}, without the clock and randomness. */
-    boolean runsIo(JavaCodeUnitAccess<?> call) {
-        return effects.doesIo(classes.bytecode(), call) || surely(call, ioWhenRun);
+    /**
+     * Whether making the call surely queries a database or another machine right away, directly or through project
+     * code whose every implementation does: {@link #runsEffects}, for remote calls only.
+     */
+    boolean queriesRemotely(JavaCodeUnitAccess<?> call) {
+        return effects.queriesRemotely(call) || surely(call, remoteWhenRun);
     }
 
     private boolean surely(JavaCodeUnitAccess<?> call, Memo<Set<String>> whenRun) {

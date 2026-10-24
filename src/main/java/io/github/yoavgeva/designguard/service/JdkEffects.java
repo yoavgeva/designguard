@@ -22,6 +22,9 @@ import java.util.stream.Stream;
 final class JdkEffects {
 
     private static final String CONSTRUCTOR = "<init>";
+    /** Packages whose impure calls reach a database or another machine. */
+    private static final Set<String> REMOTE_PACKAGES = Set.of("java.net", "java.net.http", "java.sql", "javax.sql",
+            "java.rmi");
     private static final Set<String> IMPURE_PACKAGES =
             Set.of("java.nio.file", "java.nio.channels", "java.net", "java.net.http", "java.sql", "javax.sql");
     /** Types whose every use reads the clock or randomness. */
@@ -145,6 +148,11 @@ final class JdkEffects {
      */
     private static boolean createsTimeOrChance(CodeUnitAccessTarget target) {
         return CONSTRUCTOR.equals(target.getName()) || TIME_AND_CHANCE_TYPES.contains(target.getRawReturnType().getName());
+    }
+
+    /** Whether the call's API reaches a database or another machine: JDBC, the network or RMI. */
+    static boolean reachesRemote(CodeUnitAccessTarget target) {
+        return REMOTE_PACKAGES.contains(target.getOwner().getPackageName());
     }
 
     /** Whether the type is a clock or a source of randomness. */

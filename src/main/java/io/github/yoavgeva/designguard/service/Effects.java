@@ -126,9 +126,15 @@ final class Effects {
                 || libraries.isCall(access);
     }
 
-    /** Whether the call does I/O: it touches the outside world other than by reading the clock or randomness. */
-    boolean doesIo(Bytecode bytecode, JavaCodeUnitAccess<?> access) {
-        return isImpure(bytecode, access) && !JdkEffects.readsTimeOrChance(access.getTarget());
+    /**
+     * Whether the call queries a database or another machine: JDBC, the network, a library client, or a package
+     * treated as impure, such as an SDK's. Files, the environment and the console are local.
+     */
+    boolean queriesRemotely(JavaCodeUnitAccess<?> access) {
+        String packageName = access.getTargetOwner().getPackageName();
+        return JdkEffects.isImpure(access.getTarget(), extraImpurePackages) && (JdkEffects.reachesRemote(access.getTarget())
+                || extraImpurePackages.stream().anyMatch(matcher -> matcher.matches(packageName)))
+                || libraries.isCall(access);
     }
 
 }

@@ -1,8 +1,6 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
-import com.github.javaparser.ast.body.EnumDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.SwitchExpr;
@@ -27,16 +25,16 @@ import java.util.stream.Stream;
  * Finds choices between strings that an enum models with type safety: a {@code switch} over three or more string
  * literals, or an {@code if}/{@code else if} chain comparing one value with three or more strings through {@code
  * equals}. A typo in a string compiles; a missing enum case doesn't. Converters, which turn input strings into a type,
- * are exempt: methods named {@code parse}, {@code from}, {@code valueOf}, {@code of}, {@code decode} or {@code to...},
- * as {@code toBool} is, and methods returning one of the project's enums. So are words from outside the code, which an
- * enum can't own: strings with dots or spaces, such as property keys or SQL, single characters, Java's type names,
- * codes with digits, such as SQL states, method names a proxy dispatches on, and HTTP's method names.
+ * are exempt: methods named {@code parse}, {@code from}, {@code valueOf}, {@code of}, {@code decode} or {@code to...}
+ * or {@code for...}, as {@code toBool} and {@code forExtension} are, and methods returning one of the project's enums.
+ * So are words from outside the code, which an enum can't own: strings with dots or spaces, such as property keys or
+ * SQL, single characters, Java's type names, codes with digits, such as SQL states, method names a proxy dispatches on,
+ * HTTP's method names, and command-line options, which start with a dash.
  */
 public final class StringlyTypedChoicesCheck {
 
     private static final String RULE = "no-stringly-typed-choices";
     private static final int MIN_STRINGS = 3;
-    private static final Pattern CONVERTER = Pattern.compile("(parse|from|valueOf|of|decode|to(?=[A-Z])).*");
     private static final Set<String> HTTP_METHODS = Set.of("GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
             "TRACE", "PATCH");
     private static final Pattern NOT_IDENTIFIER = Pattern.compile("[^A-Za-z0-9]+");
@@ -56,13 +54,10 @@ public final class StringlyTypedChoicesCheck {
      * @return violations ordered by file and line
      */
     public List<Violation> check(JavaSources sources, ClassFilter filter) {
-        Set<String> enums = sources.files().stream()
-                .flatMap(file -> file.unit().findAll(EnumDeclaration.class).stream())
-                .map(EnumDeclaration::getNameAsString)
-                .collect(Collectors.toSet());
+        Converters converters = new Converters(sources);
         return sources.files().stream()
                 .flatMap(file -> Stream.concat(switches(file), chains(file))
-                        .filter(choice -> Scopes.selected(filter, file, choice.node()) && !inConverter(choice.node(), enums)
+                        .filter(choice -> Scopes.selected(filter, file, choice.node()) && !converters.contain(choice.node())
                                 && !isOutsideVocabulary(choice.strings()))
                         .map(choice -> choice.violation(file)))
                 .sorted(Scopes.BY_LOCATION)
@@ -140,10 +135,12 @@ public final class StringlyTypedChoicesCheck {
      * Whether the strings are words of a vocabulary from outside the code, which an enum can't own: property keys,
      * class names or SQL, which have dots or spaces, tokens a parser reads, any of which is punctuation such as
      * {@code "("}, single characters such as operators, Java's type names, codes such as SQL states, which all have
-     * digits, method names a proxy dispatches on, which include {@code toString}, or HTTP's method names.
+     * digits, method names a proxy dispatches on, which include {@code toString}, HTTP's method names, or command-line
+     * options, which start with a dash.
      */
     private static boolean isOutsideVocabulary(List<String> strings) {
-        return strings.stream().anyMatch(string -> SYNTAX.matcher(string).find() || OBJECT_METHODS.contains(string))
+        return strings.stream().anyMatch(string -> SYNTAX.matcher(string).find() || OBJECT_METHODS.contains(string)
+                        || string.startsWith("-"))
                 || strings.stream().allMatch(string -> string.length() <= 1 || DIGIT.matcher(string).find())
                 || strings.stream().allMatch(string -> HTTP_METHODS.contains(string.toUpperCase(Locale.ROOT)))
                 || strings.stream().filter(PRIMITIVES::contains).count() * 2 >= strings.size();
@@ -151,15 +148,6 @@ public final class StringlyTypedChoicesCheck {
 
     private static String subjectOf(Expression selector) {
         return selector instanceof NodeWithSimpleName<?> named ? named.getNameAsString() : selector.toString();
-    }
-
-    /** Whether the choice sits in a converter: a method named like one, or one returning a project enum. */
-    private static boolean inConverter(Node node, Set<String> enums) {
-        return Scopes.enclosingCallable(node)
-                .filter(callable -> CONVERTER.matcher(callable.getNameAsString()).matches()
-                        || callable instanceof MethodDeclaration method
-                                && enums.contains(method.getType().asString().replaceAll(".*\\.", "")))
-                .isPresent();
     }
 
     /**

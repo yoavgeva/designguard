@@ -35,7 +35,7 @@ class QueriesInLoopsRuleTest {
                         public final class EnvPrices implements PriceRepository {
                             @Override
                             public long priceOf(String item) {
-                                return System.getenv(item).length();
+                                return java.sql.DriverManager.getLoginTimeout() + item.length();
                             }
 
                             @Override
@@ -298,6 +298,45 @@ class QueriesInLoopsRuleTest {
     }
 
     @Test
+    void localFilesAndTheEnvironmentAreNoQueries() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Catalog", """
+                        package shop;
+
+                        public class Catalog {
+                            public boolean isScript(String ref) {
+                                return java.nio.file.Files.isRegularFile(java.nio.file.Path.of(ref));
+                            }
+
+                            public String setting(String key) {
+                                return System.getenv(key);
+                            }
+                        }
+                        """)
+                .add("Aliases", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Aliases {
+                            private final Catalog catalog;
+
+                            public Aliases(Catalog catalog) {
+                                this.catalog = catalog;
+                            }
+
+                            public long scripts(List<String> refs) {
+                                return refs.stream().filter(catalog::isScript).count()
+                                        + refs.stream().map(catalog::setting).count();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().noQueriesInLoops().evaluate()).isEmpty();
+    }
+
+    @Test
     void strategiesAndReadingAStreamAreNotQueries() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Rule", "package shop;\n\npublic interface Rule {\n    boolean test(String value);\n}\n")
@@ -317,7 +356,7 @@ class QueriesInLoopsRuleTest {
                         public final class EnvRule implements Rule {
                             @Override
                             public boolean test(String value) {
-                                return System.getenv(value) != null;
+                                return java.sql.DriverManager.getLoginTimeout() > value.length();
                             }
                         }
                         """)
@@ -347,11 +386,11 @@ class QueriesInLoopsRuleTest {
 
                         public class Input {
                             public int read() {
-                                return System.getenv("INPUT").length();
+                                return java.sql.DriverManager.getLoginTimeout();
                             }
 
                             public int skip(String until) {
-                                return System.getenv(until).length();
+                                return java.sql.DriverManager.getLoginTimeout() + until.length();
                             }
                         }
                         """)

@@ -410,16 +410,18 @@ public class Checkout {
 
 `dependencies().noQueriesInLoops()` · **recommended**
 
-Queries made once per item, the N+1 pattern, are reported. A query is a call on a collaborator that does I/O and
-returns a value; reading the clock or randomness once per item isn't a query. The collaborator is the same object for
-every item: a field, a getter's result, a parameter, a static field or a local set before the loop. The query counts
-when it is made inside a loop, or in a lambda or method reference handed to a stream or `forEach`, and is given the
-item or something made from it, such as its id or a key built from it. Commands aren't queries: methods that return
-nothing, and methods named for a change, as a repository's `save` and `delete` are, though they return what they
-stored, and neither is reading the next value of the same object, as a parser's `reader.peek()` does, or retrying
-with a new timeout. Calls on the loop's own items, a class's own helpers and static methods are left alone, since
-that per-item work can't be batched. A call counts only if every implementation it may run touches the outside world,
-so a strategy such as a `Predicate` with pure implementations isn't a query. Wiring code is exempt.
+Queries made once per item, the N+1 pattern, are reported. A query is a call on a collaborator that reaches a
+database or another machine, through JDBC, the network, a library client such as a repository or a package given to
+`treatingAsImpure(...)`, and returns a value; reading local files, the environment, the clock or randomness once per
+item isn't a query. The collaborator is the same object for every item: a field, a getter's result, a parameter, a
+static field or a local set before the loop. The query counts when it is made inside a loop, or in a lambda or method
+reference handed to a stream or `forEach`, and is given the item or something made from it, such as its id or a key
+built from it. Commands aren't queries: methods that return nothing, and methods named for a change, as a
+repository's `save` and `delete` are, though they return what they stored, and neither is reading the next value of
+the same object, as a parser's `reader.peek()` does, or retrying with a new timeout. Calls on the loop's own items, a
+class's own helpers and static methods are left alone, since that per-item work can't be batched. A call counts only
+if every implementation it may run touches the outside world, so a strategy such as a `Predicate` with pure
+implementations isn't a query. Wiring code is exempt.
 
 Why: one round trip per item turns a page of 50 orders into 51 database or HTTP calls.
 
@@ -737,8 +739,11 @@ Fix: `record CustomerId(String value) {}` and `record Customer(CustomerId custom
 
 Groups of `static final` int, long or String constants of one type that enumerate cases are reported. They share a
 name prefix, like `STATUS_OPEN` and `STATUS_PAID`, and their values are a run of numbers from 0 or 1, distinct bit
-flags, or the names themselves. Constants with real values, like `MAX_ITEMS = 50` and `MAX_RETRIES = 3`, don't
-count.
+flags, or the names themselves. Constants with real values, like `MAX_ITEMS = 50` and `MAX_RETRIES = 3`, don't count,
+and neither do String constants that are keys of a format: every use passes one to a lookup, as
+`attributes.getValue(ATTR_PREMAIN_CLASS)` does, and none compares, switches on or assigns one. Nor do constants used
+only in converters, which turn outside input into a type, as `toPermissions(int mode)` does with a file mode's bits,
+or String values with syntax beyond the name, as `"rmi:"` has.
 
 Why: an `int` status accepts any number, and the compiler can't tell when a `switch` misses one (Effective Java,
 item 34).
@@ -993,12 +998,12 @@ Fix: return a record, such as `record Entry(String key, String value) {}`.
 
 Choices between strings are reported: a `switch` over three or more string literals, or an `if`/`else if` chain
 comparing one value with three or more strings through `equals`, `equalsIgnoreCase` or `Objects.equals`. Converters,
-which turn input strings into a type, are exempt: methods named `parse`, `from`, `valueOf`, `of`, `decode` or
-`to...`, as `toBool` is, and methods returning one of the project's enums. So are words from outside the code, which
-an enum can't own: strings with dots or spaces (property keys, class names, SQL), tokens a parser reads, any of which
-is punctuation such as `"("`, single characters such as operators, Java's type names, codes with digits such as SQL
-states, method names a proxy dispatches on, which include `toString`, and HTTP's method names such as `"GET"` and
-`"POST"`.
+which turn input strings into a type, are exempt: methods named `parse`, `from`, `valueOf`, `of`, `decode`, `to...`
+or `for...`, as `toBool` and `forExtension` are, and methods returning one of the project's enums. So are words from
+outside the code, which an enum can't own: strings with dots or spaces (property keys, class names, SQL), tokens a
+parser reads, any of which is punctuation such as `"("`, single characters such as operators, Java's type names,
+codes with digits such as SQL states, method names a proxy dispatches on, which include `toString`, HTTP's method
+names such as `"GET"` and `"POST"`, and command-line options such as `"--init"`.
 
 Why: a typo in a string compiles, and a missing enum case doesn't.
 

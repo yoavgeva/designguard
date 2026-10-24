@@ -223,6 +223,88 @@ class TypeRulesTest {
                             }
                         }
                         """)
+                .add("Manifests", """
+                        package shop;
+
+                        import java.util.Map;
+
+                        public final class Manifests {
+                            public static final String ATTR_PREMAIN_CLASS = "Premain-Class";
+                            public static final String ATTR_AGENT_CLASS = "Agent-Class";
+                            public static final String ATTR_ADD_OPENS = "Add-Opens";
+
+                            private Manifests() {
+                            }
+
+                            public static String agent(Map<String, String> attributes) {
+                                return attributes.get(ATTR_PREMAIN_CLASS) + attributes.get(Manifests.ATTR_AGENT_CLASS)
+                                        + attributes.getOrDefault(ATTR_ADD_OPENS, "");
+                            }
+
+                            public static boolean isWeb(String channel) {
+                                return Orders.CHANNEL_WEB.equals(channel);
+                            }
+
+                            public static void defaults(java.util.Properties properties, StringBuilder query) {
+                                properties.setProperty(ATTR_ADD_OPENS, "none");
+                                query.append(Queries.QUERY_LIKE).append(Queries.QUERY_EQ);
+                            }
+                        }
+                        """)
+                .add("Lookups", """
+                        package shop;
+
+                        public final class Lookups {
+                            public static final String LOOKUP_RMI = "rmi:";
+                            public static final String LOOKUP_LDAP = "ldap:";
+                            public static final String LOOKUP_LDAPS = "ldaps:";
+
+                            private Lookups() {
+                            }
+
+                            public static boolean isRemote(String target) {
+                                for (String prefix : new String[] {LOOKUP_RMI, LOOKUP_LDAP, LOOKUP_LDAPS}) {
+                                    if (target.startsWith(prefix)) {
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            }
+                        }
+                        """)
+                .add("FileModes", """
+                        package shop;
+
+                        import java.nio.file.attribute.PosixFilePermission;
+                        import java.util.EnumSet;
+                        import java.util.Set;
+
+                        final class FileModes {
+                            private static final int OWNER_READ = 0b100;
+                            private static final int OWNER_WRITE = 0b010;
+                            private static final int OWNER_EXEC = 0b001;
+
+                            private FileModes() {
+                            }
+
+                            static Set<PosixFilePermission> toPermissions(int mode) {
+                                Set<PosixFilePermission> permissions = EnumSet.noneOf(PosixFilePermission.class);
+                                if ((mode & OWNER_READ) != 0) {
+                                    permissions.add(PosixFilePermission.OWNER_READ);
+                                }
+                                if ((mode & OWNER_WRITE) != 0) {
+                                    permissions.add(PosixFilePermission.OWNER_WRITE);
+                                }
+                                if ((mode & OWNER_EXEC) != 0) {
+                                    permissions.add(PosixFilePermission.OWNER_EXECUTE);
+                                }
+                                return permissions;
+                            }
+                        }
+                        """)
+                .add("Queries", "package shop;\n\npublic final class Queries {\n"
+                        + "    public static final String QUERY_LIKE = \"LIKE\";\n    public static final String QUERY_EQ = \"EQ\";\n\n"
+                        + "    private Queries() {\n    }\n}\n")
                 .guard(SHOP);
 
         assertThat(guard.types().enumsOverConstants().evaluate())
@@ -235,7 +317,9 @@ class TypeRulesTest {
                         tuple(7, "Orders declares CHANNEL_WEB, CHANNEL_IN_STORE as String constants: make them an enum",
                                 "replace them with an enum, e.g. enum Channel { WEB, IN_STORE }"),
                         tuple(17, "Orders declares MODE_OFF, MODE_ON as int constants: make them an enum",
-                                "replace them with an enum, e.g. enum Mode { OFF, ON }"));
+                                "replace them with an enum, e.g. enum Mode { OFF, ON }"),
+                        tuple(4, "Queries declares QUERY_LIKE, QUERY_EQ as String constants: make them an enum",
+                                "replace them with an enum, e.g. enum Query { LIKE, EQ }"));
     }
 
     @Test

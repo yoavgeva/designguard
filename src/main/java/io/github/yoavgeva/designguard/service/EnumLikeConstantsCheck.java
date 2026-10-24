@@ -25,7 +25,9 @@ import java.util.stream.Stream;
  * Finds groups of constants that enumerate cases, which an enum models with type safety (Effective Java, item 34):
  * {@code static final} int, long or String constants of one type sharing a name prefix, like {@code STATUS_OPEN} and
  * {@code STATUS_PAID}, whose values are a run of numbers from 0 or 1, distinct bit flags, or the names themselves.
- * Constants with real values, like {@code MAX_ITEMS = 50} and {@code MAX_RETRIES = 3}, don't count.
+ * Constants with real values, like {@code MAX_ITEMS = 50} and {@code MAX_RETRIES = 3}, don't count. Neither do String
+ * constants that are keys of a format, which every use passes to a lookup, constants used only in converters, which are
+ * the encoding of a type, or String values with syntax beyond the name, as {@code "rmi:"} has.
  */
 public final class EnumLikeConstantsCheck {
 
@@ -36,7 +38,8 @@ public final class EnumLikeConstantsCheck {
     private static final int SMALLEST_GROUP_WITHOUT_ZERO = 3;
     private static final Set<String> TYPES = Set.of("int", "long", STRING);
     private static final Pattern CONSTANT_NAME = Pattern.compile("[A-Z][A-Z0-9]*(_[A-Z0-9]+)+");
-    private static final Pattern NOT_ALPHANUMERIC = Pattern.compile("[^a-z0-9]");
+    /** What separates the words of a name: a value with other punctuation is syntax of a format, not the name. */
+    private static final Pattern WORD_SEPARATOR = Pattern.compile("[-_]");
 
     /**
      * Finds violations in the sources the filter selects.
@@ -46,10 +49,14 @@ public final class EnumLikeConstantsCheck {
      * @return violations ordered by file and line
      */
     public List<Violation> check(JavaSources sources, ClassFilter filter) {
+        ConstantUses uses = new ConstantUses(sources);
         return sources.files().stream()
                 .flatMap(file -> file.unit().findAll(ClassOrInterfaceDeclaration.class).stream()
                         .filter(type -> Scopes.selected(filter, file, type))
-                        .flatMap(type -> groups(constants(type)).map(group -> violation(file, type, group))))
+                        .flatMap(type -> groups(constants(type))
+                                .filter(group -> !group.isOfStrings() || !uses.areKeys(group.names()))
+                                .filter(group -> !uses.encode(group.names()))
+                                .map(group -> violation(file, type, group))))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
@@ -141,11 +148,19 @@ public final class EnumLikeConstantsCheck {
             constants = List.copyOf(constants);
         }
 
+        boolean isOfStrings() {
+            return STRING.equals(constants.get(0).type());
+        }
+
+        List<String> names() {
+            return constants.stream().map(Constant::name).toList();
+        }
+
         boolean enumeratesCases() {
             if (constants.size() < SMALLEST_GROUP) {
                 return false;
             }
-            if (STRING.equals(constants.get(0).type())) {
+            if (isOfStrings()) {
                 return constants.stream().allMatch(constant ->
                         normalized(constant.value()).equals(normalized(constant.suffix(prefixSegments))));
             }
@@ -167,7 +182,7 @@ public final class EnumLikeConstantsCheck {
         }
 
         private static String normalized(String text) {
-            return NOT_ALPHANUMERIC.matcher(text.toLowerCase(Locale.ROOT)).replaceAll("");
+            return WORD_SEPARATOR.matcher(text.toLowerCase(Locale.ROOT)).replaceAll("");
         }
     }
 }

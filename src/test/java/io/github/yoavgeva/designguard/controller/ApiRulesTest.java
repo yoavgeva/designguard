@@ -790,6 +790,32 @@ class ApiRulesTest {
                                 }
                             }
 
+                            public static String forExtension(String ext) {
+                                switch (ext) {
+                                    case "kt":
+                                        return "kotlin";
+                                    case "groovy":
+                                        return "groovy";
+                                    case "jsh":
+                                        return "jshell";
+                                    default:
+                                        return "java";
+                                }
+                            }
+
+                            public String replacement(String flag) {
+                                switch (flag) {
+                                    case "--init":
+                                        return "init";
+                                    case "--edit":
+                                        return "edit";
+                                    case "--alias":
+                                        return "alias";
+                                    default:
+                                        return null;
+                                }
+                            }
+
                             public String verb(String method) {
                                 switch (method) {
                                     case "POST":

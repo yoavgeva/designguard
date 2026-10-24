@@ -79,7 +79,7 @@ final class LegacyShop {
                             }
 
                             public String fee(long cents) {
-                                return System.getenv("STRIPE_FEE") + cents;
+                                return java.sql.DriverManager.getLoginTimeout() + " " + cents;
                             }
                         }
                         """)
