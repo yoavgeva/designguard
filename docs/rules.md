@@ -13,36 +13,37 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   executors, processes, a library's database, HTTP, messaging or mail client, or a package given to
   `treatingAsImpure(...)`. The library clients are Spring Data repositories, including the ones a project declares,
   JPA's `EntityManager`, Hibernate sessions, Spring's `JdbcTemplate`, `JdbcClient`, R2DBC `DatabaseClient`, Mongo,
-  Redis, Elasticsearch and Cassandra templates and transaction templates, jOOQ's `DSLContext`, MyBatis `SqlSession`s and
-  `@Mapper`s, `RestTemplate`, `RestClient`, `WebClient`, OkHttp, Apache HttpClient, OpenFeign `@FeignClient`s and
-  Spring HTTP interfaces, Kafka, AMQP and JMS templates and clients, and `MailSender`; creating one or its builder,
-  as `new RestTemplate()` or `WebClient.builder()` do, isn't an effect, calling it is. Code is effectful directly, through a field
-  holding such a resource, or by calling effectful project code; a call through an interface is effectful if any
-  implementation is, except a call on a parameter, which runs whatever implementation the caller passed, so
-  `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface annotated
-  `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do. Creating a clock or a random source, as `Clock.systemUTC()`, `new SecureRandom()` and
-  `ThreadLocalRandom.current()` do, isn't an effect; reading the time or a number from it is. The clock includes
-  `new Date()` and `Calendar.getInstance()`, and the environment includes `System.getProperties()` and
-  `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an `InetAddress` or `InetSocketAddress`, a
-  `java.sql.Timestamp` or an options enum such as `StandardOpenOption` as data, extending `SimpleFileVisitor`, encoding
-  a URL, copying an array, holding a thread or an executor, reading the current
-  thread, and restoring its interrupt flag with `Thread.currentThread().interrupt()` aren't effects; resolving a host
-  name, as `new InetSocketAddress(host, port)` does, or interrupting another thread is. A stream touches the outside world where it is opened: on a file name, as
-  `new FileReader("prices.txt")` and `new Scanner(file)` are, from a classpath resource, or as the console
-  (`System.out`, `System.err`, `System.in`). Holding, wrapping, reading or writing a stream someone else opened only
-  processes its data, so a parser over a `Reader` or a writer of JSON to a `Writer` is a value.
+  Redis, Elasticsearch and Cassandra templates and transaction templates, jOOQ's `DSLContext`, MyBatis `SqlSession`s
+  and `@Mapper`s, `RestTemplate`, `RestClient`, `WebClient`, OkHttp, Apache HttpClient, OpenFeign `@FeignClient`s and
+  Spring HTTP interfaces, Kafka, AMQP and JMS templates and clients, and `MailSender`; creating one or its builder, as
+  `new RestTemplate()` or `WebClient.builder()` do, isn't an effect, calling it is. Code is effectful directly,
+  through a field holding such a resource, or by calling effectful project code; a call through an interface is
+  effectful if any implementation is, except a call on a parameter, which runs whatever implementation the caller
+  passed, so `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface
+  annotated `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do. Creating
+  a clock or a random source, as `Clock.systemUTC()`, `new SecureRandom()` and `ThreadLocalRandom.current()` do, isn't
+  an effect; reading the time or a number from it is. The clock includes `new Date()` and `Calendar.getInstance()`,
+  and the environment includes `System.getProperties()` and `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an
+  `InetAddress` or `InetSocketAddress`, a `java.sql.Timestamp` or an options enum such as `StandardOpenOption` as
+  data, extending `SimpleFileVisitor`, encoding a URL, copying an array, holding a thread or an executor, reading the
+  current thread, and restoring its interrupt flag with `Thread.currentThread().interrupt()` aren't effects; resolving
+  a host name, as `new InetSocketAddress(host, port)` does, or interrupting another thread is. A stream touches the
+  outside world where it is opened: on a file name, as `new FileReader("prices.txt")` and `new Scanner(file)` are,
+  from a classpath resource, or as the console (`System.out`, `System.err`, `System.in`). Holding, wrapping, reading
+  or writing a stream someone else opened only processes its data, so a parser over a `Reader` or a writer of JSON to
+  a `Writer` is a value.
 - **Service-like**: a class that is effectful, holds a service, extends a class that is effectful itself or holds one,
   or is an interface or abstract class with a service-like implementation that isn't safe to create or call: one that
-  implements its methods with effectful code, does I/O anywhere, as when it loads keys at start-up, or holds a service.
-  An implementation that only reads the clock or randomness in methods of its own, as one model among many stamping a
-  token does, leaves the abstraction a value. A `@FunctionalInterface` isn't service-like, whatever its implementations
-  do, so holding one is like holding a lambda. Neither is data that only reads the clock or randomness: a class whose
-  fields hold only data and whose code does no I/O, such as a request that stamps a UUID on what it builds or a
-  stopwatch. It's no shared service, so its state, creating it and depending on it are fine, and the clock and
-  randomness rules report the read; tests may still mock it, to control what it reads. Persistent classes aren't either: JPA `@Entity`,
-  `@Embeddable` and `@MappedSuperclass` classes and `@Document`s are data a store loads and saves, so an entity that
-  stamps its creation date with `LocalDate.now()`, and the entities holding it, aren't services; the clock read is
-  reported where it happens. **Value**: any other class.
+  implements its methods with effectful code, does I/O anywhere, as when it loads keys at start-up, or holds a
+  service. An implementation that only reads the clock or randomness in methods of its own, as one model among many
+  stamping a token does, leaves the abstraction a value. A `@FunctionalInterface` isn't service-like, whatever its
+  implementations do, so holding one is like holding a lambda. Neither is data that only reads the clock or
+  randomness: a class whose fields hold only data and whose code does no I/O, such as a request that stamps a UUID on
+  what it builds or a stopwatch. It's no shared service, so its state, creating it and depending on it are fine, and
+  the clock and randomness rules report the read; tests may still mock it, to control what it reads. Persistent
+  classes aren't either: JPA `@Entity`, `@Embeddable` and `@MappedSuperclass` classes and `@Document`s are data a
+  store loads and saves, so an entity that stamps its creation date with `LocalDate.now()`, and the entities holding
+  it, aren't services; the clock read is reported where it happens. **Value**: any other class.
 - **Collaborator**: an instance of another project type that a class holds in a field, as injected services are.
 - **Wiring code**: code whose job is to assemble the application, which may create and hold concrete services:
   classes with a `main` method, Spring `@Configuration` and `@SpringBootApplication` classes, Dagger `@Module`s,
