@@ -30,6 +30,7 @@ import java.util.stream.Stream;
 public final class RawIdentifiersCheck {
 
     private static final String RULE = "typed-identifiers";
+    private static final String ID_SUFFIX = "Id";
     /** Where a method's name moves on to the key it looks by, as in {@code findVisitById}. */
     private static final Pattern BY = Pattern.compile("By(?=[A-Z])");
     private static final String PLAIN_ID = "id";
@@ -103,15 +104,16 @@ public final class RawIdentifiersCheck {
     }
 
     /**
-     * What a parameter identifies: the thing its method names after the verb, as {@code getPet(id)} and
-     * {@code findVisitById(id)} do, a repository's entity, or else the declaring type.
+     * What a parameter identifies: the thing its method names after the verb, as {@code getPet(id)},
+     * {@code findVisitById(id)} and {@code setPetId(id)} do, a repository's entity, or else the declaring type.
      */
     private static String identified(Parameter parameter, CallableDeclaration<?> callable, String owner) {
         String name = callable.getNameAsString();
         int noun = IntStream.range(0, name.length()).filter(index -> Character.isUpperCase(name.charAt(index)))
                 .findFirst().orElse(name.length());
         Matcher by = BY.matcher(name);
-        String named = name.substring(Math.min(noun, name.length()), by.find(noun) ? by.start() : name.length());
+        String phrase = name.substring(Math.min(noun, name.length()), by.find(noun) ? by.start() : name.length());
+        String named = phrase.endsWith(ID_SUFFIX) ? phrase.substring(0, phrase.length() - ID_SUFFIX.length()) : phrase;
         if (noun > 0 && !named.isEmpty()) {
             return named;
         }
@@ -168,7 +170,7 @@ public final class RawIdentifiersCheck {
 
         private String idType() {
             if (PLAIN_ID.equals(name)) {
-                return owner + "Id";
+                return owner + ID_SUFFIX;
             }
             String capitalized = Character.toUpperCase(name.charAt(0)) + name.substring(1);
             return capitalized.endsWith("ID") ? capitalized.substring(0, capitalized.length() - 1) + "d" : capitalized;

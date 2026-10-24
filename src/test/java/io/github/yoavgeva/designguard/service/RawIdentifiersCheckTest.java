@@ -13,6 +13,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class RawIdentifiersCheckTest {
 
+    private static final String OWNER_ID = fix("OwnerId");
+
     @TempDir
     private Path root;
 
@@ -36,6 +38,14 @@ class RawIdentifiersCheckTest {
                             public String rename(Integer id) {
                                 return "owner " + id;
                             }
+
+                            public void setId(Integer id) {
+                                this.id = id;
+                            }
+
+                            public String setPetId(Integer id) {
+                                return "pet " + id;
+                            }
                         }
                         """)
                 .add("OwnerRepository", """
@@ -50,11 +60,13 @@ class RawIdentifiersCheckTest {
                 ClassFilter.ALL);
 
         assertThat(violations).extracting(Violation::message, Violation::fix).containsExactly(
-                tuple("Owner.id is a raw Integer identifier", fix("OwnerId")),
+                tuple("Owner.id is a raw Integer identifier", OWNER_ID),
                 tuple("Owner.getPet() takes id as a raw Integer identifier", fix("PetId")),
                 tuple("Owner.findVisitById() takes id as a raw Integer identifier", fix("VisitId")),
-                tuple("Owner.rename() takes id as a raw Integer identifier", fix("OwnerId")),
-                tuple("OwnerRepository.findById() takes id as a raw Integer identifier", fix("OwnerId")));
+                tuple("Owner.rename() takes id as a raw Integer identifier", OWNER_ID),
+                tuple("Owner.setId() takes id as a raw Integer identifier", OWNER_ID),
+                tuple("Owner.setPetId() takes id as a raw Integer identifier", fix("PetId")),
+                tuple("OwnerRepository.findById() takes id as a raw Integer identifier", OWNER_ID));
     }
 
     private static String fix(String type) {
