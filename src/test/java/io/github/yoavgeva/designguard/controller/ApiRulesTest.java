@@ -67,6 +67,18 @@ class ApiRulesTest {
                             public Optional<String> coupon() {
                                 return null;
                             }
+
+                            public static java.util.stream.Stream<String> stream(Optional<String> value) {
+                                return value.stream();
+                            }
+
+                            public static String orElseNull(Optional<String> value) {
+                                return value.orElse(null);
+                            }
+
+                            public static void print(Optional<String> value) {
+                                System.out.println(value);
+                            }
                         }
                         """)
                 .guard(SHOP);
@@ -77,7 +89,9 @@ class ApiRulesTest {
                 tuple("Order's constructor takes an Optional parameter",
                         "take the value itself, or offer an overload without it"),
                 tuple("Order.coupon() returns null although its result is an Optional",
-                        "return Optional.empty() instead of null"));
+                        "return Optional.empty() instead of null"),
+                tuple("Order.print() takes an Optional parameter",
+                        "take the value itself, or offer an overload without it"));
     }
 
     @Test

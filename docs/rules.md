@@ -836,7 +836,9 @@ package shop.application;
 
 `api().optionalUsage()` · **recommended**
 
-`Optional` used against its design is reported: as a field, as a parameter, or returned as `null`.
+`Optional` used against its design is reported: as a field, as a parameter, or returned as `null`. A static method
+that only converts an `Optional` into something else, such as `Streams.stream(Optional)` or `orElseNull(Optional)`,
+may take one.
 
 Why: `Optional` is meant only as a return type saying "there may be no result". As a field or parameter it adds a
 third state, a null `Optional`, and an allocation.
