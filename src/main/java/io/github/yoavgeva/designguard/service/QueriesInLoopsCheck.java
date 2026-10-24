@@ -47,7 +47,7 @@ public final class QueriesInLoopsCheck {
     private static Stream<Violation> queries(ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass type,
             JavaCodeUnit unit) {
         return classes.bytecode().perItemAccesses(unit)
-                .filter(access -> isQuery(classes, type, access.getTarget()) && serviceLike.runsEffects(access))
+                .filter(access -> isQuery(classes, type, access.getTarget()) && serviceLike.sure().runsIo(access))
                 .collect(Collectors.toMap(access -> access.getTarget().getFullName(), access -> access,
                         (first, second) -> first.getLineNumber() <= second.getLineNumber() ? first : second,
                         LinkedHashMap::new))

@@ -2,7 +2,6 @@ package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
-import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,20 +22,17 @@ final class ServiceLikeClasses {
 
     private static final Set<String> PERSISTENT = Set.of("Entity", "Embeddable", "MappedSuperclass", "Document");
     private final Overrides overrides = new Overrides();
-    private final ProjectClasses classes;
     private final Effects effects;
     private final EffectfulAbstractions abstractions;
     private final Set<String> effectfulOwners;
     private final Set<String> effectfulNames;
     private final Set<String> timeOrChanceData;
-    private final Memo<Set<String>> withBodies;
-    private final Memo<Set<String>> surelyEffectfulWhenRun;
+    private final SureEffects sureEffects;
     private final Memo<Set<String>> ownEffectsWhenRun;
     private final Memo<Set<String>> effectfulOnTheirOwnNames;
     private final Set<String> serviceLikeNames;
 
     ServiceLikeClasses(ProjectClasses classes, List<String> extraImpurePackages) {
-        this.classes = classes;
         this.effects = new Effects(extraImpurePackages, overrides, classes);
         List<JavaClass> candidates = classes.stream().filter(ServiceLikeClasses::canBeServiceLike).toList();
         Set<String> effectfulUnits = effects.effectfulCodeUnits(classes, candidates);
@@ -44,8 +40,7 @@ final class ServiceLikeClasses {
         this.abstractions = new EffectfulAbstractions(effectfulUnits, ioEffectfulUnits);
         this.effectfulOwners = Set.copyOf(CallGraph.ownersOf(candidates, effectfulUnits));
         this.effectfulNames = Set.copyOf(abstractions.with(candidates, effectfulOwners, this::holdsAResource));
-        this.withBodies = new Memo<>(() -> CallGraph.withBodies(CallGraph.unitsOf(candidates)));
-        this.surelyEffectfulWhenRun = new Memo<>(() -> effects.surelyEffectfulWhenRun(classes, candidates));
+        this.sureEffects = new SureEffects(classes, effects, overrides, candidates);
         this.ownEffectsWhenRun = new Memo<>(() -> effects.ownEffectsWhenRun(classes, candidates));
         this.effectfulOnTheirOwnNames = new Memo<>(() -> Set.copyOf(effects.effectfulOnTheirOwn(classes, candidates)));
         Set<String> first = serviceLike(candidates, Set.of());
@@ -80,22 +75,10 @@ final class ServiceLikeClasses {
         return effectfulOnTheirOwnNames.get().contains(javaClass.getName());
     }
 
-    /**
-     * Whether making the call surely touches the outside world right away: it calls an outside-world API, or project
-     * code whose every implementation's own calls do. A strategy with an implementation without effects doesn't, nor
-     * does a JDK interface such as {@code Iterator.hasNext()} that a project class implements with I/O. Lambdas the
-     * code creates don't count until they run.
-     */
-    boolean runsEffects(JavaCodeUnitAccess<?> call) {
-        if (effects.isImpure(classes.bytecode(), call)) {
-            return true;
-        }
-        Set<String> implementations = classes.isProject(call.getTargetOwner())
-                ? overrides.implementationsOf(classes.bytecode(), call, withBodies.get())
-                : Set.of();
-        return !implementations.isEmpty() && surelyEffectfulWhenRun.get().containsAll(implementations);
+    /** Which calls surely touch the outside world, or surely do I/O, when they are made. */
+    SureEffects sure() {
+        return sureEffects;
     }
-
     /**
      * Whether running the method touches the outside world through calls it makes itself, not through implementations
      * it is given or lambdas it creates.

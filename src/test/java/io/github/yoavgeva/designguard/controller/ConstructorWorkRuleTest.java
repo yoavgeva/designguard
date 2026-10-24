@@ -400,6 +400,10 @@ class ConstructorWorkRuleTest {
 
                             public void setErrorHandler(Object handler) {
                             }
+
+                            public RestTemplate withRoot(String root) {
+                                return this;
+                            }
                         }
                         """)
                 .add("Gateway", """
@@ -416,7 +420,7 @@ class ConstructorWorkRuleTest {
                             public Gateway(String baseUrl) {
                                 this.web = WebClient.builder().build(baseUrl);
                                 this.other = WebClient.create(baseUrl);
-                                this.rest = new RestTemplate();
+                                this.rest = new RestTemplate().withRoot(baseUrl);
                                 this.rest.setErrorHandler(baseUrl);
                             }
 

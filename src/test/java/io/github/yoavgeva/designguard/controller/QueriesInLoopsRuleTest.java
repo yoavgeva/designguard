@@ -248,6 +248,56 @@ class QueriesInLoopsRuleTest {
     }
 
     @Test
+    void readingTheClockOncePerItemIsNoQuery() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Visit", """
+                        package shop;
+
+                        public class Visit {
+                            private final java.time.LocalDate date = java.time.LocalDate.now();
+                            private final String pet;
+
+                            public Visit(String pet) {
+                                this.pet = pet;
+                            }
+
+                            public String describe() {
+                                return pet + date;
+                            }
+                        }
+                        """)
+                .add("VisitMapper", """
+                        package shop;
+
+                        public class VisitMapper {
+                            public Visit toVisit(String pet) {
+                                return new Visit(pet);
+                            }
+                        }
+                        """)
+                .add("Visits", """
+                        package shop;
+
+                        import java.util.List;
+
+                        public class Visits {
+                            private final VisitMapper mapper;
+
+                            public Visits(VisitMapper mapper) {
+                                this.mapper = mapper;
+                            }
+
+                            public List<Visit> book(List<String> pets) {
+                                return pets.stream().map(mapper::toVisit).toList();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().noQueriesInLoops().evaluate()).isEmpty();
+    }
+
+    @Test
     void strategiesAndReadingAStreamAreNotQueries() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Rule", "package shop;\n\npublic interface Rule {\n    boolean test(String value);\n}\n")

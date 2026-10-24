@@ -45,6 +45,9 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   store loads and saves, so an entity that stamps its creation date with `LocalDate.now()`, and the entities holding
   it, aren't services; the clock read is reported where it happens. **Value**: any other class.
 - **Collaborator**: an instance of another project type that a class holds in a field, as injected services are.
+- **Generated code**: classes the build generates, such as MapStruct mappers or OpenAPI models, whose sources lie
+  outside the source roots while other classes' sources are found there. Rules analyse them, so a generated DAO still
+  makes its callers service-like, but report only the code people write.
 - **Wiring code**: code whose job is to assemble the application, which may create and hold concrete services:
   classes with a `main` method, Spring `@Configuration` and `@SpringBootApplication` classes, Dagger `@Module`s,
   and classes in packages given to `wiringIn(...)`. Many rules skip it.
@@ -407,33 +410,33 @@ public class Checkout {
 
 `dependencies().noQueriesInLoops()` · **recommended**
 
-Queries made once per item, the N+1 pattern, are reported. A query is a call on a collaborator that touches the
-outside world and returns a value. The collaborator is the same object for every item: a field, a getter's result, a
-parameter, a static field or a local set before the loop. The query counts when it is made inside a loop, or in a
-lambda or method reference handed to a stream or `forEach`, and is given the item or something made from it, such as
-its id or a key built from it. Commands aren't queries: methods that return nothing, and methods named for a change,
-as a repository's `save` and `delete` are, though they return what they stored, and neither is reading the next value
-of the same object, as a parser's `reader.peek()` does, or retrying with a new timeout. Calls on the loop's own
-items, a class's own helpers and static methods are left alone, since that per-item work can't be batched. A call
-counts only if every implementation it may run touches the outside world, so a strategy such as a `Predicate` with
-pure implementations isn't a query. Wiring code is exempt.
+Queries made once per item, the N+1 pattern, are reported. A query is a call on a collaborator that does I/O and
+returns a value; reading the clock or randomness once per item isn't a query. The collaborator is the same object for
+every item: a field, a getter's result, a parameter, a static field or a local set before the loop. The query counts
+when it is made inside a loop, or in a lambda or method reference handed to a stream or `forEach`, and is given the
+item or something made from it, such as its id or a key built from it. Commands aren't queries: methods that return
+nothing, and methods named for a change, as a repository's `save` and `delete` are, though they return what they
+stored, and neither is reading the next value of the same object, as a parser's `reader.peek()` does, or retrying
+with a new timeout. Calls on the loop's own items, a class's own helpers and static methods are left alone, since
+that per-item work can't be batched. A call counts only if every implementation it may run touches the outside world,
+so a strategy such as a `Predicate` with pure implementations isn't a query. Wiring code is exempt.
 
 Why: one round trip per item turns a page of 50 orders into 51 database or HTTP calls.
 
 ```java
-public String payAll(List<Long> amounts) {
-    String receipts = "";
-    for (long amount : amounts) {
-        receipts += client.charge(amount);
+public long total(List<String> items) {
+    long total = 0;
+    for (String item : items) {
+        total += prices.priceOf(item);
     }
-    return receipts;
+    return total;
 }
 ```
 
-> Checkout.payAll() queries StripeClient.charge() inside a loop, once per item
+> Checkout.total() queries PriceRepository.priceOf() inside a loop, once per item
 > -> fix: load what the loop needs with one call before it, such as one query for all the keys
 
-Fix: add a batch query to the collaborator, such as `client.chargeAll(amounts)`, and call it once.
+Fix: add a batch query to the collaborator, such as `prices.pricesOf(items)`, and call it once.
 
 ### `constructors-do-no-work`
 
@@ -444,7 +447,8 @@ Field initializers run in every constructor, and are reported once. A call to a 
 implementation it may run touches the outside world, and calls to JDK interfaces such as `Iterator.hasNext()` don't
 count. Reading a stream the constructor is given, wrapping it, or creating an in-memory one such as `StringWriter`,
 isn't I/O, and neither is creating a client or a clock, as `new RestTemplate()` and `Clock.systemUTC()` do, or
-configuring a client with a setter. Creating objects is left to `inject-services`, and wiring code is exempt.
+configuring a client with a setter or a fluent method such as `withTableName(...)`. Creating objects is left to
+`inject-services`, and wiring code is exempt.
 
 Why: a class whose constructor does work can't be created without it, so tests can't create it cheaply, and a
 failure there leaves no object to recover with.

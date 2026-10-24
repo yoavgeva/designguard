@@ -1,9 +1,15 @@
 package io.github.yoavgeva.designguard.service;
 
+import com.tngtech.archunit.core.domain.AccessTarget.CodeUnitAccessTarget;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaCodeUnit;
+import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
+import com.tngtech.archunit.core.domain.JavaConstructor;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -59,6 +65,8 @@ final class LibraryEffects {
     private static final Set<String> CLIENT_METHOD_ANNOTATIONS = Set.of("org.springframework.web.service.annotation",
             "retrofit2.http");
 
+    private static final Pattern SETTER = Pattern.compile("set[A-Z].*");
+
     private final Memo<Set<String>> implemented;
     private final Map<String, Boolean> impureTypes = new ConcurrentHashMap<>();
 
@@ -73,7 +81,7 @@ final class LibraryEffects {
     /** Whether using this type at all means touching the outside world, like a repository or a REST client. */
     boolean isImpureType(JavaClass type) {
         return impureTypes.computeIfAbsent(type.getName(), name -> !implemented.get().contains(name)
-                && selfAndSupertypes(type).anyMatch(supertype -> IMPURE_TYPES.contains(supertype.getName()) || isClient(supertype)));
+                && selfAndSupertypes(type).anyMatch(supertype -> IMPURE_TYPES.contains(supertype.getName()) || isAnnotatedClient(supertype)));
     }
 
     private static Stream<JavaClass> selfAndSupertypes(JavaClass type) {
@@ -81,11 +89,43 @@ final class LibraryEffects {
                 Stream.concat(type.getAllRawSuperclasses().stream(), type.getAllRawInterfaces().stream()));
     }
 
-    private static boolean isClient(JavaClass type) {
+    private static boolean isAnnotatedClient(JavaClass type) {
         return type.getAnnotations().stream()
                 .anyMatch(annotation -> CLIENT_ANNOTATIONS.contains(annotation.getRawType().getName()))
                 || type.isInterface() && type.getMethods().stream()
                         .flatMap(method -> method.getAnnotations().stream())
                         .anyMatch(annotation -> CLIENT_METHOD_ANNOTATIONS.contains(annotation.getRawType().getPackageName()));
+    }
+
+    /** Whether the type is a library client: using it at all touches the outside world. */
+    boolean isClientType(JavaClass type) {
+        return JdkEffects.canHaveEffects(type) && isImpureType(type);
+    }
+
+    /**
+     * Whether the access calls a library client, such as a repository or a REST client. Creating one or its builder, as
+     * {@code new RestTemplate()} and {@code WebClient.builder()} do, isn't I/O, and neither is configuring one with a
+     * setter or a fluent method, as {@code redisTemplate.setKeySerializer(...)} and {@code insert.withTableName(...)} do.
+     */
+    boolean isCall(JavaCodeUnitAccess<?> access) {
+        CodeUnitAccessTarget target = access.getTarget();
+        return isClientType(access.getTargetOwner()) && !JavaConstructor.CONSTRUCTOR_NAME.equals(target.getName())
+                && !createsClient(target) && !configures(target);
+    }
+
+    /** Whether the call configures the client: a setter, or a fluent method returning it, as {@code withTableName} is. */
+    private static boolean configures(CodeUnitAccessTarget target) {
+        return SETTER.matcher(target.getName()).matches() && target.getRawReturnType().isEquivalentTo(void.class)
+                || target.getRawReturnType().equals(target.getOwner());
+    }
+
+    /** Whether the target is a static factory of a client or of its builder, as {@code WebClient.create(url)} is. */
+    private boolean createsClient(CodeUnitAccessTarget target) {
+        JavaClass owner = target.getOwner();
+        return target.resolveMember()
+                .filter(member -> member.getModifiers().contains(JavaModifier.STATIC))
+                .map(JavaCodeUnit::getRawReturnType)
+                .filter(type -> type.equals(owner) || type.getName().startsWith(owner.getName() + "$") || isClientType(type))
+                .isPresent();
     }
 }
