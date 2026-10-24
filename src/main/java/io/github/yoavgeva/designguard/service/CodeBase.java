@@ -105,7 +105,7 @@ public abstract sealed class CodeBase {
             this.importedClasses = new Memo<>(() -> ClassFileReader.read(settings));
             this.parsedSources = new Memo<>(() -> SourceReader.read(settings.sourceRoots()).inPackages(settings.packages()));
             this.parsedTestSources = new Memo<>(() -> SourceReader.read(
-                    settings.testSourceRoots().stream().filter(Files::isDirectory).toList()));
+                    settings.testSourceRoots().stream().filter(Files::isDirectory).toList(), settings.sourceRoots()));
             this.classification = new Memo<>(() -> new ServiceLikeClasses(projectClasses(), settings.impurePackages()));
             this.release = new Memo<>(() -> releaseOf(settings, importedClasses));
         }

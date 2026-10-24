@@ -1210,8 +1210,10 @@ Fix: `when(lookup.find("key")).thenReturn("value")`, then assert on the result o
 `tests().testsUseTheirSubject()` · **recommended**
 
 Test classes that don't exercise the class they're named after are reported: `OrderServiceTest` never uses
-`OrderService`, or only mocks it. A use is the class's name in a type, a static call, or an expression whose type
-resolves to it, in the test or in a test-source helper class it uses. Tests named after no project class are
+`OrderService`, or only mocks it. A use is the class's name in a type, a static call or an annotation, or an
+expression whose type resolves to it, such as `Streams.failableStream(list)`, in the test or in a test-source helper
+class it uses. Expressions resolve against the production sources too, so a factory's result counts even when its
+classes aren't on the test's class path. Tests named after no project class are
 skipped.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.
