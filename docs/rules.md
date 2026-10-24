@@ -1302,8 +1302,10 @@ Fix: one test per case, or a `@ParameterizedTest` with the cases as parameters.
 `tests().testsUseAFixedClock()` · **recommended**
 
 Test code that reads the system clock is reported: `now()` without a `Clock`, `System.currentTimeMillis()`,
-`nanoTime()`, `new Date()`, `Calendar.getInstance()` and the system `Clock`s. Test methods, helpers and field
-initializers are all checked; fixture code inside strings isn't code.
+`nanoTime()`, `new Date()`, `new GregorianCalendar()`, `Calendar.getInstance()` and the system `Clock`s. A reading
+the test overwrites before using it is fine: `Calendar.getInstance()` stored in a variable whose next use is
+`clear()`, `setTime(...)` or `setTimeInMillis(...)`. Test methods, helpers and field initializers are all checked;
+fixture code inside strings isn't code.
 
 Why: a test that reads the clock can pass today and fail at midnight, at month end, or in another time zone.
 
