@@ -17,9 +17,9 @@ import java.util.stream.Stream;
  * {@code Thread.currentThread().getName()} does, isn't an effect; starting, configuring or running work on one is. A
  * method, constructor or lambda is effectful if it uses such an API, reads a field holding such a resource, or calls
  * project code that is effectful; a call through an interface counts as effectful if any implementation is. Using
- * {@code Path}, {@code URI} or {@code File} as data is not I/O, and neither are in-memory streams such as
- * {@code StringWriter}, or wrapping a stream: only creating one on a file name, or an object stream, which reads or
- * writes a header, is.
+ * {@code Path}, {@code URI}, {@code File}, an {@code InetAddress} or a {@code java.sql.Timestamp} as data is not I/O,
+ * and neither are encoding a URL, in-memory streams such as {@code StringWriter}, or wrapping a stream: only creating
+ * one on a file name, or an object stream, which reads or writes a header, is.
  */
 final class Effects {
 
@@ -32,7 +32,14 @@ final class Effects {
             "java.lang.IO");
     private static final Set<String> IMPURE_CALLS = Set.of("java.lang.System.currentTimeMillis",
             "java.lang.System.nanoTime", "java.lang.System.getenv", "java.lang.System.getProperty",
-            "java.lang.Math.random", "java.util.UUID.randomUUID");
+            "java.lang.System.getProperties", "java.lang.Integer.getInteger", "java.lang.Long.getLong",
+            "java.lang.Boolean.getBoolean", "java.lang.Math.random", "java.util.UUID.randomUUID",
+            "java.util.Calendar.getInstance");
+    /** Types whose constructor without parameters reads the clock. */
+    private static final Set<String> CLOCK_CONSTRUCTORS = Set.of("java.util.Date", "java.util.GregorianCalendar");
+    /** What an {@code InetAddress} does that resolves names or reaches the network. */
+    private static final Set<String> RESOLVES = Set.of("getByName", "getAllByName", "getLocalHost", "getHostName",
+            "getCanonicalHostName", "isReachable");
     private static final Set<String> HEADER_STREAMS = Set.of("java.io.ObjectInputStream", "java.io.ObjectOutputStream");
     private static final Set<String> RUNS_WORK = Set.of("execute", "submit", "invokeAll", "invokeAny", "schedule",
             "scheduleAtFixedRate", "scheduleWithFixedDelay", "shutdown", "shutdownNow", "close", "awaitTermination");
@@ -41,7 +48,8 @@ final class Effects {
             "awaitTermination", "invoke");
     /**
      * Types whose values are data, with the methods that are effects: holding a {@code Path}, a {@code Thread} or an
-     * {@code ExecutorService} isn't one, but reading the file, starting the thread or running work on it is.
+     * {@code ExecutorService} isn't one, but reading the file, starting the thread or running work on it is. The
+     * {@code java.net} and {@code java.sql} types listed are values: addresses, encoders and SQL dates and types.
      */
     private static final Map<String, Set<String>> EFFECTS_OF_VALUE_TYPES = Map.ofEntries(
             Map.entry("java.nio.file.Path", Set.of("toRealPath", "register")),
@@ -51,6 +59,17 @@ final class Effects {
             Map.entry("java.io.File", Set.of("exists", "isFile", "isDirectory", "canRead", "canWrite", "length",
                     "lastModified", "list", "listFiles", "delete", "deleteOnExit", "mkdir", "mkdirs", "createNewFile",
                     "renameTo", "getCanonicalPath", "getCanonicalFile", "setLastModified", "setReadOnly")),
+            Map.entry("java.net.InetAddress", RESOLVES),
+            Map.entry("java.net.Inet4Address", RESOLVES),
+            Map.entry("java.net.Inet6Address", RESOLVES),
+            Map.entry("java.net.URLEncoder", Set.of()),
+            Map.entry("java.net.URLDecoder", Set.of()),
+            Map.entry("java.net.IDN", Set.of()),
+            Map.entry("java.sql.Timestamp", Set.of()),
+            Map.entry("java.sql.Date", Set.of()),
+            Map.entry("java.sql.Time", Set.of()),
+            Map.entry("java.sql.JDBCType", Set.of()),
+            Map.entry("java.sql.Types", Set.of()),
             Map.entry("java.io.Serializable", Set.of()),
             Map.entry("java.io.ByteArrayInputStream", Set.of()),
             Map.entry("java.io.ByteArrayOutputStream", Set.of()),
@@ -173,8 +192,9 @@ final class Effects {
         if (EFFECTS_OF_VALUE_TYPES.containsKey(name)) {
             return EFFECTS_OF_VALUE_TYPES.get(name).contains(target.getName());
         }
-        if (CONSTRUCTOR.equals(target.getName()) && "java.io".equals(owner.getPackageName())) {
-            return opensOnCreation(target);
+        if (CONSTRUCTOR.equals(target.getName())
+                && ("java.io".equals(owner.getPackageName()) || CLOCK_CONSTRUCTORS.contains(name))) {
+            return touchesTheWorldOnCreation(target);
         }
         return isImpureType(owner)
                 || IMPURE_CALLS.contains(name + "." + target.getName())
@@ -182,13 +202,17 @@ final class Effects {
     }
 
     /**
-     * Whether creating the stream touches the outside world: it opens the file it is given by name, as
-     * {@code new FileReader("prices.txt")} does, or reads or writes an object stream's header. Wrapping a stream
-     * doesn't.
+     * Whether creating the stream or date touches the outside world: a stream that opens the file it is given by
+     * name, as {@code new FileReader("prices.txt")} does, or reads or writes an object stream's header, or a date
+     * made without arguments, which reads the clock. Wrapping a stream doesn't.
      */
-    private static boolean opensOnCreation(CodeUnitAccessTarget constructor) {
+    private static boolean touchesTheWorldOnCreation(CodeUnitAccessTarget constructor) {
+        List<JavaClass> parameters = constructor.getRawParameterTypes();
+        if (CLOCK_CONSTRUCTORS.contains(constructor.getOwner().getName())) {
+            return parameters.isEmpty();
+        }
         return HEADER_STREAMS.contains(constructor.getOwner().getName())
-                || constructor.getRawParameterTypes().stream().findFirst()
+                || parameters.stream().findFirst()
                         .filter(first -> first.isEquivalentTo(String.class) || first.isEquivalentTo(java.io.File.class))
                         .isPresent();
     }

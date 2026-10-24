@@ -12,8 +12,10 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
 - **Effectful**: code that touches the outside world: I/O, the clock, randomness, the environment, threads and
   executors, processes, or a package given to `treatingAsImpure(...)`. Code is effectful directly, through a field
   holding such a resource, or by calling effectful project code; a call through an interface is effectful if any
-  implementation is. Using `Path`, `URI` or `File` as data, holding a thread or an executor, and reading the current
-  thread aren't effects.
+  implementation is. The clock includes `new Date()` and `Calendar.getInstance()`, and the environment includes
+  `System.getProperties()` and `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an `InetAddress` or a
+  `java.sql.Timestamp` as data, encoding a URL, holding a thread or an executor, and reading the current thread aren't
+  effects; resolving a host name is.
 - **Service-like**: a class that is effectful, holds a service, or is an interface with a service-like
   implementation. **Value**: any other class.
 - **Collaborator**: an instance of another project type that a class holds in a field, as injected services are.

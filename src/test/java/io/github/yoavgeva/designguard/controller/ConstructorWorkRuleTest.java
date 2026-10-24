@@ -175,6 +175,31 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
+                .add("Stamps", """
+                        package shop;
+
+                        import java.net.InetAddress;
+                        import java.net.UnknownHostException;
+                        import java.util.Calendar;
+                        import java.util.Date;
+                        import java.util.Properties;
+
+                        public final class Stamps {
+                            private final Date created = new Date();
+                            private final Calendar today = Calendar.getInstance();
+                            private final Properties settings = System.getProperties();
+                            private final Integer limit = Integer.getInteger("limit");
+                            private final InetAddress host;
+
+                            public Stamps(String name) throws UnknownHostException {
+                                this.host = InetAddress.getByName(name);
+                            }
+
+                            public String describe() {
+                                return created + " " + today + settings + limit + host;
+                            }
+                        }
+                        """)
                 .guard("shop");
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate())
@@ -186,7 +211,8 @@ class ConstructorWorkRuleTest {
                         tuple(11, "Journal does work in its constructor through new FileOutputStream()"),
                         tuple(9, "PriceCache does work in its constructor through Storage.load()"),
                         tuple(4, "Regions does work in its constructor through System.getenv()"),
-                        tuple(5, "Reports does work in its constructor through Reports.refresh()"));
+                        tuple(5, "Reports does work in its constructor through Reports.refresh()"),
+                        tuple(10, "Stamps does work in its constructor through new Date()"));
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate().get(1).fix()).isEqualTo(
                 "pass in what Files.readAllLines() produces, or call it from a method when it's needed");
     }
@@ -375,6 +401,40 @@ class ConstructorWorkRuleTest {
 
                             public String describe() {
                                 return accepted + first + size;
+                            }
+                        }
+                        """)
+                .add("Address", """
+                        package shop;
+
+                        import java.net.InetAddress;
+                        import java.net.URLEncoder;
+                        import java.net.UnknownHostException;
+                        import java.nio.charset.StandardCharsets;
+                        import java.sql.JDBCType;
+                        import java.sql.Timestamp;
+
+                        public final class Address {
+                            private static final InetAddress LOOPBACK = loopback();
+                            private final String query;
+                            private final Timestamp created;
+                            private final JDBCType type = JDBCType.valueOf("VARCHAR");
+
+                            public Address(String query, long millis) {
+                                this.query = URLEncoder.encode(query, StandardCharsets.UTF_8);
+                                this.created = new Timestamp(millis);
+                            }
+
+                            private static InetAddress loopback() {
+                                try {
+                                    return InetAddress.getByAddress(new byte[] {127, 0, 0, 1});
+                                } catch (UnknownHostException e) {
+                                    throw new IllegalStateException(e);
+                                }
+                            }
+
+                            public String describe() {
+                                return LOOPBACK.getHostAddress() + query + created.toLocalDateTime() + type;
                             }
                         }
                         """)
