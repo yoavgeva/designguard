@@ -1273,8 +1273,10 @@ class it uses. Expressions resolve against the production sources too, so a fact
 classes aren't on the test's class path. A field the test's container injects (`@Autowired`, `@Inject`, `@Resource`)
 typed as an interface or superclass of the class uses it, and so does a test of a web controller, controller advice or
 filter that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate` or REST Assured. A test named after
-an interface or abstract class uses it through an implementation, a spy runs the real class, a `@SpringBootTest` boots
-the `@SpringBootApplication` class, and requests a booted test sends reach any Spring component. Tests named after no
+an interface or abstract class uses it through an implementation, a spy runs the real class, a project class the test
+uses that creates it, as a template dialect creates its processors, uses it too, a `@SpringBootTest` boots the
+`@SpringBootApplication` class, and requests a booted test sends reach any Spring bean: a component, or a class the
+wiring code creates in a `@Bean` method. Tests named after no
 project class are skipped.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.

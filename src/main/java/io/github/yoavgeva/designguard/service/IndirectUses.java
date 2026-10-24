@@ -13,14 +13,16 @@ import com.tngtech.archunit.core.domain.JavaMember;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Ways a test exercises the class it's named after without naming it in a type or a call: through an implementation of
  * it, members it imports statically, a field its container injects typed as an interface or superclass of the class,
- * or the running application: a {@code @SpringBootTest} boots the {@code @SpringBootApplication} class, and requests an
- * HTTP test client sends reach a web controller or filter, or in a booted application any Spring component.
+ * a class it uses that creates it, or the running application: a {@code @SpringBootTest} boots the
+ * {@code @SpringBootApplication} class, and requests an HTTP test client sends reach a web controller or filter, or in a
+ * booted application any Spring bean.
  */
 final class IndirectUses {
 
@@ -35,7 +37,20 @@ final class IndirectUses {
             "RestController", "ControllerAdvice", "RestControllerAdvice", "Configuration");
     private static final Set<String> BOOTED_TESTS = Set.of("SpringBootTest", "WebMvcTest", "WebFluxTest");
 
-    private IndirectUses() {
+    private final SourceTypes types;
+    private final WiringCode wiring;
+
+    IndirectUses(SourceTypes types, WiringCode wiring) {
+        this.types = types;
+        this.wiring = wiring;
+    }
+
+    /** Calls whose result the symbol solver types as the subject, as in {@code guard.api()}. */
+    static Stream<Node> resolved(TypeDeclaration<?> test, JavaClass subject) {
+        String sourceName = SourceTypes.sourceName(subject);
+        return test.findAll(MethodCallExpr.class).stream()
+                .filter(call -> Resolution.typeOf(call).filter(sourceName::equals).isPresent())
+                .map(call -> call);
     }
 
     /** Whether a type the test names stands for the subject: it is the subject, or implements the abstract subject. */
@@ -83,9 +98,10 @@ final class IndirectUses {
     /**
      * Whether the application the test runs exercises the subject: a {@code @SpringBootTest} boots the
      * {@code @SpringBootApplication} class, and requests the test sends through an HTTP test client reach a web
-     * controller or filter, or, in an application the test boots, any Spring component.
+     * controller or filter, or, in an application the test boots, any Spring bean: a component, or a class the wiring
+     * code creates, as a {@code @Bean} method does.
      */
-    static boolean isRunByTheApplication(ParsedFile file, TypeDeclaration<?> test, JavaClass subject) {
+    boolean isRunByTheApplication(ParsedFile file, TypeDeclaration<?> test, JavaClass subject) {
         List<String> subjectAnnotations = ProjectClasses.annotationNames(subject);
         boolean boots = test.getAnnotations().stream().anyMatch(annotation -> BOOTED_TESTS.contains(annotation.getName().getIdentifier()));
         if (boots && subjectAnnotations.contains("SpringBootApplication")) {
@@ -93,8 +109,21 @@ final class IndirectUses {
         }
         boolean servesRequests = subjectAnnotations.stream().anyMatch(WEB_ENDPOINTS::contains)
                 || WEB_COMPONENTS.stream().anyMatch(subject::isAssignableTo)
-                || boots && subjectAnnotations.stream().anyMatch(COMPONENTS::contains);
+                || boots && (subjectAnnotations.stream().anyMatch(COMPONENTS::contains) || isCreatedBy(subject, wiring::contains));
         return servesRequests && sendsRequests(file, test);
+    }
+
+    /** Whether a project class the test names creates the subject, as a dialect creates its processors. */
+    boolean isCreatedByAUsedClass(ParsedFile file, TypeDeclaration<?> test, JavaClass subject) {
+        Set<JavaClass> used = test.findAll(ClassOrInterfaceType.class).stream()
+                .flatMap(type -> types.resolve(file.unit(), type.getNameWithScope()).stream())
+                .filter(type -> !type.equals(subject))
+                .collect(Collectors.toSet());
+        return isCreatedBy(subject, used::contains);
+    }
+
+    private static boolean isCreatedBy(JavaClass subject, Predicate<JavaClass> creators) {
+        return subject.getConstructorCallsToSelf().stream().anyMatch(call -> creators.test(call.getOriginOwner()));
     }
 
     private static boolean sendsRequests(ParsedFile file, TypeDeclaration<?> test) {

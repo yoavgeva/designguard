@@ -2,9 +2,7 @@ package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.TypeDeclaration;
-import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.AnnotationExpr;
-import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.tngtech.archunit.core.domain.JavaClass;
@@ -40,6 +38,7 @@ public final class SubjectUsageCheck {
      */
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         SourceTypes types = new SourceTypes(code.projectClasses());
+        IndirectUses uses = new IndirectUses(types, code.wiring());
         List<TestType> tests = code.testSources().files().stream()
                 .flatMap(file -> file.unit().getTypes().stream().map(type -> new TestType(file, type)))
                 .toList();
@@ -48,7 +47,7 @@ public final class SubjectUsageCheck {
         return tests.stream()
                 .filter(test -> Scopes.selected(filter, test.file(), test.type()))
                 .flatMap(test -> subject(test.file(), test.type(), types).stream()
-                        .flatMap(subject -> violation(test, subject, types, testTypes).stream()))
+                        .flatMap(subject -> violation(test, subject, types, uses, testTypes).stream()))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
@@ -59,16 +58,16 @@ public final class SubjectUsageCheck {
     }
 
     private static Optional<Violation> violation(TestType testType, JavaClass subject, SourceTypes types,
-            Map<String, TestType> testTypes) {
+            IndirectUses uses, Map<String, TestType> testTypes) {
         ParsedFile file = testType.file();
         TypeDeclaration<?> test = testType.type();
         List<MockSites.MockSite> mocks = MockSites.in(file.unit()).filter(mock -> !mock.spy()).toList();
         List<Node> named = namedUses(file, test, subject, types).toList();
-        if (named.stream().anyMatch(use -> !isMock(use, mocks))
+        if (named.stream().anyMatch(use -> !MockSites.isMocked(use, mocks))
                 || helpers(testType, testTypes).anyMatch(helper -> usesReally(helper, subject, types))
-                || resolvedUses(test, subject).anyMatch(use -> !isMock(use, mocks))
+                || IndirectUses.resolved(test, subject).anyMatch(use -> !MockSites.isMocked(use, mocks))
                 || IndirectUses.isInjectedThroughSupertype(test, subject)
-                || IndirectUses.isRunByTheApplication(file, test, subject)) {
+                || uses.isRunByTheApplication(file, test, subject) || uses.isCreatedByAUsedClass(file, test, subject)) {
             return Optional.empty();
         }
         String name = ProjectClasses.nameOf(subject);
@@ -93,18 +92,7 @@ public final class SubjectUsageCheck {
     /** Whether the helper names the subject other than to mock it. */
     private static boolean usesReally(TestType helper, JavaClass subject, SourceTypes types) {
         List<MockSites.MockSite> mocks = MockSites.in(helper.file().unit()).filter(mock -> !mock.spy()).toList();
-        return namedUses(helper.file(), helper.type(), subject, types).anyMatch(use -> !isMock(use, mocks));
-    }
-
-    /** Whether the use is part of creating a mock, or the type of a variable a mock is assigned to. */
-    private static boolean isMock(Node use, List<MockSites.MockSite> mocks) {
-        boolean declaresMock = use.getParentNode()
-                .filter(VariableDeclarator.class::isInstance)
-                .map(VariableDeclarator.class::cast)
-                .flatMap(VariableDeclarator::getInitializer)
-                .filter(initializer -> mocks.stream().anyMatch(mock -> mock.contains(initializer)))
-                .isPresent();
-        return declaresMock || mocks.stream().anyMatch(mock -> mock.contains(use));
+        return namedUses(helper.file(), helper.type(), subject, types).anyMatch(use -> !MockSites.isMocked(use, mocks));
     }
 
     /** Types, static-call scopes, annotations and statically imported members that name the subject. */
@@ -121,14 +109,6 @@ public final class SubjectUsageCheck {
                 .map(annotation -> annotation);
         return Stream.of(typeNames, scopes, annotations, IndirectUses.staticallyImported(file, test, subject, types))
                 .flatMap(uses -> uses);
-    }
-
-    /** Calls whose result the symbol solver types as the subject, as in {@code guard.api()}. */
-    private static Stream<Node> resolvedUses(TypeDeclaration<?> test, JavaClass subject) {
-        String sourceName = SourceTypes.sourceName(subject);
-        return test.findAll(MethodCallExpr.class).stream()
-                .filter(call -> Resolution.typeOf(call).filter(sourceName::equals).isPresent())
-                .map(call -> call);
     }
 
     /** A top-level type in the test sources, and its file. */

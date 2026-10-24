@@ -4,6 +4,7 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.Parameter;
+import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.ClassExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
@@ -44,6 +45,17 @@ final class MockSites {
                 .flatMap(parameter -> SourceTypes.named(parameter.getType()).stream()
                         .map(name -> new MockSite(parameter.getType(), name, isSpy(parameter))));
         return Stream.of(created, fields, parameters).flatMap(mocks -> mocks);
+    }
+
+    /** Whether the use is part of creating a mock, or the type of a variable a mock is assigned to. */
+    static boolean isMocked(Node use, List<MockSite> mocks) {
+        boolean declaresMock = use.getParentNode()
+                .filter(VariableDeclarator.class::isInstance)
+                .map(VariableDeclarator.class::cast)
+                .flatMap(VariableDeclarator::getInitializer)
+                .filter(initializer -> mocks.stream().anyMatch(mock -> mock.contains(initializer)))
+                .isPresent();
+        return declaresMock || mocks.stream().anyMatch(mock -> mock.contains(use));
     }
 
     private static boolean isMock(NodeWithAnnotations<?> member) {

@@ -18,6 +18,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class TestSubjectRuleTest {
 
     private static final String SHOP = "shop";
+    private static final String RUNTIME = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n";
     private static final String REPORT = "Report";
     private static final String REPORT_TEST = "ReportTest";
 
@@ -286,7 +287,7 @@ class TestSubjectRuleTest {
     void webEndpointsAreUsedThroughRequestsAndBeansThroughTheirInterfaces() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("RestController", "package org.springframework.web.bind.annotation;\n\n"
-                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + RUNTIME
                         + "public @interface RestController {\n}\n")
                 .add("Filter", "package jakarta.servlet;\n\npublic interface Filter {\n    void doFilter(Object request);\n}\n")
                 .add("UserDetailsService", "package org.springframework.security.core.userdetails;\n\n"
@@ -391,10 +392,10 @@ class TestSubjectRuleTest {
     void implementationsSpiesAndTheBootedApplicationAreUses() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("SpringBootApplication", "package org.springframework.boot.autoconfigure;\n\n"
-                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + RUNTIME
                         + "public @interface SpringBootApplication {\n}\n")
                 .add("Component", "package org.springframework.stereotype;\n\n"
-                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + RUNTIME
                         + "public @interface Component {\n}\n")
                 .add("Application", "package shop;\n\n@org.springframework.boot.autoconfigure.SpringBootApplication\n"
                         + "public class Application {\n}\n")
@@ -491,6 +492,62 @@ class TestSubjectRuleTest {
                             @org.junit.jupiter.api.Test
                             void prices() {
                                 client.get().uri("/prices").exchange().expectStatus().isOk();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("PricesTest never uses Prices, the class it's named after");
+    }
+
+    @Test
+    void beansTheWiringCreatesAndClassesAUsedClassCreatesAreUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Configuration", "package org.springframework.context.annotation;\n\n"
+                        + RUNTIME
+                        + "public @interface Configuration {\n}\n")
+                .add("GeneratorMetaProcessor", "package shop;\n\npublic class GeneratorMetaProcessor {\n"
+                        + "    public String head() {\n        return \"<meta>\";\n    }\n}\n")
+                .add("ThemeConfiguration", "package shop;\n\n@org.springframework.context.annotation.Configuration\n"
+                        + "public class ThemeConfiguration {\n    public GeneratorMetaProcessor generatorMetaProcessor() {\n"
+                        + "        return new GeneratorMetaProcessor();\n    }\n}\n")
+                .add("CommentTagProcessor", "package shop;\n\npublic class CommentTagProcessor {\n"
+                        + "    public String render() {\n        return \"<comment>\";\n    }\n}\n")
+                .add("Dialect", "package shop;\n\npublic class Dialect {\n    public java.util.List<Object> processors() {\n"
+                        + "        return java.util.List.of(new CommentTagProcessor());\n    }\n}\n")
+                .add("Prices", "package shop;\n\npublic class Prices {\n    public long price() {\n        return 1;\n    }\n}\n")
+                .addTest("GeneratorMetaProcessorTest", """
+                        package shop;
+
+                        @org.springframework.boot.test.context.SpringBootTest
+                        class GeneratorMetaProcessorTest {
+                            @org.springframework.beans.factory.annotation.Autowired
+                            org.springframework.test.web.reactive.server.WebTestClient client;
+
+                            @org.junit.jupiter.api.Test
+                            void writesTheGenerator() {
+                                client.get().uri("/").exchange().expectStatus().isOk();
+                            }
+                        }
+                        """)
+                .addTest("CommentTagProcessorTest", """
+                        package shop;
+
+                        class CommentTagProcessorTest {
+                            @org.junit.jupiter.api.Test
+                            void renders() {
+                                org.assertj.core.api.Assertions.assertThat(new Dialect().processors()).hasSize(1);
+                            }
+                        }
+                        """)
+                .addTest("PricesTest", """
+                        package shop;
+
+                        class PricesTest {
+                            @org.junit.jupiter.api.Test
+                            void prices() {
+                                org.assertj.core.api.Assertions.assertThat(new Dialect().processors()).isNotEmpty();
                             }
                         }
                         """)
