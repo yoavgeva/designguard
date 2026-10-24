@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.yoavgeva.designguard.SourceTree;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -95,6 +96,59 @@ class RecordImmutabilityCheckTest {
                 public record Order(String id, long cents, Instant placed, Optional<String> note) {
                 }
                 """)).isEmpty();
+    }
+
+    @Test
+    void reportsUnmodifiableViewsAndMutableClassesOfTheProject() {
+        new SourceTree(root)
+                .add("Customer", """
+                        package shop;
+
+                        public class Customer {
+                            private String name;
+
+                            public String name() {
+                                return name;
+                            }
+
+                            public void setName(String name) {
+                                this.name = name;
+                            }
+                        }
+                        """)
+                .add("Address", """
+                        package shop;
+
+                        public final class Address {
+                            private final String street;
+
+                            public Address(String street) {
+                                this.street = street;
+                            }
+
+                            public String street() {
+                                return street;
+                            }
+                        }
+                        """);
+
+        assertThat(violations("""
+                package shop;
+
+                import java.util.Collections;
+                import java.util.List;
+
+                public record Order(Customer customer, Address address, List<String> items) {
+                    public Order {
+                        items = Collections.unmodifiableList(items);
+                    }
+                }
+                """)).extracting(Violation::message, Violation::fix).containsExactly(
+                        tuple("record Order's component 'customer' (Customer) can be changed by callers after construction",
+                                "make Customer immutable, or store an immutable value instead: callers can still call its"
+                                        + " setters"),
+                        tuple("record Order's component 'items' (List<String>) can be changed by callers after construction",
+                                "copy it in a compact constructor: items = List.copyOf(items);"));
     }
 
     private List<Violation> violations(String source) {

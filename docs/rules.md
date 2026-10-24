@@ -567,7 +567,9 @@ Fix: `sealed interface Animal permits Cat, Dog`, and an exhaustive `switch (anim
 `types().recordsAreImmutable()` · **recommended**
 
 Record components callers can still change are reported: collections and maps the constructor doesn't copy into
-unmodifiable ones, arrays, and mutable JDK types like `Date`.
+unmodifiable ones, arrays, mutable JDK types like `Date`, and the project's mutable data classes, those with setters
+or fields that aren't private and final. An unmodifiable view of the caller's collection, as
+`Collections.unmodifiableList(items)` is, isn't a copy: it changes when the caller changes the list.
 
 Why: a record is only a value if it is deeply immutable. Otherwise a caller holding the list changes it, and
 equality with it.
