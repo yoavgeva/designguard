@@ -642,7 +642,8 @@ Fix: `public record Point(int x, int y) {}`.
 
 `types().valueTypesAreImmutable()`
 
-Values with a non-final instance field are reported. Enums, records, exceptions, wiring code and persistence
+Values with a non-final instance field are reported. A field a container injects, with `@Autowired`, `@Value` and the
+like, is reported as one to take as a constructor parameter. Enums, records, exceptions, wiring code and persistence
 entities are skipped.
 
 Why: a value that changes can't be shared or used as a map key, and changes behind its holders' backs.
@@ -822,7 +823,8 @@ ternary between values (`return bool ? 1 : 0;`, `return bool ? yes : no;`), or a
 constants. So are booleans in an overload family for plain values, as `append(boolean)` next to `append(int)` or
 `append(Object)` is: the boolean is one more kind of value the overloads handle. An overload that takes an enum
 instead shows the boolean picks a mode, and passing a picked mode on, as in `load(id, eager ? EAGER : LAZY)`, still
-chooses a behaviour.
+chooses a behaviour. Booleans an HTTP request binds, with Spring's `@RequestParam`, `@PathVariable` or `@RequestHeader`
+or JAX-RS's `@QueryParam` and the like, are skipped: the HTTP API takes the flag, and the handler only receives it.
 
 Why: such a method does two things, and a call like `print(text, true)` doesn't say which.
 
@@ -945,8 +947,8 @@ Fix: make `read` an instance method, and give `Lookup` a `Disk` in its construct
 
 Public methods of public classes that take or return untyped data are reported: `Object`, a map to `Object` such as
 `Map<String, Object>`, or a JSON tree from Jackson, Gson, org.json or Jakarta JSON, unless the project is that
-library and the tree its own model. Type variables, inherited signatures such as `equals(Object)` and wiring code are
-skipped.
+library and the tree its own model. Type variables, inherited signatures such as `equals(Object)`, AspectJ `@Around`
+advice, which returns whatever the advised method returns, and wiring code are skipped.
 
 Why: callers and the compiler can't tell what to pass or what comes back. A record names the fields and their
 types.
@@ -1245,11 +1247,14 @@ Fix: `when(lookup.find("key")).thenReturn("value")`, then assert on the result o
 `tests().testsUseTheirSubject()` · **recommended**
 
 Test classes that don't exercise the class they're named after are reported: `OrderServiceTest` never uses
-`OrderService`, or only mocks it. A use is the class's name in a type, a static call or an annotation, or an
-expression whose type resolves to it, such as `Streams.failableStream(list)`, in the test or in a test-source helper
+`OrderService`, or only mocks it. A use is the class's name in a type, a static call or an annotation, a member of
+it the test imports statically, as `encode(text)` after `import static shop.Base64Url.encode`, or an expression whose
+type resolves to it, such as `Streams.failableStream(list)`, in the test or in a test-source helper
 class it uses. Expressions resolve against the production sources too, so a factory's result counts even when its
-classes aren't on the test's class path. Tests named after no project class are
-skipped.
+classes aren't on the test's class path. A field the test's container injects (`@Autowired`, `@Inject`, `@Resource`)
+typed as an interface or superclass of the class uses it, and so does a test of a web controller, controller advice or
+filter that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate` or REST Assured. Tests named after
+no project class are skipped.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.
 
@@ -1274,8 +1279,8 @@ Fix: create a real `Lookup`, and mock only what it calls.
 
 `tests().testsDontMockValues()` · **recommended**
 
-Mocks of values are reported: records, enums and other classes that aren't service-like, and interfaces whose
-implementations are all values. An interface with one abstract method is a role, such as a strategy or a callback,
+Mocks of values are reported: records, enums and other classes that aren't service-like or wiring code, and
+interfaces whose implementations are all values. An interface with one abstract method is a role, such as a strategy or a callback,
 which tests mock to see it called, so it isn't a value. Mocks come from Mockito's or EasyMock's `mock(Type.class)`,
 `spy(Type.class)`, `spy(new Type(...))` and `createMock(Type.class)`, and from fields and parameters annotated
 `@Mock`, `@Spy` or Spring's mock-bean annotations.

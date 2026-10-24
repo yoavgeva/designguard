@@ -36,14 +36,21 @@ class TypeRulesTest {
                 .add("Row", "package shop;\n\n@Entity\npublic class Row {\n    private long id;\n}\n")
                 .add("Entity", "package shop;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
                         + "public @interface Entity {\n}\n")
+                .add("Value", "package org.springframework.beans.factory.annotation;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Value {\n    String value();\n}\n")
+                .add("ErrorTranslator", "package shop;\n\npublic class ErrorTranslator {\n"
+                        + "    @org.springframework.beans.factory.annotation.Value(\"${app.name}\")\n"
+                        + "    private String applicationName;\n}\n")
                 .guard(SHOP);
 
-        assertThat(guard.types().valueTypesAreImmutable().evaluate()).singleElement().satisfies(violation -> {
-            assertThat(violation.rule()).isEqualTo("immutable-values");
-            assertThat(violation.message()).isEqualTo("Money is a value, but its field 'cents' isn't final");
-            assertThat(violation.fix()).isEqualTo("make the field final and return a new Money instead of changing it,"
-                    + " or turn Money into a record");
-        });
+        assertThat(guard.types().valueTypesAreImmutable().evaluate()).extracting(Violation::message, Violation::fix)
+                .containsExactly(
+                        tuple("ErrorTranslator is a value, but its injected field 'applicationName' isn't final",
+                                "take it as a constructor parameter and make the field final"),
+                        tuple("Money is a value, but its field 'cents' isn't final",
+                                "make the field final and return a new Money instead of changing it, or turn Money into a record"));
+        assertThat(guard.types().valueTypesAreImmutable().evaluate()).extracting(Violation::rule).containsOnly("immutable-values");
     }
 
     @Test

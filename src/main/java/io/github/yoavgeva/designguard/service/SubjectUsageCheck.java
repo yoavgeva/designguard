@@ -20,9 +20,11 @@ import java.util.stream.Stream;
 
 /**
  * Finds test classes that don't exercise the class they're named after: {@code OrderServiceTest} never uses
- * {@code OrderService}, or only mocks it. A use is the class's name in a type, a static call or an annotation, or an
- * expression whose type the symbol solver resolves to it, such as {@code guard.api()}, in the test or in a test-source
- * helper class it uses. Tests named after no project class are skipped.
+ * {@code OrderService}, or only mocks it. A use is the class's name in a type, a static call or an annotation, a
+ * statically imported member of it, or an expression whose type the symbol solver resolves to it, such as
+ * {@code guard.api()}, in the test or in a test-source helper class it uses. A container-injected field typed as an
+ * interface or superclass of it uses it too, and so does a test of a web controller or filter that sends requests
+ * through an HTTP test client such as {@code MockMvc}. Tests named after no project class are skipped.
  */
 public final class SubjectUsageCheck {
 
@@ -64,7 +66,9 @@ public final class SubjectUsageCheck {
         List<Node> named = namedUses(file, test, subject, types).toList();
         if (named.stream().anyMatch(use -> !isMock(use, mocks))
                 || helpers(testType, testTypes).anyMatch(helper -> usesReally(helper, subject, types))
-                || resolvedUses(test, subject).anyMatch(use -> !isMock(use, mocks))) {
+                || resolvedUses(test, subject).anyMatch(use -> !isMock(use, mocks))
+                || IndirectUses.isInjectedThroughSupertype(test, subject)
+                || IndirectUses.isTestedThroughRequests(file, test, subject)) {
             return Optional.empty();
         }
         String name = ProjectClasses.nameOf(subject);
@@ -103,7 +107,7 @@ public final class SubjectUsageCheck {
         return declaresMock || mocks.stream().anyMatch(mock -> mock.contains(use));
     }
 
-    /** Types, static-call scopes and annotations that name the subject. */
+    /** Types, static-call scopes, annotations and statically imported members that name the subject. */
     private static Stream<Node> namedUses(ParsedFile file, TypeDeclaration<?> test, JavaClass subject, SourceTypes types) {
         Stream<Node> typeNames = test.findAll(ClassOrInterfaceType.class).stream()
                 .filter(type -> types.resolve(file.unit(), type.getNameWithScope()).filter(subject::equals).isPresent())
@@ -114,7 +118,8 @@ public final class SubjectUsageCheck {
         Stream<Node> annotations = test.findAll(AnnotationExpr.class).stream()
                 .filter(annotation -> types.resolve(file.unit(), annotation.getNameAsString()).filter(subject::equals).isPresent())
                 .map(annotation -> annotation);
-        return Stream.of(typeNames, scopes, annotations).flatMap(uses -> uses);
+        return Stream.of(typeNames, scopes, annotations, IndirectUses.staticallyImported(file, test, subject, types))
+                .flatMap(uses -> uses);
     }
 
     /** Calls whose result the symbol solver types as the subject, as in {@code guard.api()}. */

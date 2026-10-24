@@ -13,12 +13,13 @@ import java.util.stream.Stream;
 /**
  * Finds public code nothing in the project uses: public top-level types nothing depends on, and public methods
  * nothing calls or references. Meant for applications. Skipped as likely entry points: wiring code, annotated types
- * and methods, inherited signatures, record accessors, enum helpers, bean accessors ({@code get}/{@code set}/
- * {@code is}) and the methods of JMX interfaces.
+ * and methods, types a framework finds and creates, inherited signatures, record accessors, enum helpers, bean
+ * accessors ({@code get}/{@code set}/{@code is}) and the methods of JMX interfaces.
  */
 public final class UnusedPublicCodeCheck {
 
     private static final String RULE = "no-unused-public-code";
+    private static final String REPOSITORY = "org.springframework.data.repository.Repository";
     private static final Pattern BEAN_ACCESSOR = Pattern.compile("^(get|set|is)[A-Z].*");
     private static final Set<String> ENUM_HELPERS = Set.of("values", "valueOf");
     private static final Pattern MANAGEMENT_INTERFACE = Pattern.compile(".+M(X)?Bean");
@@ -46,7 +47,25 @@ public final class UnusedPublicCodeCheck {
 
     private static boolean isUnusedType(ProjectClasses classes, JavaClass type) {
         return type.isTopLevelClass() && type.getModifiers().contains(JavaModifier.PUBLIC)
-                && classes.bytecode().usersOf(type).allMatch(user -> Hierarchy.isSelfOrNested(type, user));
+                && classes.bytecode().usersOf(type).allMatch(user -> Hierarchy.isSelfOrNested(type, user))
+                && !isFoundByAFramework(classes, type);
+    }
+
+    /**
+     * Whether a framework finds and creates the type: it extends or implements a type of a library other than the JDK,
+     * as a servlet initializer or a Jackson serializer does, or it implements a repository fragment, which Spring Data
+     * finds by its {@code Impl} suffix.
+     */
+    private static boolean isFoundByAFramework(ProjectClasses classes, JavaClass type) {
+        return Stream.concat(type.getAllRawSuperclasses().stream(), type.getAllRawInterfaces().stream())
+                .anyMatch(supertype -> !classes.isProject(supertype) && !supertype.getName().startsWith("java.")
+                        || isRepositoryFragment(classes, type, supertype));
+    }
+
+    private static boolean isRepositoryFragment(ProjectClasses classes, JavaClass type, JavaClass fragment) {
+        return type.getSimpleName().equals(fragment.getSimpleName() + "Impl")
+                && classes.stream().anyMatch(repository -> repository.isInterface()
+                        && repository.isAssignableTo(fragment.getName()) && repository.isAssignableTo(REPOSITORY));
     }
 
     private static Stream<Violation> unusedMethods(ProjectClasses classes, JavaClass type) {

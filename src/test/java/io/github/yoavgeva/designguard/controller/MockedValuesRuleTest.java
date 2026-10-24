@@ -106,4 +106,36 @@ class MockedValuesRuleTest {
         assertThat(guard.tests().testsDontMockValues().evaluate().get(0).fix())
                 .isEqualTo("use a real Money instead; mock only service-like types");
     }
+
+    @Test
+    void wiringCodeIsNotAValue() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Configuration", "package org.springframework.context.annotation;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Configuration {\n}\n")
+                .add("WebConfiguration", """
+                        package shop;
+
+                        @org.springframework.context.annotation.Configuration
+                        public class WebConfiguration {
+                            public String resources() {
+                                return "/static";
+                            }
+                        }
+                        """)
+                .addTest("WebConfigurationTest", """
+                        package shop;
+
+                        class WebConfigurationTest {
+                            @org.junit.jupiter.api.Test
+                            void servesResources() {
+                                WebConfiguration configuration = org.mockito.Mockito.spy(new WebConfiguration());
+                                org.assertj.core.api.Assertions.assertThat(configuration.resources()).isEqualTo("/static");
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.tests().testsDontMockValues().evaluate()).isEmpty();
+    }
 }

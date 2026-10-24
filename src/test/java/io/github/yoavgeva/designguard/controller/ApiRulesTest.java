@@ -150,6 +150,19 @@ class ApiRulesTest {
     void publicApisUseTypesNotObjectsOrMaps() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("JsonNode", "package com.fasterxml.jackson.databind;\n\npublic abstract class JsonNode {\n}\n")
+                .add("Around", "package org.aspectj.lang.annotation;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Around {\n    String value();\n}\n")
+                .add("Timing", """
+                        package shop;
+
+                        public class Timing {
+                            @org.aspectj.lang.annotation.Around("execution(* shop..*(..))")
+                            public Object time(java.util.function.Supplier<Object> call) {
+                                return call.get();
+                            }
+                        }
+                        """)
                 .add(ORDER, "package shop;\n\npublic record Order(String name) {\n}\n")
                 .add(ORDERS, """
                         package shop;

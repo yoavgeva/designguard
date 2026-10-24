@@ -24,8 +24,6 @@ import java.util.stream.Stream;
 public final class StatelessServicesCheck {
 
     private static final String RULE = "stateless-services";
-    private static final Set<String> INJECTIONS = Set.of("Autowired", "Value", "Inject", "Resource", "PersistenceContext",
-            "PersistenceUnit", "ConfigProperty");
     private static final String KEEP_STATE_OUT = "keep state out of services: pass it in and return it as values, or keep"
             + " it in a store the service calls";
     private static final Set<String> MUTABLE_TYPES = Set.of("java.util.ArrayList", "java.util.LinkedList",
@@ -67,10 +65,9 @@ public final class StatelessServicesCheck {
     }
 
     private static Optional<Finding> finding(JavaField field) {
-        if (!field.getModifiers().contains(JavaModifier.FINAL) && field.getAnnotations().stream()
-                .anyMatch(annotation -> INJECTIONS.contains(annotation.getRawType().getSimpleName()))) {
+        if (!field.getModifiers().contains(JavaModifier.FINAL) && WiringCode.isInjected(field)) {
             return Optional.of(new Finding("injected field '" + field.getName() + "' isn't final",
-                    "take it as a constructor parameter and make the field final"));
+                    WiringCode.INJECT_IN_CONSTRUCTOR));
         }
         return state(field).map(state -> new Finding("field '" + field.getName() + "' " + state, KEEP_STATE_OUT));
     }

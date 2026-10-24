@@ -197,6 +197,197 @@ class TestSubjectRuleTest {
     }
 
     @Test
+    void staticallyImportedMembersAreUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Base64Url", """
+                        package shop;
+
+                        final class Base64Url {
+                            static final String PADDING = "=";
+
+                            private Base64Url() {
+                            }
+
+                            static String encode(String text) {
+                                return java.util.Base64.getUrlEncoder().encodeToString(text.getBytes());
+                            }
+                        }
+                        """)
+                .add("Slugs", """
+                        package shop;
+
+                        final class Slugs {
+                            private Slugs() {
+                            }
+
+                            static String slug(String title) {
+                                return title.toLowerCase(java.util.Locale.ROOT).replace(' ', '-');
+                            }
+                        }
+                        """)
+                .add("Hashes", """
+                        package shop;
+
+                        final class Hashes {
+                            private Hashes() {
+                            }
+
+                            static int hash(String text) {
+                                return text.hashCode();
+                            }
+                        }
+                        """)
+                .addTest("Base64UrlTest", """
+                        package shop;
+
+                        import static org.assertj.core.api.Assertions.assertThat;
+                        import static shop.Base64Url.encode;
+
+                        class Base64UrlTest {
+                            @org.junit.jupiter.api.Test
+                            void encodes() {
+                                assertThat(encode("something")).isEqualTo("c29tZXRoaW5n");
+                            }
+                        }
+                        """)
+                .addTest("SlugsTest", """
+                        package shop;
+
+                        import static org.assertj.core.api.Assertions.assertThat;
+                        import static shop.Slugs.*;
+
+                        class SlugsTest {
+                            @org.junit.jupiter.api.Test
+                            void slugs() {
+                                assertThat(slug("Hello World")).isEqualTo("hello-world");
+                            }
+                        }
+                        """)
+                .addTest("HashesTest", """
+                        package shop;
+
+                        import static org.assertj.core.api.Assertions.assertThat;
+                        import static shop.Base64Url.PADDING;
+
+                        class HashesTest {
+                            @org.junit.jupiter.api.Test
+                            void hashes() {
+                                assertThat(PADDING).isEqualTo("=");
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("HashesTest never uses Hashes, the class it's named after");
+    }
+
+    @Test
+    void webEndpointsAreUsedThroughRequestsAndBeansThroughTheirInterfaces() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("RestController", "package org.springframework.web.bind.annotation;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface RestController {\n}\n")
+                .add("Filter", "package jakarta.servlet;\n\npublic interface Filter {\n    void doFilter(Object request);\n}\n")
+                .add("UserDetailsService", "package org.springframework.security.core.userdetails;\n\n"
+                        + "public interface UserDetailsService {\n    String loadUserByUsername(String name);\n}\n")
+                .add("UserResource", """
+                        package shop;
+
+                        @org.springframework.web.bind.annotation.RestController
+                        public class UserResource {
+                            public String users() {
+                                return "users";
+                            }
+                        }
+                        """)
+                .add("SpaFilter", """
+                        package shop;
+
+                        public class SpaFilter implements jakarta.servlet.Filter {
+                            @Override
+                            public void doFilter(Object request) {
+                                request.hashCode();
+                            }
+                        }
+                        """)
+                .add("DomainUserDetailsService", """
+                        package shop;
+
+                        public class DomainUserDetailsService
+                                implements org.springframework.security.core.userdetails.UserDetailsService {
+                            @Override
+                            public String loadUserByUsername(String name) {
+                                return name;
+                            }
+                        }
+                        """)
+                .add("Reports", "package shop;\n\npublic class Reports {\n    public String report() {\n"
+                        + "        return \"report\";\n    }\n}\n")
+                .addTest("UserResourceIT", """
+                        package shop;
+
+                        import org.springframework.test.web.servlet.MockMvc;
+
+                        class UserResourceIT {
+                            @org.springframework.beans.factory.annotation.Autowired
+                            private MockMvc mvc;
+
+                            @org.junit.jupiter.api.Test
+                            void lists() throws Exception {
+                                mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/users"));
+                            }
+                        }
+                        """)
+                .addTest("SpaFilterIT", """
+                        package shop;
+
+                        class SpaFilterIT {
+                            private org.springframework.test.web.reactive.server.WebTestClient client;
+
+                            @org.junit.jupiter.api.Test
+                            void forwards() {
+                                client.get().uri("/admin").exchange().expectStatus().isOk();
+                            }
+                        }
+                        """)
+                .addTest("DomainUserDetailsServiceIT", """
+                        package shop;
+
+                        import org.springframework.beans.factory.annotation.Autowired;
+                        import org.springframework.security.core.userdetails.UserDetailsService;
+
+                        class DomainUserDetailsServiceIT {
+                            @Autowired
+                            private UserDetailsService service;
+
+                            @org.junit.jupiter.api.Test
+                            void loads() {
+                                org.assertj.core.api.Assertions.assertThat(service.loadUserByUsername("a")).isEqualTo("a");
+                            }
+                        }
+                        """)
+                .addTest("ReportsIT", """
+                        package shop;
+
+                        import org.springframework.test.web.servlet.MockMvc;
+
+                        class ReportsIT {
+                            private MockMvc mvc;
+
+                            @org.junit.jupiter.api.Test
+                            void reports() throws Exception {
+                                mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/reports"));
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("ReportsIT never uses Reports, the class it's named after");
+    }
+
+    @Test
     void testsWithTheSameNameInDifferentPackagesAreEachChecked() {
         String test = "class ReportTest {\n    @org.junit.jupiter.api.Test\n    void adds() {\n"
                 + "        org.assertj.core.api.Assertions.assertThat(1 + 1).isEqualTo(2);\n    }\n}\n";

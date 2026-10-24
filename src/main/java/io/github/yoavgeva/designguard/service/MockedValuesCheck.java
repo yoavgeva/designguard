@@ -8,10 +8,10 @@ import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
 
 /**
- * Finds tests that mock values: records, enums and other classes that aren't service-like, and interfaces whose
- * implementations all are values, unless they have one abstract method, as a strategy or callback does. A value is
- * cheap and safe to create, so a test should use a real one; a mock of it tests the mock. Mocks come from Mockito's or
- * EasyMock's {@code mock(Type.class)}, {@code spy(Type.class)}, {@code spy(new Type(...))} and
+ * Finds tests that mock values: records, enums and other classes that aren't service-like or wiring code, and
+ * interfaces whose implementations all are values, unless they have one abstract method, as a strategy or callback
+ * does. A value is cheap and safe to create, so a test should use a real one; a mock of it tests the mock. Mocks come
+ * from Mockito's or EasyMock's {@code mock(Type.class)}, {@code spy(Type.class)}, {@code spy(new Type(...))} and
  * {@code createMock(Type.class)}, and from fields and parameters annotated {@code @Mock}, {@code @Spy} or Spring's
  * mock-bean annotations.
  */
@@ -29,12 +29,13 @@ public final class MockedValuesCheck {
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         ProjectClasses classes = code.projectClasses();
         ServiceLikeClasses serviceLike = code.serviceLike();
+        WiringCode wiring = code.wiring();
         SourceTypes types = new SourceTypes(classes);
         return code.testSources().files().stream()
                 .flatMap(file -> MockSites.in(file.unit())
                         .filter(mock -> Scopes.selected(filter, file, mock.site()))
                         .flatMap(mock -> types.resolve(file.unit(), mock.typeName()).stream()
-                                .filter(type -> isValue(classes, serviceLike, type))
+                                .filter(type -> isValue(classes, serviceLike, type) && !wiring.contains(type))
                                 .map(type -> violation(file, mock.site(), type))))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
