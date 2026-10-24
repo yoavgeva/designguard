@@ -131,4 +131,44 @@ class QueryVerificationRuleTest {
         assertThat(guard.tests().testsCheckResults().evaluate()).extracting(Violation::message)
                 .containsExactly("test PostsTest.edits() verifies Posts.fetch(), a query that returns a value");
     }
+
+    @Test
+    void verbsOfEverydayChangesNameCommands() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Posts", """
+                        package shop;
+
+                        public interface Posts {
+                            String draftPost(String title);
+
+                            String followAuthor(String name);
+
+                            String refreshToken(String token);
+
+                            String processLink(String link);
+                        }
+                        """)
+                .addTest("PostsTest", """
+                        package shop;
+
+                        import static org.mockito.Mockito.mock;
+                        import static org.mockito.Mockito.verify;
+
+                        class PostsTest {
+                            private final Posts posts = mock(Posts.class);
+
+                            @org.junit.jupiter.api.Test
+                            void posts() {
+                                verify(posts).draftPost("a");
+                                verify(posts).followAuthor("ada");
+                                verify(posts).refreshToken("t");
+                                verify(posts).processLink("/a");
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.tests().testsCheckResults().evaluate()).extracting(Violation::message).containsExactly(
+                "test PostsTest.posts() verifies Posts.processLink(), a query that returns a value");
+    }
 }

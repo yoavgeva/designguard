@@ -66,6 +66,29 @@ class MeaningfulTestsCheckTest {
     }
 
     @Test
+    void aCommentSayingAFailureWontHappenChecksNothingIsThrown() {
+        assertThat(violations("""
+                package shop;
+
+                class CartTest {
+                    @Test
+                    void registersWhileIterating() {
+                        cart.items().forEach(item -> {
+                            // make sure concurrent modification won't happen
+                            cart.add(item);
+                        });
+                    }
+
+                    @Test
+                    void clearsTwice() {
+                        cart.clear();
+                        cart.clear(); // no error should occur
+                    }
+                }
+                """)).isEmpty();
+    }
+
+    @Test
     void reportsATestWithoutAssertions() {
         assertThat(violations("""
                 package shop;

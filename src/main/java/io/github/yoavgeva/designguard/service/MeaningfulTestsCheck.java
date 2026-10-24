@@ -32,11 +32,11 @@ public final class MeaningfulTestsCheck {
     private static final Pattern EQUALITY_TEST = Pattern.compile("(?i)equal|hash|compar");
     /**
      * A test's name or comment saying it checks that nothing is thrown, as {@code shouldNotThrowForAnEmptyCart},
-     * "nothing thrown", "doesn't actually throw" or "should not blow up" do: a negation, at most one word, then a
-     * failure.
+     * "nothing thrown", "doesn't actually throw", "should not blow up" and "concurrent modification won't happen" do: a
+     * negation, at most one word, then a failure or its happening.
      */
     private static final Pattern NOTHING_THROWN = Pattern.compile("(?i)(?:\\b(?:not|never|no|nothing|without)|n't)"
-            + "(?:\\s+\\w+)?\\s+(?:throw|exception|error|fail|blow|crash|explode)");
+            + "(?:\\s+\\w+)?\\s+(?:throw|exception|error|fail|blow|crash|explode|happen|occur|raise)");
     /** Where a name in camel case or snake case starts a word. */
     private static final Pattern WORD_START = Pattern.compile("(?<=[a-z0-9])(?=[A-Z])|_");
 
