@@ -11,14 +11,16 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaMember;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Ways a test exercises the class it's named after without naming it in a type or a call: through members it imports
- * statically, through a field its container injects typed as an interface or superclass of the class, or, for a web
- * controller or filter, through requests an HTTP test client sends.
+ * Ways a test exercises the class it's named after without naming it in a type or a call: through an implementation of
+ * it, members it imports statically, a field its container injects typed as an interface or superclass of the class,
+ * or the running application: a {@code @SpringBootTest} boots the {@code @SpringBootApplication} class, and requests an
+ * HTTP test client sends reach a web controller or filter, or in a booted application any Spring component.
  */
 final class IndirectUses {
 
@@ -29,8 +31,16 @@ final class IndirectUses {
     private static final Set<String> HTTP_TEST_CLIENTS = Set.of("MockMvc", "MockMvcTester", "WebTestClient",
             "TestRestTemplate", "RestTestClient", "RestAssured", "RestAssuredMockMvc");
     private static final Set<String> INJECTIONS = Set.of("Autowired", "Inject", "Resource");
+    private static final Set<String> COMPONENTS = Set.of("Component", "Service", "Repository", "Controller",
+            "RestController", "ControllerAdvice", "RestControllerAdvice", "Configuration");
+    private static final Set<String> BOOTED_TESTS = Set.of("SpringBootTest", "WebMvcTest", "WebFluxTest");
 
     private IndirectUses() {
+    }
+
+    /** Whether a type the test names stands for the subject: it is the subject, or implements the abstract subject. */
+    static boolean standsFor(JavaClass named, JavaClass subject) {
+        return named.equals(subject) || !Hierarchy.isConcrete(subject) && named.isAssignableTo(subject.getName());
     }
 
     /** Calls and names of the subject's members the file imports statically, as {@code encode(text)} is. */
@@ -71,16 +81,27 @@ final class IndirectUses {
     }
 
     /**
-     * Whether the subject handles web requests, as a controller or filter does, and the test sends them through an HTTP
-     * test client: the requests exercise it without naming it.
+     * Whether the application the test runs exercises the subject: a {@code @SpringBootTest} boots the
+     * {@code @SpringBootApplication} class, and requests the test sends through an HTTP test client reach a web
+     * controller or filter, or, in an application the test boots, any Spring component.
      */
-    static boolean isTestedThroughRequests(ParsedFile file, TypeDeclaration<?> test, JavaClass subject) {
-        boolean servesRequests = ProjectClasses.annotationNames(subject).stream().anyMatch(WEB_ENDPOINTS::contains)
-                || WEB_COMPONENTS.stream().anyMatch(subject::isAssignableTo);
+    static boolean isRunByTheApplication(ParsedFile file, TypeDeclaration<?> test, JavaClass subject) {
+        List<String> subjectAnnotations = ProjectClasses.annotationNames(subject);
+        boolean boots = test.getAnnotations().stream().anyMatch(annotation -> BOOTED_TESTS.contains(annotation.getName().getIdentifier()));
+        if (boots && subjectAnnotations.contains("SpringBootApplication")) {
+            return true;
+        }
+        boolean servesRequests = subjectAnnotations.stream().anyMatch(WEB_ENDPOINTS::contains)
+                || WEB_COMPONENTS.stream().anyMatch(subject::isAssignableTo)
+                || boots && subjectAnnotations.stream().anyMatch(COMPONENTS::contains);
+        return servesRequests && sendsRequests(file, test);
+    }
+
+    private static boolean sendsRequests(ParsedFile file, TypeDeclaration<?> test) {
         Stream<String> imported = file.unit().getImports().stream()
                 .flatMap(declaration -> Arrays.stream(declaration.getNameAsString().split("\\.")));
         Stream<String> typeNames = test.findAll(ClassOrInterfaceType.class).stream()
                 .map(ClassOrInterfaceType::getNameAsString);
-        return servesRequests && Stream.concat(imported, typeNames).anyMatch(HTTP_TEST_CLIENTS::contains);
+        return Stream.concat(imported, typeNames).anyMatch(HTTP_TEST_CLIENTS::contains);
     }
 }

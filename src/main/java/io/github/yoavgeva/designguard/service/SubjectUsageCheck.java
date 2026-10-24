@@ -62,13 +62,13 @@ public final class SubjectUsageCheck {
             Map<String, TestType> testTypes) {
         ParsedFile file = testType.file();
         TypeDeclaration<?> test = testType.type();
-        List<MockSites.MockSite> mocks = MockSites.in(file.unit()).toList();
+        List<MockSites.MockSite> mocks = MockSites.in(file.unit()).filter(mock -> !mock.spy()).toList();
         List<Node> named = namedUses(file, test, subject, types).toList();
         if (named.stream().anyMatch(use -> !isMock(use, mocks))
                 || helpers(testType, testTypes).anyMatch(helper -> usesReally(helper, subject, types))
                 || resolvedUses(test, subject).anyMatch(use -> !isMock(use, mocks))
                 || IndirectUses.isInjectedThroughSupertype(test, subject)
-                || IndirectUses.isTestedThroughRequests(file, test, subject)) {
+                || IndirectUses.isRunByTheApplication(file, test, subject)) {
             return Optional.empty();
         }
         String name = ProjectClasses.nameOf(subject);
@@ -92,7 +92,7 @@ public final class SubjectUsageCheck {
 
     /** Whether the helper names the subject other than to mock it. */
     private static boolean usesReally(TestType helper, JavaClass subject, SourceTypes types) {
-        List<MockSites.MockSite> mocks = MockSites.in(helper.file().unit()).toList();
+        List<MockSites.MockSite> mocks = MockSites.in(helper.file().unit()).filter(mock -> !mock.spy()).toList();
         return namedUses(helper.file(), helper.type(), subject, types).anyMatch(use -> !isMock(use, mocks));
     }
 
@@ -110,7 +110,8 @@ public final class SubjectUsageCheck {
     /** Types, static-call scopes, annotations and statically imported members that name the subject. */
     private static Stream<Node> namedUses(ParsedFile file, TypeDeclaration<?> test, JavaClass subject, SourceTypes types) {
         Stream<Node> typeNames = test.findAll(ClassOrInterfaceType.class).stream()
-                .filter(type -> types.resolve(file.unit(), type.getNameWithScope()).filter(subject::equals).isPresent())
+                .filter(type -> types.resolve(file.unit(), type.getNameWithScope())
+                        .filter(named -> IndirectUses.standsFor(named, subject)).isPresent())
                 .map(type -> type);
         Stream<Node> scopes = test.findAll(NameExpr.class).stream()
                 .filter(name -> types.resolve(file.unit(), name.getNameAsString()).filter(subject::equals).isPresent())

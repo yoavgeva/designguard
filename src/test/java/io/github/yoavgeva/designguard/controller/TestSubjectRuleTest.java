@@ -388,6 +388,119 @@ class TestSubjectRuleTest {
     }
 
     @Test
+    void implementationsSpiesAndTheBootedApplicationAreUses() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("SpringBootApplication", "package org.springframework.boot.autoconfigure;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface SpringBootApplication {\n}\n")
+                .add("Component", "package org.springframework.stereotype;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Component {\n}\n")
+                .add("Application", "package shop;\n\n@org.springframework.boot.autoconfigure.SpringBootApplication\n"
+                        + "public class Application {\n}\n")
+                .add("ViewResolver", "package shop;\n\npublic interface ViewResolver {\n    String resolve(String name);\n}\n")
+                .add("DefaultViewResolver", """
+                        package shop;
+
+                        public class DefaultViewResolver implements ViewResolver {
+                            @Override
+                            public String resolve(String name) {
+                                return name + ".html";
+                            }
+                        }
+                        """)
+                .add("Migrations", """
+                        package shop;
+
+                        public class Migrations {
+                            public int run() {
+                                return 1;
+                            }
+                        }
+                        """)
+                .add("HeadProcessor", """
+                        package shop;
+
+                        @org.springframework.stereotype.Component
+                        public class HeadProcessor {
+                            public String head() {
+                                return "<meta>";
+                            }
+                        }
+                        """)
+                .add("Prices", "package shop;\n\npublic class Prices {\n    public long price() {\n        return 1;\n    }\n}\n")
+                .addTest("ApplicationTests", """
+                        package shop;
+
+                        @org.springframework.boot.test.context.SpringBootTest
+                        class ApplicationTests {
+                            @org.junit.jupiter.api.Test
+                            void contextLoads() {
+                            }
+                        }
+                        """)
+                .addTest("ViewResolverTest", """
+                        package shop;
+
+                        class ViewResolverTest {
+                            @org.mockito.InjectMocks
+                            DefaultViewResolver resolver;
+
+                            @org.junit.jupiter.api.Test
+                            void resolves() {
+                                org.assertj.core.api.Assertions.assertThat(resolver.resolve("post")).isEqualTo("post.html");
+                            }
+                        }
+                        """)
+                .addTest("MigrationsTest", """
+                        package shop;
+
+                        class MigrationsTest {
+                            @org.mockito.InjectMocks
+                            @org.mockito.Spy
+                            Migrations migrations;
+
+                            @org.junit.jupiter.api.Test
+                            void runs() {
+                                org.assertj.core.api.Assertions.assertThat(migrations.run()).isOne();
+                            }
+                        }
+                        """)
+                .addTest("HeadProcessorTest", """
+                        package shop;
+
+                        @org.springframework.boot.test.context.SpringBootTest
+                        class HeadProcessorTest {
+                            @org.springframework.beans.factory.annotation.Autowired
+                            org.springframework.test.web.reactive.server.WebTestClient client;
+
+                            @org.junit.jupiter.api.Test
+                            void writesTheHead() {
+                                client.get().uri("/").exchange().expectStatus().isOk();
+                            }
+                        }
+                        """)
+                .addTest("PricesTest", """
+                        package shop;
+
+                        @org.springframework.boot.test.context.SpringBootTest
+                        class PricesTest {
+                            @org.springframework.beans.factory.annotation.Autowired
+                            org.springframework.test.web.reactive.server.WebTestClient client;
+
+                            @org.junit.jupiter.api.Test
+                            void prices() {
+                                client.get().uri("/prices").exchange().expectStatus().isOk();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message)
+                .containsExactly("PricesTest never uses Prices, the class it's named after");
+    }
+
+    @Test
     void testsWithTheSameNameInDifferentPackagesAreEachChecked() {
         String test = "class ReportTest {\n    @org.junit.jupiter.api.Test\n    void adds() {\n"
                 + "        org.assertj.core.api.Assertions.assertThat(1 + 1).isEqualTo(2);\n    }\n}\n";

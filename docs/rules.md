@@ -1253,8 +1253,10 @@ type resolves to it, such as `Streams.failableStream(list)`, in the test or in a
 class it uses. Expressions resolve against the production sources too, so a factory's result counts even when its
 classes aren't on the test's class path. A field the test's container injects (`@Autowired`, `@Inject`, `@Resource`)
 typed as an interface or superclass of the class uses it, and so does a test of a web controller, controller advice or
-filter that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate` or REST Assured. Tests named after
-no project class are skipped.
+filter that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate` or REST Assured. A test named after
+an interface or abstract class uses it through an implementation, a spy runs the real class, a `@SpringBootTest` boots
+the `@SpringBootApplication` class, and requests a booted test sends reach any Spring component. Tests named after no
+project class are skipped.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.
 
