@@ -20,7 +20,8 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   holding such a resource, or by calling effectful project code; a call through an interface is effectful if any
   implementation is, except a call on a parameter, which runs whatever implementation the caller passed, so
   `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface annotated
-  `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do. The clock includes
+  `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do. Creating a clock or a random source, as `Clock.systemUTC()`, `new SecureRandom()` and
+  `ThreadLocalRandom.current()` do, isn't an effect; reading the time or a number from it is. The clock includes
   `new Date()` and `Calendar.getInstance()`, and the environment includes `System.getProperties()` and
   `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an `InetAddress` or `InetSocketAddress`, a
   `java.sql.Timestamp` or an options enum such as `StandardOpenOption` as data, extending `SimpleFileVisitor`, encoding

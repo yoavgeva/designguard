@@ -138,6 +138,15 @@ final class JdkEffects {
                 || CLOCK_CONSTRUCTORS.contains(owner) && CONSTRUCTOR.equals(target.getName());
     }
 
+    /**
+     * Whether the call on a clock or random type creates one rather than reading it, as {@code Clock.systemUTC()},
+     * {@code new SecureRandom()}, {@code ThreadLocalRandom.current()} and {@code clock.withZone(zone)} do: reading the
+     * time or a number is the effect.
+     */
+    private static boolean createsTimeOrChance(CodeUnitAccessTarget target) {
+        return CONSTRUCTOR.equals(target.getName()) || TIME_AND_CHANCE_TYPES.contains(target.getRawReturnType().getName());
+    }
+
     /** Whether the type is a clock or a source of randomness. */
     static boolean isTimeOrChanceType(JavaClass type) {
         return TIME_AND_CHANCE_TYPES.contains(type.getName());
@@ -164,6 +173,9 @@ final class JdkEffects {
         }
         if (EFFECTS_OF_VALUE_TYPES.containsKey(name)) {
             return EFFECTS_OF_VALUE_TYPES.get(name).contains(target.getName());
+        }
+        if (TIME_AND_CHANCE_TYPES.contains(name) && createsTimeOrChance(target)) {
+            return false;
         }
         if (CONSTRUCTOR.equals(target.getName()) && ("java.io".equals(owner.getPackageName())
                 || CLOCK_CONSTRUCTORS.contains(name) || OPENING_CONSTRUCTORS.containsKey(name))) {

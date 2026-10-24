@@ -506,6 +506,53 @@ class ConstructorWorkRuleTest {
     }
 
     @Test
+    void creatingAClockOrRandomSourceIsNotWorkButReadingOneIs() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Tokens", """
+                        package shop;
+
+                        import java.security.SecureRandom;
+                        import java.time.Clock;
+                        import java.util.Random;
+                        import java.util.concurrent.ThreadLocalRandom;
+
+                        public final class Tokens {
+                            private final Clock clock = Clock.systemUTC();
+                            private final Clock zoned = Clock.systemDefaultZone();
+                            private final SecureRandom secure = new SecureRandom();
+                            private final Random seeded = new Random(42);
+                            private final Random local = ThreadLocalRandom.current();
+
+                            public String next() {
+                                return clock.instant() + "" + zoned.millis() + secure.nextInt() + seeded.nextInt() + local.nextInt();
+                            }
+                        }
+                        """)
+                .add("Session", """
+                        package shop;
+
+                        import java.time.Clock;
+                        import java.time.Instant;
+
+                        public final class Session {
+                            private final Instant started;
+
+                            public Session(Clock clock) {
+                                this.started = Instant.now(clock);
+                            }
+
+                            public Instant started() {
+                                return started;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).extracting(Violation::message)
+                .containsExactly("Session does work in its constructor through Instant.now()");
+    }
+
+    @Test
     void callsThatMayRunNoEffectsAreNotWork() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Rule", "package shop;\n\npublic interface Rule {\n    boolean test(String value);\n}\n")
