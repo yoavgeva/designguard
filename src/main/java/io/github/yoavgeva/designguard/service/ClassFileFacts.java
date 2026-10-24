@@ -101,11 +101,12 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             }
         }
         int release = reader.readUnsignedShort(MAJOR_VERSION_OFFSET) - CLASS_FILE_VERSION_OFFSET;
+        Map<String, Integer> captured = Loops.capturedSlots(node);
         return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
                 byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::nullGuardedReads),
                 new Loops(byMethod(node, method -> Loops.callsInLoops(node.name, method)),
-                        byMethod(node, method -> Loops.iteratedLambdas(node.name, method)),
-                        byMethod(node, method -> Loops.lambdaBodyCalls(node.name, method))),
+                        byMethod(node, Loops::iteratedLambdas),
+                        byMethod(node, method -> Loops.lambdaBodyCalls(node.name, method, captured))),
                 byMethod(node, method -> writesOnThis(node.name, method)));
     }
 
@@ -265,65 +266,95 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             lambdaBodies = Map.copyOf(lambdaBodies);
         }
 
-        /** The calls on collaborators, fields of {@code this}, between a backward jump and its target. */
+        /**
+         * The calls between a backward jump and its target that ask a collaborator, an object that is the same for
+         * every item of that loop, about an item.
+         */
         static Set<String> callsInLoops(String owner, MethodNode method) {
             List<AbstractInsnNode> instructions = instructionsOf(method);
             int[] lines = linesOf(instructions);
-            List<int[]> loops = IntStream.range(0, instructions.size())
+            int fixedSlots = slotsOf(method, Type.getArgumentTypes(method.desc).length);
+            List<LoopValues.Stretch> loops = IntStream.range(0, instructions.size())
                     .filter(index -> instructions.get(index) instanceof JumpInsnNode jump
                             && method.instructions.indexOf(jump.label) < index)
-                    .mapToObj(index -> new int[] {method.instructions.indexOf(((JumpInsnNode) instructions.get(index)).label), index})
+                    .mapToObj(index -> new LoopValues.Stretch(
+                            method.instructions.indexOf(((JumpInsnNode) instructions.get(index)).label), index, fixedSlots))
                     .toList();
             if (loops.isEmpty()) {
                 return Set.of();
             }
             Receivers receivers = Receivers.of(owner, method);
             return IntStream.range(0, instructions.size())
-                    .filter(index -> isInstanceCall(instructions.get(index))
-                            && loops.stream().anyMatch(loop -> loop[0] <= index && index <= loop[1])
-                            && receivers.callsFieldOfThis((MethodInsnNode) instructions.get(index)))
+                    .filter(index -> isInstanceCall(instructions.get(index)) && loops.stream().anyMatch(loop -> loop.contains(index)
+                            && new LoopValues(receivers, loop).asksSameObjectPerItem((MethodInsnNode) instructions.get(index))))
                     .mapToObj(index -> keyOf((MethodInsnNode) instructions.get(index), lines[index]))
                     .collect(Collectors.toSet());
         }
 
         /**
-         * The lambdas, and method references bound to a collaborator such as {@code repository::find}, passed straight
-         * on to a per-item method such as {@code map}.
+         * The lambdas, and method references bound to an object such as {@code repository::find}, passed straight on
+         * to a per-item method such as {@code map}.
          */
-        static Set<String> iteratedLambdas(String owner, MethodNode method) {
+        static Set<String> iteratedLambdas(MethodNode method) {
             List<AbstractInsnNode> instructions = instructionsOf(method);
-            List<InvokeDynamicInsnNode> lambdas = IntStream.range(0, instructions.size())
+            return IntStream.range(0, instructions.size())
                     .filter(index -> instructions.get(index) instanceof InvokeDynamicInsnNode call
                             && LAMBDA_METAFACTORY.equals(call.bsm.getOwner()) && call.bsmArgs.length > 1
-                            && call.bsmArgs[1] instanceof Handle && takesItems(instructions, index))
-                    .mapToObj(index -> (InvokeDynamicInsnNode) instructions.get(index))
-                    .toList();
-            if (lambdas.isEmpty()) {
-                return Set.of();
-            }
-            Receivers receivers = Receivers.of(owner, method);
-            return lambdas.stream()
-                    .filter(lambda -> ((Handle) lambda.bsmArgs[1]).getName().startsWith(LAMBDA_PREFIX)
-                            || receivers.capturesFieldOfThis(lambda))
-                    .map(lambda -> (Handle) lambda.bsmArgs[1])
+                            && call.bsmArgs[1] instanceof Handle handle && takesItems(instructions, index)
+                            && (handle.getName().startsWith(LAMBDA_PREFIX) || Type.getArgumentTypes(call.desc).length > 0))
+                    .mapToObj(index -> (Handle) ((InvokeDynamicInsnNode) instructions.get(index)).bsmArgs[1])
                     .map(handle -> Type.getObjectType(handle.getOwner()).getClassName() + "." + handle.getName()
                             + handle.getDesc())
                     .collect(Collectors.toSet());
         }
 
-        /** The calls on collaborators, fields of {@code this}, in a lambda body; none for other methods. */
-        static Set<String> lambdaBodyCalls(String owner, MethodNode method) {
+        /**
+         * The calls in a lambda body that ask a collaborator, a field or a value the lambda captured, about its item.
+         * None for other methods.
+         *
+         * @param owner    the class's internal name
+         * @param method   the method
+         * @param captured how many values each lambda body of the class captures as parameters, by name and descriptor
+         */
+        static Set<String> lambdaBodyCalls(String owner, MethodNode method, Map<String, Integer> captured) {
             if (!method.name.startsWith(LAMBDA_PREFIX)) {
                 return Set.of();
             }
             List<AbstractInsnNode> instructions = instructionsOf(method);
             int[] lines = linesOf(instructions);
             Receivers receivers = Receivers.of(owner, method);
+            LoopValues.Stretch body = new LoopValues.Stretch(0, instructions.size() - 1,
+                    slotsOf(method, captured.getOrDefault(method.name + method.desc, 0)));
             return IntStream.range(0, instructions.size())
                     .filter(index -> isInstanceCall(instructions.get(index))
-                            && receivers.callsFieldOfThis((MethodInsnNode) instructions.get(index)))
+                            && new LoopValues(receivers, body).asksSameObjectPerItem((MethodInsnNode) instructions.get(index)))
                     .mapToObj(index -> keyOf((MethodInsnNode) instructions.get(index), lines[index]))
                     .collect(Collectors.toSet());
+        }
+
+        /**
+         * How many values each lambda body of the class captures as parameters, by name and descriptor: the values
+         * the {@code invokedynamic} that makes it takes, less {@code this}, which a body that is an instance method
+         * captures as itself.
+         */
+        static Map<String, Integer> capturedSlots(ClassNode node) {
+            return node.methods.stream()
+                    .flatMap(method -> instructionsOf(method).stream())
+                    .filter(instruction -> instruction instanceof InvokeDynamicInsnNode call
+                            && LAMBDA_METAFACTORY.equals(call.bsm.getOwner()) && call.bsmArgs.length > 1
+                            && call.bsmArgs[1] instanceof Handle handle && node.name.equals(handle.getOwner())
+                            && handle.getName().startsWith(LAMBDA_PREFIX))
+                    .map(InvokeDynamicInsnNode.class::cast)
+                    .collect(Collectors.toMap(call -> ((Handle) call.bsmArgs[1]).getName() + ((Handle) call.bsmArgs[1]).getDesc(),
+                            call -> Type.getArgumentTypes(call.desc).length
+                                    - (((Handle) call.bsmArgs[1]).getTag() == Opcodes.H_INVOKESTATIC ? 0 : 1),
+                            (first, second) -> first));
+        }
+
+        /** The local slots that {@code this}, if any, and the method's first parameters take. */
+        private static int slotsOf(MethodNode method, int parameters) {
+            int self = (method.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
+            return self + Arrays.stream(Type.getArgumentTypes(method.desc)).limit(parameters).mapToInt(Type::getSize).sum();
         }
 
         /** Whether the next call after the lambda is a per-item method it is the argument of. */

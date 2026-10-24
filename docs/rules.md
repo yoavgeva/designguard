@@ -378,9 +378,12 @@ public class Checkout {
 `dependencies().noQueriesInLoops()` · **recommended**
 
 Queries made once per item, the N+1 pattern, are reported. A query is a call on a collaborator that touches the
-outside world and returns a value. It counts when it is made inside a loop, or in a lambda or method reference
-handed to a stream or `forEach`. Commands, which return nothing, aren't queries. Calls on the loop's own items, a
-class's own helpers and static methods are left alone, since that per-item work can't be batched. A call counts
+outside world and returns a value. The collaborator is the same object for every item: a field, a getter's result,
+a parameter, a static field or a local set before the loop. The query counts when it is made inside a loop, or in a
+lambda or method reference handed to a stream or `forEach`, and is given the item or something made from it, such as
+its id or a key built from it. Commands, which return nothing, aren't queries, and neither is reading the next value
+of the same object, as a parser's `reader.peek()` does, or retrying with a new timeout. Calls on the loop's own items,
+a class's own helpers and static methods are left alone, since that per-item work can't be batched. A call counts
 only if every implementation it may run touches the outside world, so a strategy such as a `Predicate` with pure
 implementations isn't a query. Wiring code is exempt.
 

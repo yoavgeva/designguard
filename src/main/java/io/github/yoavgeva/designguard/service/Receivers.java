@@ -7,11 +7,8 @@ import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.FieldInsnNode;
-import org.objectweb.asm.tree.InvokeDynamicInsnNode;
-import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.analysis.Analyzer;
@@ -21,9 +18,9 @@ import org.objectweb.asm.tree.analysis.SourceInterpreter;
 import org.objectweb.asm.tree.analysis.SourceValue;
 
 /**
- * Where the objects a method calls, captures and writes come from, found by ASM's data-flow analysis: {@code this},
- * a field of {@code this} (a collaborator), or anything else, such as a parameter or the item of a loop. Methods the
- * analysis can't follow have no known receivers.
+ * Where the values a method uses come from, found by ASM's data-flow analysis: for each value on the stack or in a
+ * local, the instructions that may have produced or stored it. A parameter, or {@code this}, that was never stored
+ * over has none. Methods the analysis can't follow have no known sources.
  */
 final class Receivers {
 
@@ -52,36 +49,38 @@ final class Receivers {
         }
     }
 
-    /** Whether the instance call is made on a field of {@code this}, as {@code this.repository.find(id)} is. */
-    boolean callsFieldOfThis(MethodInsnNode call) {
-        int arguments = Type.getArgumentTypes(call.desc).length;
-        return call.getOpcode() != Opcodes.INVOKESTATIC && fromFieldOfThis(call, arguments);
-    }
-
-    /** Whether the lambda or method reference captures a field of {@code this} first, as {@code repository::find} does. */
-    boolean capturesFieldOfThis(InvokeDynamicInsnNode lambda) {
-        int captured = Type.getArgumentTypes(lambda.desc).length;
-        return captured > 0 && fromFieldOfThis(lambda, captured - 1);
-    }
-
     /** Whether the field write goes to {@code this}, or to a static field of the class. */
     boolean writesThis(FieldInsnNode write) {
-        return write.getOpcode() == Opcodes.PUTSTATIC
-                || frameAt(write).filter(frame -> isThis(frame.getStack(frame.getStackSize() - 2).insns)).isPresent();
+        return write.getOpcode() == Opcodes.PUTSTATIC || isThis(stackAt(write, 1));
     }
 
-    /** Whether the stack value below the given number of others was read from a field of {@code this}. */
-    private boolean fromFieldOfThis(AbstractInsnNode instruction, int above) {
+    /**
+     * What may have produced a value on the stack just before the instruction runs.
+     *
+     * @param instruction the instruction
+     * @param below       how many values are above it: 0 for the top of the stack
+     * @return the producing instructions; none if unknown
+     */
+    Set<AbstractInsnNode> stackAt(AbstractInsnNode instruction, int below) {
         return frameAt(instruction)
-                .filter(frame -> frame.getStackSize() > above)
-                .map(frame -> frame.getStack(frame.getStackSize() - 1 - above).insns)
-                .filter(sources -> !sources.isEmpty() && sources.stream().allMatch(source -> source instanceof FieldInsnNode field
-                        && field.getOpcode() == Opcodes.GETFIELD && isThis(objectOf(field))))
-                .isPresent();
+                .filter(frame -> frame.getStackSize() > below)
+                .map(frame -> frame.getStack(frame.getStackSize() - 1 - below).insns)
+                .orElse(Set.of());
     }
 
-    private Set<AbstractInsnNode> objectOf(FieldInsnNode read) {
-        return frameAt(read).map(frame -> frame.getStack(frame.getStackSize() - 1).insns).orElse(Set.of());
+    /** The stores that may have set the local the instruction loads; none if it still holds a parameter or {@code this}. */
+    Set<AbstractInsnNode> storesOf(VarInsnNode load) {
+        return frameAt(load).map(frame -> frame.getLocal(load.var).insns).orElse(Set.of());
+    }
+
+    /** The instruction's index in the method. */
+    int indexOf(AbstractInsnNode instruction) {
+        return method.instructions.indexOf(instruction);
+    }
+
+    /** The instruction at the index in the method. */
+    AbstractInsnNode instructionAt(int index) {
+        return method.instructions.get(index);
     }
 
     private boolean isThis(Set<AbstractInsnNode> sources) {
