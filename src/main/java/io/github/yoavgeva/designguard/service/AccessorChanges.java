@@ -38,11 +38,6 @@ final class AccessorChanges {
 
     private static final Pattern ACCESSOR = Pattern.compile("(get|is|has)[A-Z].*");
     private static final String CONSTRUCTOR = "<init>";
-    /** How a write sets a flag or reference, which is temporary when a method sets it both ways. */
-    private static final String SET_FALSE = "#false";
-    private static final String SET_TRUE = "#true";
-    private static final String CLEARED = "#null";
-    private static final String SET = "#value";
     /** Methods of collections and atomics that set a value only if there is none, as caching does. */
     private static final Set<String> CACHING = Set.of("computeIfAbsent", "putIfAbsent", "compareAndSet",
             "weakCompareAndSet", "weakCompareAndSetPlain", "weakCompareAndSetVolatile", "compareAndExchange");
@@ -118,8 +113,8 @@ final class AccessorChanges {
 
     /** Whether the writes set the field both {@code true} and {@code false}, or both to a value and to {@code null}. */
     private static boolean isTemporary(String field, Set<String> writes) {
-        return writes.contains(field + SET_FALSE) && writes.contains(field + SET_TRUE)
-                || writes.contains(field + CLEARED) && writes.contains(field + SET);
+        return writes.contains(Written.FALSE.of(field)) && writes.contains(Written.TRUE.of(field))
+                || writes.contains(Written.NULL.of(field)) && writes.contains(Written.VALUE.of(field));
     }
 
     /**
@@ -188,6 +183,32 @@ final class AccessorChanges {
                 .collect(Collectors.toSet());
     }
 
+    /** What a write sets a flag or reference to; a field set both ways while a method runs is temporary. */
+    private enum Written {
+        FALSE, TRUE, NULL, VALUE;
+
+        /** The field's name with this kind of write, such as {@code name#NULL}. */
+        String of(String field) {
+            return field + "#" + name();
+        }
+
+        /** What a write of a flag sets it to, given the instructions its value may come from. */
+        static Optional<Written> ofFlag(Set<Integer> opcodes) {
+            if (Set.of(Opcodes.ICONST_1).equals(opcodes)) {
+                return Optional.of(TRUE);
+            }
+            return Set.of(Opcodes.ICONST_0).equals(opcodes) ? Optional.of(FALSE) : Optional.empty();
+        }
+
+        /** What a write of a reference sets it to, given the instructions its value may come from. */
+        static Optional<Written> ofReference(Set<Integer> opcodes) {
+            if (Set.of(Opcodes.ACONST_NULL).equals(opcodes)) {
+                return Optional.of(NULL);
+            }
+            return opcodes.isEmpty() || opcodes.contains(Opcodes.ACONST_NULL) ? Optional.empty() : Optional.of(VALUE);
+        }
+    }
+
     /**
      * A change of a field, or a call of a method of the class, in a method.
      *
@@ -235,7 +256,7 @@ final class AccessorChanges {
             return callEvents;
         }
 
-        /** How the method itself sets flags and references, as the field's name and how, such as {@code name#null}. */
+        /** How the method itself sets flags and references, as the field's name and how, such as {@code name#NULL}. */
         Set<String> writeKinds() {
             return kinds;
         }
@@ -287,19 +308,15 @@ final class AccessorChanges {
             if (restores) {
                 temporary.add(write.name);
             }
-            Set<Integer> opcodes = values.stream().map(AbstractInsnNode::getOpcode).collect(Collectors.toSet());
-            if ("Z".equals(write.desc) && opcodes.size() == 1) {
-                int flag = opcodes.iterator().next();
-                if (flag == Opcodes.ICONST_0 || flag == Opcodes.ICONST_1) {
-                    kinds.add(write.name + (flag == Opcodes.ICONST_1 ? SET_TRUE : SET_FALSE));
-                }
-            } else if (Type.getType(write.desc).getSort() >= Type.ARRAY && !opcodes.isEmpty()) {
-                if (Set.of(Opcodes.ACONST_NULL).equals(opcodes)) {
-                    kinds.add(write.name + CLEARED);
-                } else if (!opcodes.contains(Opcodes.ACONST_NULL)) {
-                    kinds.add(write.name + SET);
-                }
-            }
+            recordKind(write, values.stream().map(AbstractInsnNode::getOpcode).collect(Collectors.toSet()));
+        }
+
+        /** Notes whether the write sets the flag {@code true} or {@code false}, or the reference to a value or null. */
+        private void recordKind(FieldInsnNode write, Set<Integer> opcodes) {
+            boolean reference = Type.getType(write.desc).getSort() >= Type.ARRAY;
+            Optional<Written> kind = "Z".equals(write.desc) ? Written.ofFlag(opcodes)
+                    : reference ? Written.ofReference(opcodes) : Optional.empty();
+            kind.ifPresent(written -> kinds.add(written.of(write.name)));
         }
 
         /** The field of {@code this}, or a static one of the class, every source reads, if there is one. */
