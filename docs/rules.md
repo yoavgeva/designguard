@@ -958,10 +958,17 @@ Fix: `enum Size { SMALL, MEDIUM, LARGE }`, converted once from the input, and a 
 
 `api().accessorsChangeNothing()` · **recommended**
 
-`get`, `is` and `has` methods that assign a field of their own instance, or a static field of their class, are
-reported. Writing the fields of another object, such as a copy the method builds, is fine. So is lazy
-initialization, assigning a field the method reads and checks for `null` (double-checked locking included). So are
-`getAnd...` methods, whose names say they change something.
+`get`, `is` and `has` methods that change their own instance or a static field of their class are reported: they
+assign a field, change the collection or atomic it holds (`items.add(item)`, `count.incrementAndGet()`), or call a
+method of the class that does. Writing the fields of another object, such as a copy the method builds, is fine.
+
+Lazy initialization is fine too: a change made only while a field is still `null`, a flag still `false` or a value
+still equal to a sentinel, that sets it. That covers `if (name == null) { name = load(); }`, `if (!loaded) { ...;
+loaded = true; }`, `if (cached != null) return cached;` followed by the load, `d != null ? d : (d = load())`, double-
+checked locking, and caching in a map the method checks first or fills with `computeIfAbsent`. A flag the method sets
+and resets while it runs is fine. So are `getAnd...` methods, whose names say they change something, a cursor's
+`hasNext()`, which may read ahead, void methods, and methods implementing an interface from outside the project,
+such as JDBC's `Statement.getResultSet()`, whose name the interface dictates.
 
 Why: callers read accessors as queries and call them freely, so a hidden change surprises them (command-query
 separation).

@@ -246,6 +246,250 @@ class ApiRulesTest {
     }
 
     @Test
+    void lazyCachesChangeNothingButHelpersCollectionsAndAtomicsDo() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Catalog", """
+                        package shop;
+
+                        import java.util.ArrayList;
+                        import java.util.HashMap;
+                        import java.util.List;
+                        import java.util.Map;
+                        import java.util.concurrent.atomic.AtomicInteger;
+
+                        public class Catalog {
+                            private final Map<String, Integer> lengths = new HashMap<>();
+                            private final List<String> seen = new ArrayList<>();
+                            private final AtomicInteger reads = new AtomicInteger();
+                            private String typeName;
+                            private boolean lob;
+                            private String primaryKey;
+                            private boolean primaryKeyLoaded;
+                            private String connection;
+                            private String cached;
+                            private String loaded;
+                            private int count;
+                            private boolean dirty;
+
+                            public String getTypeName() {
+                                if (typeName == null) {
+                                    typeName = "varchar";
+                                    lob = false;
+                                }
+                                return typeName + lob;
+                            }
+
+                            public String getPrimaryKey() {
+                                if (!primaryKeyLoaded) {
+                                    primaryKey = "id";
+                                    primaryKeyLoaded = true;
+                                }
+                                return primaryKey;
+                            }
+
+                            public String getConnection() {
+                                if (!hasConnection()) {
+                                    connection = "jdbc";
+                                }
+                                return connection;
+                            }
+
+                            public boolean hasConnection() {
+                                return connection != null;
+                            }
+
+                            public String getCached() {
+                                if (cached != null) {
+                                    return cached;
+                                }
+                                cached = "value";
+                                return cached;
+                            }
+
+                            public int getLength(String key) {
+                                Integer length = lengths.get(key);
+                                if (length == null) {
+                                    length = key.length();
+                                    lengths.put(key, length);
+                                }
+                                return length;
+                            }
+
+                            public String getLoaded() {
+                                ensureLoaded();
+                                return loaded;
+                            }
+
+                            private void ensureLoaded() {
+                                if (loaded == null) {
+                                    loaded = "x";
+                                }
+                            }
+
+                            public List<String> getSeen() {
+                                seen.add("read");
+                                return seen;
+                            }
+
+                            public int getReads() {
+                                return reads.incrementAndGet();
+                            }
+
+                            public int getTotal() {
+                                reset();
+                                return count;
+                            }
+
+                            private void reset() {
+                                count = 0;
+                            }
+
+                            public boolean isFresh() {
+                                if (dirty) {
+                                    dirty = false;
+                                    return true;
+                                }
+                                return false;
+                            }
+                        }
+                        """)
+                .add("Lookups", """
+                        package shop;
+
+                        import java.util.Map;
+                        import java.util.concurrent.ConcurrentHashMap;
+                        import java.util.concurrent.atomic.AtomicInteger;
+
+                        public class Lookups implements Map.Entry<String, String> {
+                            private final Map<String, Integer> ids = new ConcurrentHashMap<>();
+                            private final AtomicInteger next = new AtomicInteger();
+                            private String delegate;
+                            private int suffixIndex = -1;
+                            private boolean inferring;
+                            private int reads;
+
+                            public String getDelegate() {
+                                String made = delegate;
+                                return made != null ? made : (delegate = "made");
+                            }
+
+                            public int getSuffixIndex() {
+                                int index = suffixIndex;
+                                if (index == -1) {
+                                    suffixIndex = index = 3;
+                                }
+                                return index;
+                            }
+
+                            public int getId(String key) {
+                                Integer id = ids.get(key);
+                                if (id == null) {
+                                    id = next.getAndIncrement();
+                                    ids.putIfAbsent(key, id);
+                                }
+                                return id;
+                            }
+
+                            public String getInferred() {
+                                inferring = true;
+                                String value = "v" + reads;
+                                inferring = false;
+                                return value;
+                            }
+
+                            public void getReady() {
+                                reads = 0;
+                            }
+
+                            public Map<String, Integer> getDefaults() {
+                                if (ids.isEmpty()) {
+                                    ids.put("default", 0);
+                                }
+                                return ids;
+                            }
+
+                            public int getCleansed() {
+                                if (ids.size() == suffixIndex) {
+                                    return suffixIndex;
+                                }
+                                suffixIndex = ids.size();
+                                return suffixIndex;
+                            }
+
+                            @Override
+                            public String getKey() {
+                                reads++;
+                                return "key";
+                            }
+
+                            @Override
+                            public String getValue() {
+                                return "value" + inferring;
+                            }
+
+                            @Override
+                            public String setValue(String value) {
+                                return value;
+                            }
+                        }
+                        """)
+                .add("Tokens", """
+                        package shop;
+
+                        public class Tokens {
+                            private final String pattern = "yyyy";
+                            private int position;
+
+                            public boolean hasNext() {
+                                position++;
+                                return position < 3;
+                            }
+
+                            public String getNextToken() {
+                                if (position >= pattern.length()) {
+                                    return null;
+                                }
+                                return advance();
+                            }
+
+                            private String advance() {
+                                position++;
+                                return pattern.substring(position - 1, position);
+                            }
+                        }
+                        """)
+                .add("Letters", """
+                        package shop;
+
+                        import java.util.Iterator;
+
+                        public class Letters implements Iterator<String> {
+                            private int index;
+
+                            @Override
+                            public boolean hasNext() {
+                                index++;
+                                return index < 3;
+                            }
+
+                            @Override
+                            public String next() {
+                                return "a" + index;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.api().accessorsChangeNothing().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(
+                        tuple(79, "Catalog.getSeen() changes the field 'seen'"),
+                        tuple(84, "Catalog.getReads() changes the field 'reads'"),
+                        tuple(88, "Catalog.getTotal() changes the field 'count' through reset()"),
+                        tuple(98, "Catalog.isFresh() changes the field 'dirty'"),
+                        tuple(16, "Tokens.getNextToken() changes the field 'position' through advance()"));
+    }
+
+    @Test
     void choicesBetweenStringsAreEnums() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Delivery", "package shop;\n\npublic enum Delivery { EXPRESS, PICKUP, STANDARD }\n")

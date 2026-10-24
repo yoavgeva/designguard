@@ -86,28 +86,11 @@ final class Bytecode {
     }
 
     /**
-     * The fields an accessor writes on {@code this} or statically, and those it reads while comparing something with
-     * {@code null}, as lazy initialization does.
+     * The fields an accessor changes on {@code this} or statically, itself or through methods of its class, lazy
+     * initialization aside: the first change of each field, by line.
      */
-    FieldChanges fieldChangesIn(JavaCodeUnit unit) {
-        ClassFileFacts unitFacts = factsOf(unit.getOwner());
-        String key = unit.getName() + unit.getDescriptor();
-        return new FieldChanges(unitFacts.writesOnThis().getOrDefault(key, Set.of()),
-                unitFacts.nullGuardedReads().getOrDefault(key, Set.of()));
-    }
-
-    /**
-     * What an accessor does to fields.
-     *
-     * @param writtenOnThis the fields it writes on {@code this} or statically
-     * @param nullGuarded   the fields it reads while comparing something with {@code null}
-     */
-    record FieldChanges(Set<String> writtenOnThis, Set<String> nullGuarded) {
-
-        FieldChanges {
-            writtenOnThis = Set.copyOf(writtenOnThis);
-            nullGuarded = Set.copyOf(nullGuarded);
-        }
+    List<AccessorChanges.FieldChange> changesMadeBy(JavaCodeUnit unit) {
+        return factsOf(unit.getOwner()).accessorChanges().getOrDefault(unit.getName() + unit.getDescriptor(), List.of());
     }
 
     /**

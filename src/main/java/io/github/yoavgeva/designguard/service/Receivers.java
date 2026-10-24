@@ -83,7 +83,8 @@ final class Receivers {
         return method.instructions.get(index);
     }
 
-    private boolean isThis(Set<AbstractInsnNode> sources) {
+    /** Whether every source is a load of {@code this}, in an instance method. */
+    boolean isThis(Set<AbstractInsnNode> sources) {
         return (method.access & Opcodes.ACC_STATIC) == 0 && !sources.isEmpty()
                 && sources.stream().allMatch(source -> source instanceof VarInsnNode load
                         && load.getOpcode() == Opcodes.ALOAD && load.var == 0);

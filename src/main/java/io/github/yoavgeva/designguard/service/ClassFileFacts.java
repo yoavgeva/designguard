@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -20,7 +19,6 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LineNumberNode;
@@ -45,18 +43,16 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * @param directCalls  for each method and constructor that creates lambdas, by name and descriptor such as
  *                     {@code <init>(I)V}, the {@link #callKey(String, String, int) calls} it makes itself, not those
  *                     in the lambdas; other methods make exactly the calls ArchUnit reports
- * @param nullGuardedReads for each method and constructor that compares anything with {@code null}, as lazy
- *                         initialization does, by name and descriptor, the fields it reads
  * @param loops            the calls each method makes once per item: in a loop, or in a lambda it gives a stream
- * @param writesOnThis     for each {@code get}, {@code is} or {@code has} method, the fields it writes on {@code this}
- *                         or statically, not on other objects such as a copy it builds
+ * @param accessorChanges  for each {@code get}, {@code is} or {@code has} method that changes fields of its class, by
+ *                         name and descriptor, the {@link AccessorChanges changes} it makes, lazy initialization aside
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
-        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> nullGuardedReads,
-        Loops loops, Map<String, Set<String>> writesOnThis) {
+        List<Reference> namedClasses, Map<String, Set<String>> directCalls, Loops loops,
+        Map<String, List<AccessorChanges.FieldChange>> accessorChanges) {
 
     /** For a class without a class file to read. */
-    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of(),
+    static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(),
             new Loops(Map.of(), Map.of(), Map.of()), Map.of());
 
     /** Java N writes class files of major version N + 44. */
@@ -65,7 +61,6 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
     private static final String SWITCH_BOOTSTRAPS = "java/lang/runtime/SwitchBootstraps";
     private static final String CLASS_DESC = "java/lang/constant/ClassDesc";
     private static final String LAMBDA_METAFACTORY = "java/lang/invoke/LambdaMetafactory";
-    private static final Pattern ACCESSOR = Pattern.compile("(get|is|has)[A-Z].*");
     private static final int CONSTANT_CLASS = 7;
 
     ClassFileFacts {
@@ -73,8 +68,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         switchLabels = List.copyOf(switchLabels);
         namedClasses = List.copyOf(namedClasses);
         directCalls = Map.copyOf(directCalls);
-        nullGuardedReads = Map.copyOf(nullGuardedReads);
-        writesOnThis = Map.copyOf(writesOnThis);
+        accessorChanges = Map.copyOf(accessorChanges);
     }
 
     /**
@@ -103,11 +97,11 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         int release = reader.readUnsignedShort(MAJOR_VERSION_OFFSET) - CLASS_FILE_VERSION_OFFSET;
         Map<String, Integer> captured = Loops.capturedSlots(node);
         return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
-                byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::nullGuardedReads),
+                byMethod(node, ClassFileFacts::directCalls),
                 new Loops(byMethod(node, method -> Loops.callsInLoops(node.name, method)),
                         byMethod(node, Loops::iteratedLambdas),
                         byMethod(node, method -> Loops.lambdaBodyCalls(node.name, method, captured))),
-                byMethod(node, method -> writesOnThis(node.name, method)));
+                AccessorChanges.of(node));
     }
 
     /** The facts of the methods that have any, by name and descriptor. */
@@ -141,34 +135,6 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
             }
         }
         return Set.copyOf(calls);
-    }
-
-    /** The fields an accessor writes on {@code this} or statically; none for other methods. */
-    private static Set<String> writesOnThis(String owner, MethodNode method) {
-        if (!ACCESSOR.matcher(method.name).matches()) {
-            return Set.of();
-        }
-        Receivers receivers = Receivers.of(owner, method);
-        return StreamSupport.stream(method.instructions.spliterator(), false)
-                .filter(instruction -> instruction instanceof FieldInsnNode write && owner.equals(write.owner)
-                        && (write.getOpcode() == Opcodes.PUTFIELD || write.getOpcode() == Opcodes.PUTSTATIC)
-                        && receivers.writesThis(write))
-                .map(instruction -> ((FieldInsnNode) instruction).name)
-                .collect(Collectors.toSet());
-    }
-
-    /** The fields the method reads, if it compares anything with {@code null}; else none. */
-    private static Set<String> nullGuardedReads(MethodNode method) {
-        List<AbstractInsnNode> instructions = StreamSupport.stream(method.instructions.spliterator(), false).toList();
-        boolean comparesWithNull = instructions.stream()
-                .anyMatch(instruction -> instruction.getOpcode() == Opcodes.IFNULL || instruction.getOpcode() == Opcodes.IFNONNULL);
-        if (!comparesWithNull) {
-            return Set.of();
-        }
-        return instructions.stream()
-                .filter(instruction -> instruction.getOpcode() == Opcodes.GETFIELD || instruction.getOpcode() == Opcodes.GETSTATIC)
-                .map(instruction -> ((FieldInsnNode) instruction).name)
-                .collect(Collectors.toSet());
     }
 
     /** The classes of the constant pool's class entries; a long or double takes two slots, the second one empty. */
