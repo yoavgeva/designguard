@@ -138,4 +138,76 @@ class MockedValuesRuleTest {
 
         assertThat(guard.tests().testsDontMockValues().evaluate()).isEmpty();
     }
+
+    @Test
+    void classesThatWorkThroughALibraryAreNoValuesDesignguardCanVouchFor() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Directory", "package org.apache.lucene.store;\n\npublic abstract class Directory {\n"
+                        + "    public abstract String[] listAll();\n}\n")
+                .add("DefaultPluginManager", "package org.pf4j;\n\npublic class DefaultPluginManager {\n"
+                        + "    public void loadPlugins() {\n    }\n}\n")
+                .add("PathResource", "package org.springframework.core.io;\n\npublic class PathResource {\n"
+                        + "    public PathResource(String path) {\n    }\n\n    public String getFilename() {\n        return \"\";\n    }\n}\n")
+                .add("PasswordEncoder", "package org.springframework.security.crypto.password;\n\n"
+                        + "public interface PasswordEncoder {\n    boolean matches(CharSequence raw, String encoded);\n}\n")
+                .add("SearchEngine", """
+                        package shop;
+
+                        public final class SearchEngine {
+                            private final org.apache.lucene.store.Directory directory;
+
+                            public SearchEngine(org.apache.lucene.store.Directory directory) {
+                                this.directory = directory;
+                            }
+
+                            public int count() {
+                                return directory.listAll().length;
+                            }
+                        }
+                        """)
+                .add("PluginManager", "package shop;\n\npublic class PluginManager extends org.pf4j.DefaultPluginManager {\n}\n")
+                .add("PluginFinder", """
+                        package shop;
+
+                        public final class PluginFinder {
+                            public String find(String path) {
+                                return new org.springframework.core.io.PathResource(path).getFilename();
+                            }
+                        }
+                        """)
+                .add("User", """
+                        package shop;
+
+                        public final class User {
+                            private final String hash;
+
+                            public User(String hash) {
+                                this.hash = hash;
+                            }
+
+                            public boolean matches(String raw, org.springframework.security.crypto.password.PasswordEncoder encoder) {
+                                return encoder.matches(raw, hash);
+                            }
+                        }
+                        """)
+                .addTest("ShopTest", """
+                        package shop;
+
+                        import static org.mockito.Mockito.mock;
+
+                        class ShopTest {
+                            @org.junit.jupiter.api.Test
+                            void mocks() {
+                                SearchEngine engine = mock(SearchEngine.class);
+                                PluginManager manager = mock(PluginManager.class);
+                                PluginFinder finder = mock(PluginFinder.class);
+                                User user = mock(User.class);
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.tests().testsDontMockValues().evaluate()).extracting(Violation::message)
+                .containsExactly("ShopTest mocks User, which is a value");
+    }
 }

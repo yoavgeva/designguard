@@ -1309,7 +1309,10 @@ Fix: create a real `Lookup`, and mock only what it calls.
 
 Mocks of values are reported: records, enums and other classes that aren't service-like or wiring code, and
 interfaces whose implementations are all values. Data that reads the clock or randomness may be mocked, to control
-what it reads. An interface with one abstract method is a role, such as a strategy or a callback,
+what it reads. So may a class that works through a library designguard can't see into: one that extends a library
+class, holds a library object other than data, or calls one of its own, as a search engine over Lucene or a plugin
+manager extending pf4j's does, since that library may do I/O. Calls on parameters belong to the caller, so an entity
+that checks a password with an encoder it is given is still a value. An interface with one abstract method is a role, such as a strategy or a callback,
 which tests mock to see it called, so it isn't a value. Mocks come from Mockito's or EasyMock's `mock(Type.class)`,
 `spy(Type.class)`, `spy(new Type(...))` and `createMock(Type.class)`, and from fields and parameters annotated
 `@Mock`, `@Spy` or Spring's mock-bean annotations.

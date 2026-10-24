@@ -515,6 +515,9 @@ class ServiceLikeClassesRuleTest {
                             }
                         }
                         """)
+                .add("Shape", "package shop;\n\npublic interface Shape {\n    int area();\n\n    int sides();\n}\n")
+                .add("Square", "package shop;\n\npublic final class Square implements Shape {\n"
+                        + "    public int area() {\n        return 4;\n    }\n\n    public int sides() {\n        return 4;\n    }\n}\n")
                 .add("Crypto", "package shop;\n\npublic interface Crypto {\n    byte[] decrypt(byte[] message);\n\n"
                         + "    byte[] publicKey();\n}\n")
                 .add("RsaKeys", """
@@ -547,6 +550,7 @@ class ServiceLikeClassesRuleTest {
                                 Context context = org.mockito.Mockito.mock(Context.class);
                                 Crypto crypto = org.mockito.Mockito.mock(Crypto.class);
                                 Model model = org.mockito.Mockito.mock(Model.class);
+                                Shape shape = org.mockito.Mockito.mock(Shape.class);
                             }
                         }
                         """)
@@ -557,7 +561,7 @@ class ServiceLikeClassesRuleTest {
                 "RsaKeys is service-like, but its field 'key' isn't final",
                 "Settings is service-like, but its field 'last' isn't final");
         assertThat(guard.tests().testsDontMockValues().evaluate()).extracting(Violation::message).containsExactly(
-                "ShopTest mocks Model, which is a value");
+                "ShopTest mocks Shape, which is a value");
     }
 
     @Test

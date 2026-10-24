@@ -30,28 +30,41 @@ public final class MockedValuesCheck {
         ProjectClasses classes = code.projectClasses();
         ServiceLikeClasses serviceLike = code.serviceLike();
         WiringCode wiring = code.wiring();
+        VisibleCode visible = new VisibleCode(classes);
         SourceTypes types = new SourceTypes(classes);
         return code.testSources().files().stream()
                 .flatMap(file -> MockSites.in(file.unit())
                         .filter(mock -> Scopes.selected(filter, file, mock.site()))
                         .flatMap(mock -> types.resolve(file.unit(), mock.typeName()).stream()
-                                .filter(type -> isValue(classes, serviceLike, type) && !wiring.contains(type))
+                                .filter(type -> isValue(classes, serviceLike, visible, type) && !wiring.contains(type))
                                 .map(type -> violation(file, mock.site(), type))))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
 
     /**
-     * A class that isn't service-like, or an abstraction whose project implementations all are values. An interface
-     * with one abstract method is a role, such as a strategy or callback, which tests mock to see it called, and data
-     * that reads the clock or randomness is mocked to control what it reads.
+     * A class that isn't service-like and whose every step designguard sees, or an abstraction whose project
+     * implementations all are such values. An interface with one abstract method is a role, such as a strategy or
+     * callback, which tests mock to see it called, and data that reads the clock or randomness is mocked to control what
+     * it reads. A class that works through a library may do what designguard can't see ({@link VisibleCode}).
      */
-    private static boolean isValue(ProjectClasses classes, ServiceLikeClasses serviceLike, JavaClass type) {
-        if (serviceLike.contains(type) || serviceLike.isTimeOrChanceData(type) || isRole(type)) {
+    private static boolean isValue(ProjectClasses classes, ServiceLikeClasses serviceLike, VisibleCode visible,
+            JavaClass type) {
+        if (isRole(type)) {
             return false;
         }
-        return Hierarchy.isConcrete(type) || classes.stream()
-                .anyMatch(other -> !other.equals(type) && Hierarchy.isConcrete(other) && other.isAssignableTo(type.getName()));
+        if (Hierarchy.isConcrete(type)) {
+            return isConcreteValue(serviceLike, visible, type);
+        }
+        List<JavaClass> implementations = classes.stream()
+                .filter(other -> !other.equals(type) && Hierarchy.isConcrete(other) && other.isAssignableTo(type.getName()))
+                .toList();
+        return !serviceLike.contains(type) && !implementations.isEmpty()
+                && implementations.stream().allMatch(implementation -> isConcreteValue(serviceLike, visible, implementation));
+    }
+
+    private static boolean isConcreteValue(ServiceLikeClasses serviceLike, VisibleCode visible, JavaClass type) {
+        return !serviceLike.contains(type) && !serviceLike.isTimeOrChanceData(type) && visible.isSeenThrough(type);
     }
 
     private static boolean isRole(JavaClass type) {
