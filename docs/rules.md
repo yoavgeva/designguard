@@ -1094,8 +1094,10 @@ Fix: fix what the tool reports, here by taking a `List<String>`.
 Package-private or protected methods and constructors that tests in their package call are reported when no
 production code calls them, or when they are marked `@VisibleForTesting` (any annotation of that name), which says
 they were widened for tests. Overrides, members with other annotations, which a framework may call, protected
-constructors, which are there for subclasses, and wiring code are skipped. Code nothing calls is left to
-`no-unused-public-code`.
+constructors, which are there for subclasses, and wiring code are skipped. A constructor no production code calls is
+reported only when production creates the class through another one, which is called, public or annotated: a class's
+only constructor is how its framework, as Spring creates a `@Controller`, and its tests both create it. Code nothing
+calls is left to `no-unused-public-code`.
 
 Why: the method was opened up so tests could reach inside the class, which ties the tests to its internals.
 

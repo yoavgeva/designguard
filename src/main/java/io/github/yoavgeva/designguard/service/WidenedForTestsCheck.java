@@ -17,7 +17,8 @@ import java.util.stream.Collectors;
  * Finds methods and constructors widened for tests: package-private or protected, never called by production code or
  * marked {@code @VisibleForTesting}, but called by tests in their package, which reach inside the class instead of
  * testing it through its API. Code nothing calls is left to {@link UnusedPublicCodeCheck}; overrides, members with other
- * annotations, protected constructors, which are for subclasses, and wiring code are skipped.
+ * annotations, protected constructors, which are for subclasses, and wiring code are skipped, and so is a constructor
+ * unless production creates the class through another one.
  * Test calls are matched by name, argument count and, for constructors, the created type.
  */
 public final class WidenedForTestsCheck {
@@ -41,8 +42,7 @@ public final class WidenedForTestsCheck {
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && !wiring.contains(type))
                 .flatMap(type -> type.getCodeUnits().stream()
-                        .filter(unit -> isWidened(type, unit)
-                                && (unit.getAccessesToSelf().isEmpty() || isMarkedForTests(unit)))
+                        .filter(unit -> isWidened(type, unit) && isLeftToTests(type, unit))
                         .filter(unit -> testsCall(type, unit, testsByPackage.getOrDefault(type.getPackageName(), List.of()),
                                 types))
                         .map(unit -> violation(classes, type, unit)))
@@ -64,6 +64,25 @@ public final class WidenedForTestsCheck {
                 && unit.getAnnotations().stream().allMatch(annotation -> VISIBLE_FOR_TESTING.equals(annotation.getRawType().getSimpleName()))
                 && !(constructor && modifiers.contains(JavaModifier.PROTECTED))
                 && (constructor || !Hierarchy.isInherited(type, unit));
+    }
+
+    /**
+     * Whether the code unit says it was widened for tests, or production code doesn't call it. A constructor production
+     * doesn't call is left to tests only when production creates the class another way; a class's only way to be
+     * created is how both a framework, as Spring creates a {@code @Controller}, and its tests create it.
+     */
+    private static boolean isLeftToTests(JavaClass type, JavaCodeUnit unit) {
+        return isMarkedForTests(unit)
+                || unit.getAccessesToSelf().isEmpty() && (!isConstructor(unit) || isCreatedAnotherWay(type, unit));
+    }
+
+    /** Whether another constructor creates the class in production: one its code calls, a public one, or an annotated one. */
+    private static boolean isCreatedAnotherWay(JavaClass type, JavaCodeUnit constructor) {
+        return type.getConstructors().stream()
+                .filter(other -> !other.equals(constructor))
+                .anyMatch(other -> !other.getAccessesToSelf().isEmpty() || other.getModifiers().contains(JavaModifier.PUBLIC)
+                        || other.getAnnotations().stream()
+                                .anyMatch(annotation -> !VISIBLE_FOR_TESTING.equals(annotation.getRawType().getSimpleName())));
     }
 
     /** Whether the code unit says it was widened for tests, as Guava's and others' {@code @VisibleForTesting} do. */
