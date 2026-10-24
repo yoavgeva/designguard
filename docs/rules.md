@@ -873,7 +873,8 @@ Fix: `private final @Nullable String name;` and `Optional<String> name() { retur
 `api().noCheckedExceptions()`
 
 Project exception classes that extend `Exception` but not `RuntimeException`, and non-private methods that declare
-a checked exception, are reported. Methods whose signature is inherited, like `AutoCloseable.close()`, are skipped,
+a checked exception, are reported. Methods whose signature is inherited, like `AutoCloseable.close()` or an
+override of a generic method such as `write(Writer out, String value)` for `write(Writer out, T value)`, are skipped,
 and so is wiring code.
 
 Why: checked exceptions don't compose with lambdas and streams, and force every caller to handle what only one

@@ -120,9 +120,27 @@ class ApiRulesTest {
                             }
                         }
                         """)
+                .add("Codec", """
+                        package shop;
+
+                        public abstract class Codec<T> {
+                            public abstract void write(java.io.Writer out, T value) throws java.io.IOException;
+                        }
+                        """)
+                .add("TextCodec", """
+                        package shop;
+
+                        public class TextCodec extends Codec<String> {
+                            @Override
+                            public void write(java.io.Writer out, String value) throws java.io.IOException {
+                                out.write(value);
+                            }
+                        }
+                        """)
                 .guard(SHOP);
 
         assertThat(guard.api().noCheckedExceptions().evaluate()).extracting(Violation::message).containsExactly(
+                "Codec.write() declares the checked exception IOException",
                 "OrderException is a checked exception",
                 "Orders.place() declares the checked exception IOException",
                 "Orders.cancel() declares the checked exception OrderException");
