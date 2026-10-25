@@ -35,6 +35,32 @@ class GuardrailRulesTest {
                 .add("OrderService", "package shop;\n\npublic class OrderService {\n"
                         + "    public String pay(StripeClient client) {\n        return client.charge();\n    }\n}\n")
                 .add("Money", "package shop;\n\npublic record Money(long cents) {\n}\n")
+                .add("ChargedEvent", """
+                        package shop;
+
+                        public class ChargedEvent {
+                            private final StripeClient client;
+                            private final long cents;
+
+                            public ChargedEvent(StripeClient client, long cents) {
+                                this.client = client;
+                                this.cents = cents;
+                            }
+
+                            public StripeClient getClient() {
+                                return client;
+                            }
+
+                            public long cents() {
+                                return cents;
+                            }
+
+                            @Override
+                            public String toString() {
+                                return "charged " + cents;
+                            }
+                        }
+                        """)
                 .addTest("StripeClientTest", "package shop;\n\nclass StripeClientTest {\n}\n")
                 .guard(SHOP);
 

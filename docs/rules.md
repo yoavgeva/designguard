@@ -1194,8 +1194,11 @@ Fix: test through the public API, or move the logic into a class of its own that
 `guardrails().serviceLikeClassesHaveTests()`
 
 Service-like classes without a test class named `<Name>Test`, `<Name>Tests` or `<Name>IT` are reported. A test named
-after an interface or superclass of the class counts when it uses the class by name, as `ViewNameResolverTest` testing
-`DefaultViewNameResolver` does. Wiring code is skipped. Not in `recommended()`, since projects that test by feature don't follow the convention.
+after an interface or superclass of the class counts when it uses the class by name, as `ViewNameResolverTest`
+testing `DefaultViewNameResolver` does. Wiring code is skipped, and so is a class that only carries data, as an event
+holding the service it is about does: its constructors only assign fields, and its methods return them or are
+`equals`, `hashCode` and `toString`. Not in `recommended()`, since projects that test by feature don't follow the
+convention.
 
 Why: service-like classes hold the behaviour worth testing, and agents skip writing tests.
 
