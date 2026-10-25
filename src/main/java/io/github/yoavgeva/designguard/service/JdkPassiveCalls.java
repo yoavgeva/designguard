@@ -12,6 +12,10 @@ import java.util.regex.Pattern;
 final class JdkPassiveCalls {
 
     private static final String CONSTRUCTOR = "<init>";
+    /** The factory of executors, whose {@code new...} methods create one without starting a thread. */
+    private static final String EXECUTORS = "java.util.concurrent.Executors";
+    private static final String CONCURRENT = "java.util.concurrent";
+    private static final String EXECUTOR_SERVICE = "java.util.concurrent.ExecutorService";
     private static final String THREAD = "java.lang.Thread";
     /** What binds a statement's parameters or reads a called procedure's results, rather than running it. */
     private static final Pattern JDBC_BINDING = Pattern.compile("(set|get)[A-Z].*|clearParameters|registerOutParameter|wasNull");
@@ -32,12 +36,17 @@ final class JdkPassiveCalls {
 
     /**
      * Whether calling the target only prepares something that does nothing yet: constructs an abstract class, as a
-     * subclass's {@code super()} into {@code FileChannel} does, or creates or configures a thread it hasn't started, as
-     * {@code new Thread(name)} and {@code setDaemon(true)} do.
+     * subclass's {@code super()} into {@code FileChannel} does, creates or configures a thread it hasn't started, as
+     * {@code new Thread(name)} and {@code setDaemon(true)} do, or creates an executor, as
+     * {@code Executors.newSingleThreadExecutor()} and {@code new ThreadPoolExecutor(...)} do, which starts its threads
+     * only for the tasks it is given.
      */
     static boolean onlyPrepares(CodeUnitAccessTarget target) {
         boolean constructor = CONSTRUCTOR.equals(target.getName());
         return constructor && target.getOwner().getModifiers().contains(JavaModifier.ABSTRACT)
-                || target.getOwner().isAssignableTo(THREAD) && (constructor || target.getName().startsWith("set"));
+                || target.getOwner().isAssignableTo(THREAD) && (constructor || target.getName().startsWith("set"))
+                || EXECUTORS.equals(target.getOwner().getName()) && target.getName().startsWith("new")
+                || constructor && CONCURRENT.equals(target.getOwner().getPackageName())
+                        && target.getOwner().isAssignableTo(EXECUTOR_SERVICE);
     }
 }

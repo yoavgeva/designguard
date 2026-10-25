@@ -462,9 +462,10 @@ count. Reading a stream the constructor is given, wrapping it, or creating an in
 isn't I/O, and neither is creating a client or a clock, as `new RestTemplate()` and `Clock.systemUTC()` do, or
 configuring a client with a setter or a fluent method such as `withTableName(...)`. Neither is preparing what does
 nothing yet: creating or configuring a thread it doesn't start, as a `Thread` subclass's `super(name)` and
-`setDaemon(true)` do, calling an abstract class's constructor, as a `super()` into `FileChannel` does, or setting up
-a `URLConnection` before it connects, as `getURL()` and `setConnectTimeout(...)` do. Creating objects is left to
-`inject-services`, and wiring code is exempt.
+`setDaemon(true)` do, creating an executor, as `Executors.newSingleThreadExecutor()` and `new ForkJoinPool(2)` do,
+which starts threads only for the tasks it is given, calling an abstract class's constructor, as a `super()` into
+`FileChannel` does, or setting up a `URLConnection` before it connects, as `getURL()` and `setConnectTimeout(...)`
+do. Creating objects is left to `inject-services`, and wiring code is exempt.
 
 Why: a class whose constructor does work can't be created without it, so tests can't create it cheaply, and a
 failure there leaves no object to recover with.

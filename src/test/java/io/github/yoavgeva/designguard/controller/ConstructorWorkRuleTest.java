@@ -537,6 +537,22 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
+                .add("ReadAhead", """
+                        package shop;
+
+                        import java.util.concurrent.ExecutorService;
+                        import java.util.concurrent.Executors;
+                        import java.util.concurrent.ForkJoinPool;
+
+                        public final class ReadAhead {
+                            private final ExecutorService single = Executors.newSingleThreadExecutor();
+                            private final ExecutorService pool = new ForkJoinPool(2);
+
+                            public ExecutorService executor(boolean shared) {
+                                return shared ? pool : single;
+                            }
+                        }
+                        """)
                 .add("NoPipe", """
                         package shop;
 
