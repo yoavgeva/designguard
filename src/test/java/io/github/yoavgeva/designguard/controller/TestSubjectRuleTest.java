@@ -677,4 +677,75 @@ class TestSubjectRuleTest {
                 .hasSize(2).anyMatch(file -> file.endsWith("shop/sales/ReportTest.java"))
                 .anyMatch(file -> file.endsWith("shop/billing/ReportTest.java"));
     }
+
+    @Test
+    void theAPublicApiReachesAndNestedTypesAreTheirOuterClasss() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Node", "package shop.html;\n\npublic abstract class Node {\n    public String outerHtml() {\n"
+                        + "        return Printer.printerFor(this).print();\n    }\n}\n")
+                .add("Printer", "package shop.html;\n\npublic final class Printer {\n"
+                        + "    static Printer printerFor(Node node) {\n        return new Printer();\n    }\n\n"
+                        + "    String print() {\n        return \"<html>\";\n    }\n}\n")
+                .add("Element", "package shop.html;\n\npublic class Element extends Node {\n"
+                        + "    public java.util.List<Element> select(String query) {\n        return Selector.select(query, this);\n"
+                        + "    }\n}\n")
+                .add("Document", "package shop.html;\n\npublic class Document extends Element {\n}\n")
+                .add("Selector", "package shop.html;\n\npublic final class Selector {\n    private Selector() {\n    }\n\n"
+                        + "    public static java.util.List<Element> select(String query, Element root) {\n"
+                        + "        return java.util.List.of(root);\n    }\n}\n")
+                .add("TreeState", "package shop.html;\n\npublic class TreeState {\n    public static final class Constants {\n"
+                        + "        public static final String[] TAGS = {\"td\", \"th\"};\n    }\n}\n")
+                .add("Pricing", "package shop.html;\n\npublic class Pricing {\n    public long price() {\n        return 1;\n    }\n}\n")
+                .add("Basket", "package shop.html;\n\npublic class Basket {\n    public long total() {\n"
+                        + "        return new Pricing().price();\n    }\n}\n")
+                .addTest("PrinterTest", """
+                        package shop.html;
+
+                        class PrinterTest {
+                            @org.junit.jupiter.api.Test
+                            void printsTheDocument() {
+                                org.assertj.core.api.Assertions.assertThat(new Document().outerHtml()).isEqualTo("<html>");
+                            }
+                        }
+                        """)
+                .addTest("SelectorTest", """
+                        package shop.html;
+
+                        class SelectorTest {
+                            @org.junit.jupiter.api.Test
+                            void selectsTheRoot() {
+                                Document document = new Document();
+                                org.assertj.core.api.Assertions.assertThat(document.select("p")).containsExactly(document);
+                            }
+                        }
+                        """)
+                .addTest("TreeStateTest", """
+                        package shop.html;
+
+                        import shop.html.TreeState.Constants;
+
+                        class TreeStateTest {
+                            @org.junit.jupiter.api.Test
+                            void knowsTheTableCells() {
+                                org.assertj.core.api.Assertions.assertThat(Constants.TAGS).contains("td");
+                            }
+                        }
+                        """)
+                .addTest("PricingTest", """
+                        package shop.html;
+
+                        class PricingTest {
+                            private final Basket basket = org.mockito.Mockito.mock(Basket.class);
+
+                            @org.junit.jupiter.api.Test
+                            void prices() {
+                                org.assertj.core.api.Assertions.assertThat(basket.total()).isZero();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message).containsExactly(
+                "PricingTest never uses Pricing, the class it's named after");
+    }
 }

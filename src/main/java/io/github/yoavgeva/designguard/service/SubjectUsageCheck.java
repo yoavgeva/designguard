@@ -103,7 +103,8 @@ public final class SubjectUsageCheck {
                         .filter(named -> IndirectUses.standsFor(named, subject)).isPresent())
                 .map(type -> type);
         Stream<Node> scopes = test.findAll(NameExpr.class).stream()
-                .filter(name -> types.resolve(file.unit(), name.getNameAsString()).filter(subject::equals).isPresent())
+                .filter(name -> types.resolve(file.unit(), name.getNameAsString())
+                        .filter(named -> IndirectUses.isPartOf(named, subject)).isPresent())
                 .map(name -> name);
         Stream<Node> annotations = test.findAll(AnnotationExpr.class).stream()
                 .filter(annotation -> types.resolve(file.unit(), annotation.getNameAsString()).filter(subject::equals).isPresent())

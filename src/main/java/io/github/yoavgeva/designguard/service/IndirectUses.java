@@ -4,6 +4,7 @@ import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.nodeTypes.NodeWithSimpleName;
@@ -20,7 +21,7 @@ import java.util.stream.Stream;
 /**
  * Ways a test exercises the class it's named after without naming it in a type or a call: through an implementation of
  * it, members it imports statically, a field its container injects typed as an interface or superclass of the class,
- * a class it uses that creates it, or the running application: a {@code @SpringBootTest} boots the
+ * a class it uses that creates or calls it, or the running application: a {@code @SpringBootTest} boots the
  * {@code @SpringBootApplication} class, and requests an HTTP test client sends reach a web controller or filter, or in a
  * booted application any Spring bean.
  */
@@ -58,9 +59,17 @@ final class IndirectUses {
                 .map(call -> call);
     }
 
-    /** Whether a type the test names stands for the subject: it is the subject, or implements the abstract subject. */
+    /**
+     * Whether a type the test names stands for the subject: it is the subject or a type nested in it, as
+     * {@code HtmlTreeBuilderState.Constants} is, or implements the abstract subject.
+     */
     static boolean standsFor(JavaClass named, JavaClass subject) {
-        return named.equals(subject) || !Hierarchy.isConcrete(subject) && named.isAssignableTo(subject.getName());
+        return isPartOf(named, subject) || !Hierarchy.isConcrete(subject) && named.isAssignableTo(subject.getName());
+    }
+
+    /** Whether the type is the subject or nested in it. */
+    static boolean isPartOf(JavaClass named, JavaClass subject) {
+        return named.equals(subject) || named.getName().startsWith(subject.getName() + "$");
     }
 
     /** Calls and names of the subject's members the file imports statically, as {@code encode(text)} is. */
@@ -120,17 +129,29 @@ final class IndirectUses {
     }
 
     /**
-     * Whether a project class the test names creates the subject, as a dialect creates its processors, or registers it
-     * by its class, as a Jackson module registers a mixin with {@code setMixInAnnotation(Money.class, MoneyMixin.class)}.
+     * Whether a project class the test uses, other than through a mock, reaches the subject: creates it, as a dialect
+     * creates its processors, calls it, as a document's {@code select(...)} calls the selector, or registers it by its
+     * class, as a Jackson module registers a mixin with {@code setMixInAnnotation(Money.class, MoneyMixin.class)}. A
+     * used class's superclasses count, since their code runs, and a mocked class runs none of its own.
      */
     boolean isCreatedByAUsedClass(ParsedFile file, TypeDeclaration<?> test, JavaClass subject) {
-        Set<JavaClass> used = test.findAll(ClassOrInterfaceType.class).stream()
-                .flatMap(type -> types.resolve(file.unit(), type.getNameWithScope()).stream())
-                .filter(type -> !type.equals(subject))
+        Set<String> mocked = MockSites.in(file.unit()).filter(mock -> !mock.spy()).map(MockSites.MockSite::typeName)
                 .collect(Collectors.toSet());
-        return isCreatedBy(subject, used::contains) || used.stream()
-                .flatMap(type -> type.getReferencedClassObjects().stream())
-                .anyMatch(reference -> reference.getRawType().equals(subject));
+        Stream<String> typeNames = test.findAll(ClassOrInterfaceType.class).stream().map(ClassOrInterfaceType::getNameWithScope);
+        Stream<String> scopes = test.findAll(MethodCallExpr.class).stream()
+                .flatMap(call -> call.getScope().filter(Expression::isNameExpr).stream())
+                .map(scope -> scope.asNameExpr().getNameAsString());
+        Set<JavaClass> used = Stream.concat(typeNames, scopes)
+                .filter(name -> !mocked.contains(name.substring(name.lastIndexOf('.') + 1)))
+                .flatMap(name -> types.resolve(file.unit(), name).stream())
+                .filter(type -> !type.equals(subject))
+                .flatMap(type -> Stream.concat(Stream.of(type), type.getAllRawSuperclasses().stream()))
+                .collect(Collectors.toSet());
+        return isCreatedBy(subject, used::contains)
+                || subject.getMethodCallsToSelf().stream().anyMatch(call -> used.contains(call.getOriginOwner()))
+                || used.stream()
+                        .flatMap(type -> type.getReferencedClassObjects().stream())
+                        .anyMatch(reference -> reference.getRawType().equals(subject));
     }
 
     private static boolean isCreatedBy(JavaClass subject, Predicate<JavaClass> creators) {
