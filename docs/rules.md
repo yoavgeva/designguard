@@ -1042,7 +1042,8 @@ which turn input strings into a type, are exempt: methods named `parse`, `from`,
 project's enums. So are words from outside the code, which an enum can't own: strings with dots or spaces (property
 keys, class names, SQL), tokens a parser reads, any of which is punctuation such as `"("`, single characters such as
 operators, Java's type names, codes with digits such as SQL states, method names a proxy dispatches on, which include
-`toString`, HTTP's method names such as `"GET"` and `"POST"`, and command-line options such as `"--init"`.
+`toString`, HTTP's method names such as `"GET"` and `"POST"`, HTML's element names such as `"td"` and `"tbody"`,
+which a parser of HTML compares tags with, and command-line options such as `"--init"`.
 
 Why: a typo in a string compiles, and a missing enum case doesn't.
 

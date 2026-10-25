@@ -927,6 +927,35 @@ class ApiRulesTest {
                             }
                         }
                         """)
+                .add("TreeBuilder", """
+                        package shop;
+
+                        public class TreeBuilder {
+                            public boolean closesTable(String tag) {
+                                switch (tag) {
+                                    case "td":
+                                    case "th":
+                                    case "tr":
+                                    case "tbody":
+                                    case "sarcasm":
+                                        return true;
+                                    default:
+                                        return false;
+                                }
+                            }
+
+                            public int size(String size) {
+                                if ("small".equals(size)) {
+                                    return 1;
+                                } else if ("medium".equals(size)) {
+                                    return 2;
+                                } else if ("large".equals(size)) {
+                                    return 3;
+                                }
+                                return 0;
+                            }
+                        }
+                        """)
                 .guard(SHOP);
 
         assertThat(guard.api().noStringlyTypedChoices().evaluate()).extracting(Violation::line, Violation::message, Violation::fix)
@@ -937,7 +966,10 @@ class ApiRulesTest {
                         tuple(18, "Fees.tax() compares region with the strings \"eu\", \"us\" and \"uk\": make them an enum",
                                 "replace the strings with an enum, e.g. enum Region { EU, US, UK }, and switch over it"),
                         tuple(59, "Fees.weight() compares unit with the strings \"kg\", \"g\" and \"lb\": make them an enum",
-                                "replace the strings with an enum, e.g. enum Unit { KG, G, LB }, and switch over it"));
+                                "replace the strings with an enum, e.g. enum Unit { KG, G, LB }, and switch over it"),
+                        tuple(18, "TreeBuilder.size() compares size with the strings \"small\", \"medium\" and \"large\": make"
+                                + " them an enum", "replace the strings with an enum, e.g. enum Size { SMALL, MEDIUM, LARGE }, and"
+                                        + " switch over it"));
     }
 
     @Test

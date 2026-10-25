@@ -29,8 +29,8 @@ import java.util.stream.Stream;
  * {@code for...} or {@code convert...}, as {@code toBool}, {@code forExtension} and {@code convertCondition} are, and
  * methods returning one of the project's enums. So are words from outside the code, which an enum can't own: strings
  * with dots or spaces, such as property keys or SQL, single characters, Java's type names, codes with digits, such as
- * SQL states, method names a proxy dispatches on, HTTP's method names, and command-line options, which start with a
- * dash.
+ * SQL states, method names a proxy dispatches on, HTTP's method names, HTML's element names, and command-line
+ * options, which start with a dash.
  */
 public final class StringlyTypedChoicesCheck {
 
@@ -136,15 +136,16 @@ public final class StringlyTypedChoicesCheck {
      * Whether the strings are words of a vocabulary from outside the code, which an enum can't own: property keys,
      * class names or SQL, which have dots or spaces, tokens a parser reads, any of which is punctuation such as
      * {@code "("}, single characters such as operators, Java's type names, codes such as SQL states, which all have
-     * digits, method names a proxy dispatches on, which include {@code toString}, HTTP's method names, or command-line
-     * options, which start with a dash.
+     * digits, method names a proxy dispatches on, which include {@code toString}, HTTP's method names, HTML's element
+     * names, as a parser of HTML compares tags with, or command-line options, which start with a dash.
      */
     private static boolean isOutsideVocabulary(List<String> strings) {
         return strings.stream().anyMatch(string -> SYNTAX.matcher(string).find() || OBJECT_METHODS.contains(string)
                         || string.startsWith("-"))
                 || strings.stream().allMatch(string -> string.length() <= 1 || DIGIT.matcher(string).find())
                 || strings.stream().allMatch(string -> HTTP_METHODS.contains(string.toUpperCase(Locale.ROOT)))
-                || strings.stream().filter(PRIMITIVES::contains).count() * 2 >= strings.size();
+                || strings.stream().filter(PRIMITIVES::contains).count() * 2 >= strings.size()
+                || strings.stream().filter(HtmlElements::contains).count() * 2 >= strings.size();
     }
 
     private static String subjectOf(Expression selector) {
