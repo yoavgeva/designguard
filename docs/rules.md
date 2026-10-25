@@ -1456,8 +1456,9 @@ Fix: one test per case, or a `@ParameterizedTest` with the cases as parameters.
 Test code that reads the system clock is reported: `now()` without a `Clock`, `System.currentTimeMillis()`,
 `nanoTime()`, `new Date()`, `new GregorianCalendar()`, `Calendar.getInstance()` and the system `Clock`s. A reading
 the test overwrites before using it is fine: `Calendar.getInstance()` stored in a variable whose next use is
-`clear()`, `setTime(...)` or `setTimeInMillis(...)`. So is a reading the test only prints, logs or ignores, as a
-benchmark that prints how long the work took does: the reading, and every value computed from it, through local
+`clear()`, `setTime(...)` or `setTimeInMillis(...)`, or that sets every field from the year to the millisecond, as
+`set(2026, JANUARY, 1, 0, 0, 0)` and `set(MILLISECOND, 0)` do. So is a reading the test only prints, logs or ignores,
+as a benchmark that prints how long the work took does: the reading, and every value computed from it, through local
 variables, the arrays, collections and atomics they fill, and the private methods of the test class they pass
 through, ends up only in `System.out`, a logger, or nowhere. A reading that reaches an assertion, a condition, a
 field or the code under test counts. Test methods, helpers and field initializers are all checked, in the code tests

@@ -139,7 +139,11 @@ class DeterministicTestsRuleTest {
                                 start.setTime(0);
                                 Calendar copy = new GregorianCalendar();
                                 copy.setTime(start);
-                                org.assertj.core.api.Assertions.assertThat(day.before(epoch) || copy.after(day)).isFalse();
+                                Calendar midnight = Calendar.getInstance();
+                                midnight.set(2026, Calendar.JANUARY, 1, 0, 0, 0);
+                                midnight.set(Calendar.MILLISECOND, 0);
+                                midnight.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+                                org.assertj.core.api.Assertions.assertThat(day.before(epoch) || copy.after(midnight)).isFalse();
                             }
 
                             @org.junit.jupiter.api.Test
@@ -147,7 +151,9 @@ class DeterministicTestsRuleTest {
                                 Calendar day = Calendar.getInstance();
                                 day.set(2026, Calendar.JANUARY, 1);
                                 Calendar later = new GregorianCalendar();
-                                org.assertj.core.api.Assertions.assertThat(day.before(later)).isTrue();
+                                Calendar noon = Calendar.getInstance();
+                                noon.set(2026, Calendar.JANUARY, 1, 12, 0, 0);
+                                org.assertj.core.api.Assertions.assertThat(day.before(later) && noon.after(day)).isTrue();
                             }
                         }
                         """)
@@ -155,8 +161,9 @@ class DeterministicTestsRuleTest {
 
         assertThat(guard.tests().testsUseAFixedClock().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
-                        tuple(25, "test CartTest.datesKeepTheTimeOfDay() reads the system clock through Calendar.getInstance()"),
-                        tuple(27, "test CartTest.datesKeepTheTimeOfDay() reads the system clock through new GregorianCalendar()"));
+                        tuple(29, "test CartTest.datesKeepTheTimeOfDay() reads the system clock through Calendar.getInstance()"),
+                        tuple(31, "test CartTest.datesKeepTheTimeOfDay() reads the system clock through new GregorianCalendar()"),
+                        tuple(32, "test CartTest.datesKeepTheTimeOfDay() reads the system clock through Calendar.getInstance()"));
     }
 
     @Test
