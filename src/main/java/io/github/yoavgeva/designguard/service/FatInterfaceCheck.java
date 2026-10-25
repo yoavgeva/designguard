@@ -14,14 +14,17 @@ import java.util.stream.Collectors;
 
 /**
  * Finds interfaces wider than any of their clients needs (the interface segregation principle): an interface with at
- * least four abstract methods, used by at least two classes other than its implementations, where each of them calls
+ * least ten abstract methods, used by at least two classes other than its implementations, where each of them calls
  * at most half of its methods. Each client then depends on methods it never uses, and every implementation has to
- * provide them all. Value types the project implements without effects, as a collection or a sink, are left out.
+ * provide them all. Overloads count as one method, since no split would part them, and methods a supertype from
+ * outside the project declares, as {@code ExecutorService.submit} or {@code Object.equals}, don't count: the interface
+ * can't drop them. A smaller interface is one role whose clients each use a part, as a store's reads and writes are.
+ * Value types the project implements without effects, as a collection or a sink, are left out.
  */
 public final class FatInterfaceCheck {
 
     private static final String RULE = "focused-interfaces";
-    private static final int MIN_METHODS = 4;
+    private static final int MIN_METHODS = 10;
     private static final int MIN_CLIENTS = 2;
 
     /**
@@ -43,24 +46,25 @@ public final class FatInterfaceCheck {
     }
 
     private static Optional<Violation> violation(ProjectClasses classes, JavaClass type) {
-        Set<String> methods = type.getMethods().stream()
-                .filter(method -> method.getModifiers().contains(JavaModifier.ABSTRACT))
-                .map(JavaMethod::getFullName)
-                .collect(Collectors.toSet());
-        if (methods.size() < MIN_METHODS) {
+        Map<String, String> operations = type.getMethods().stream()
+                .filter(method -> method.getModifiers().contains(JavaModifier.ABSTRACT)
+                        && !Hierarchy.isDeclaredOutside(type, method, classes::isProject))
+                .collect(Collectors.toMap(JavaMethod::getFullName, JavaMethod::getName));
+        long count = operations.values().stream().distinct().count();
+        if (count < MIN_METHODS) {
             return Optional.empty();
         }
         Map<JavaClass, Set<String>> usedByClient = type.getAccessesToSelf().stream()
-                .filter(access -> methods.contains(access.getTarget().getFullName()))
+                .filter(access -> operations.containsKey(access.getTarget().getFullName()))
                 .filter(access -> isClient(classes, type, access.getOriginOwner()))
                 .collect(Collectors.groupingBy(JavaAccess::getOriginOwner,
-                        Collectors.mapping(access -> access.getTarget().getFullName(), Collectors.toSet())));
+                        Collectors.mapping(access -> access.getTarget().getName(), Collectors.toSet())));
         int mostUsed = usedByClient.values().stream().mapToInt(Set::size).max().orElse(0);
-        if (usedByClient.size() < MIN_CLIENTS || mostUsed * 2 > methods.size()) {
+        if (usedByClient.size() < MIN_CLIENTS || mostUsed * 2 > count) {
             return Optional.empty();
         }
         String name = ProjectClasses.nameOf(type);
-        return Optional.of(classes.violation(RULE, type, 0, name + " has " + methods.size() + " methods, but each of its "
+        return Optional.of(classes.violation(RULE, type, 0, name + " has " + count + " methods, but each of its "
                         + usedByClient.size() + " clients uses at most " + mostUsed + " of them",
                 "split it into smaller interfaces, one for each role its clients need, and let implementations"
                         + " implement several")

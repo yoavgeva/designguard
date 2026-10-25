@@ -8,7 +8,6 @@ import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
  * Finds accessors that change state: {@code get}, {@code is} and {@code has} methods that assign a field of their
@@ -57,23 +56,11 @@ public final class AccessorSideEffectsCheck {
         return ACCESSOR.matcher(method.getName()).matches() && !method.getName().startsWith(CHANGING_GETTER)
                 && !READS_AHEAD.contains(method.getName()) && !method.getRawReturnType().isEquivalentTo(void.class)
                 && !modifiers.contains(JavaModifier.STATIC) && !modifiers.contains(JavaModifier.SYNTHETIC)
-                && !isFluentSetter(type, method) && !implementsOutsideApi(classes, type, method);
+                && !isFluentSetter(type, method) && !Hierarchy.isDeclaredOutside(type, method, classes::isProject);
     }
 
     /** A method that takes a value and returns its own type, as a builder's {@code isBound(boolean)} does, sets it. */
     private static boolean isFluentSetter(JavaClass type, JavaMethod method) {
         return !method.getRawParameterTypes().isEmpty() && method.getRawReturnType().equals(type);
-    }
-
-    /**
-     * Whether the method implements one that a supertype from outside the project declares, such as JDBC's
-     * {@code Statement.getResultSet()}: its name, and what callers expect of it, come from there.
-     */
-    private static boolean implementsOutsideApi(ProjectClasses classes, JavaClass type, JavaMethod method) {
-        return Stream.concat(type.getAllRawSuperclasses().stream(), type.getAllRawInterfaces().stream())
-                .filter(supertype -> !classes.isProject(supertype))
-                .flatMap(supertype -> supertype.getMethods().stream())
-                .anyMatch(declared -> declared.getName().equals(method.getName())
-                        && declared.getRawParameterTypes().equals(method.getRawParameterTypes()));
     }
 }

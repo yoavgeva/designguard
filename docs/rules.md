@@ -773,10 +773,14 @@ Fix: `enum Status { OPEN, PAID }`, and parameters of type `Status` instead of `i
 
 `types().interfacesAreFocused()` · **recommended**
 
-Interfaces wider than any of their clients needs are reported: at least four abstract methods, used by at least two
-classes other than their implementations, each of which calls at most half of them. Value types are left out: an
-interface the project implements without effects, as a collection, a graph or a hash sink is, offers the operations
-of one data type, and nobody fakes it.
+Interfaces wider than any of their clients needs are reported: at least ten abstract methods, used by at least two
+classes other than their implementations, each of which calls at most half of them. Overloads count as one method,
+since no split would part them, and so do none of the methods a supertype from outside the project declares, as
+`ExecutorService.submit` or `Object.equals`: the interface can't drop them. A smaller interface is one role whose
+clients each use a part, as a store's reads and writes or a lifecycle's start and await are. Value types are left
+out: an interface the project implements without effects, as a collection, a graph or a hash sink is, offers the
+operations of one data type, and nobody fakes it. What other classes implementing a JDK collection or iterator
+interface do doesn't make a project collection effectful: `iterator().next()` reads the collection it's called on.
 
 Why: every client depends on methods it never uses, and every implementation, fakes included, has to provide them
 all (the interface segregation principle).
@@ -787,11 +791,17 @@ public interface Feeding {
     void clean(String cage);
     int count();
     String report();
+    void water(String animal);
+    void weigh(String animal);
+    void groom(String animal);
+    void vaccinate(String animal);
+    void rest(String animal);
+    void play(String animal);
 }
 // Feeder only calls feed(); Auditor only calls report()
 ```
 
-> Feeding has 4 methods, but each of its 2 clients uses at most 1 of them
+> Feeding has 10 methods, but each of its 2 clients uses at most 1 of them
 > -> fix: split it into smaller interfaces, one for each role its clients need, and let implementations implement several
 
 Fix: split it into role interfaces, such as `Feeding` and `Reporting`, and let one class implement both.
