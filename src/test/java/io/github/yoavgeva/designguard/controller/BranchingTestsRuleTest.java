@@ -129,4 +129,64 @@ class BranchingTestsRuleTest {
         assertThat(guard.tests().testsHaveNoLogic().evaluate().get(0).fix())
                 .isEqualTo("split it into one test per case, or make the cases parameters of a @ParameterizedTest");
     }
+
+    @Test
+    void anIfThatOnlyFailsIsAnAssertionAndOneThatShapesSetUpDataIsSetUp() {
+        DesignGuard guard = new CompiledProject(directory)
+                .add("Cart", "package shop;\n\npublic class Cart {\n}\n")
+                .addTest("ListTest", """
+                        package shop;
+
+                        import static org.assertj.core.api.Assertions.assertThat;
+                        import static org.junit.jupiter.api.Assertions.fail;
+
+                        class ListTest {
+                            @org.junit.jupiter.api.Test
+                            void parsesALongList() {
+                                StringBuilder json = new StringBuilder("[");
+                                for (int i = 0; i < 100; i++) {
+                                    if (i > 0) {
+                                        json.append(',');
+                                    }
+                                    json.append(i);
+                                }
+                                assertThat(json.append(']').toString()).startsWith("[0,1");
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void hasTwoEntries() {
+                                java.util.Map<String, Integer> entries = java.util.Map.of("a", 1, "b", 2);
+                                if (entries.size() != 2) {
+                                    fail("Should have 2 entries, got: " + entries);
+                                }
+                                if (entries.isEmpty()) throw new AssertionError("empty");
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void failsOnlySometimes() {
+                                java.util.Map<String, Integer> entries = java.util.Map.of("a", 1);
+                                if (entries.containsKey("a")) {
+                                    fail("has a");
+                                } else {
+                                    assertThat(entries).isEmpty();
+                                }
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void checksEachEntry() {
+                                for (int i = 0; i < 3; i++) {
+                                    if (i > 0) {
+                                        assertThat(i).isPositive();
+                                    }
+                                }
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.tests().testsHaveNoLogic().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(
+                        tuple(31, "test ListTest.failsOnlySometimes() has an if: a test should take one path"),
+                        tuple(40, "test ListTest.checksEachEntry() has a for loop: a test should take one path"));
+    }
 }

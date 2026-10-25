@@ -1425,11 +1425,13 @@ Fix: `Point point = new Point(0, 0);`.
 `tests().testsHaveNoLogic()` · **recommended**
 
 Test methods containing an `if` or a `switch` are reported, since they check different things on different runs. So
-are loops around an assertion, which hide which case failed. A loop that only sets up data is fine, and so is a
-counted loop that repeats one step, whose counter labels at most, as `for (int i = 0; i < MAX_ATTEMPTS; i++)`
-exhausting attempts with `"wrong-" + i` does; a counter that picks a case, as `cases[i]` does, still goes through
-cases. So is logic in helper methods, in classes a test declares, such as an anonymous fake, and in lambdas that
-assert nothing, such as a fake `InvocationHandler`, which run when the code under test calls them.
+are loops around an assertion, which hide which case failed. A loop that only sets up data is fine, and so is an `if`
+inside it that shapes the data, as `if (i > 0) json.append(',')` does, an `if` without `else` that only fails, as `if
+(size != 2) { fail("got " + size); }` does, which is an assertion written by hand and checks the same thing on every
+run, and a counted loop that repeats one step, whose counter labels at most, as `for (int i = 0; i < MAX_ATTEMPTS;
+i++)` exhausting attempts with `"wrong-" + i` does; a counter that picks a case, as `cases[i]` does, still goes
+through cases. So is logic in helper methods, in classes a test declares, such as an anonymous fake, and in lambdas
+that assert nothing, such as a fake `InvocationHandler`, which run when the code under test calls them.
 
 Why: a test should take one path, so a failure points at one case.
 

@@ -14,6 +14,7 @@ import com.github.javaparser.ast.stmt.DoStmt;
 import com.github.javaparser.ast.stmt.ForEachStmt;
 import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
+import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.stmt.SwitchStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -27,12 +28,17 @@ import java.util.stream.Stream;
 /**
  * Finds tests with logic ("conditional test logic"): an {@code if} or a {@code switch} in a test method, which makes it
  * check different things on different runs, or a loop around an assertion, which hides which case failed. A loop
- * that only sets up data is fine, and so is one that repeats a step, and logic in helper methods, in classes a test declares, such as a fake, and
- * in lambdas that assert nothing, which are fakes too; the tests themselves take one path.
+ * that only sets up data is fine, and so is an {@code if} inside it that shapes the data, one that repeats a step, an
+ * {@code if} that only fails, which is an assertion written by hand, and logic in helper methods, in classes a test
+ * declares, such as a fake, and in lambdas that assert nothing, which are fakes too; the tests themselves take one
+ * path.
  */
 public final class BranchingTestsCheck {
 
     private static final String RULE = "tests-have-no-logic";
+    private static final String FAIL = "fail";
+    /** What the names of the errors a test throws to fail end with, as {@code AssertionError} and opentest4j's do. */
+    private static final String ERROR_SUFFIX = "Error";
     private static final List<Class<? extends Node>> LOOPS =
             List.of(ForStmt.class, ForEachStmt.class, WhileStmt.class, DoStmt.class);
     private static final List<Map.Entry<Class<? extends Node>, String>> LOGIC = List.of(
@@ -67,11 +73,43 @@ public final class BranchingTestsCheck {
         return test.findAll(Node.class).stream()
                 .flatMap(node -> LOGIC.stream().filter(kind -> kind.getKey().isInstance(node))
                         .map(kind -> Map.entry(node, kind.getValue())))
-                .filter(found -> !inClassOf(test, found.getKey()))
+                .filter(found -> !inClassOf(test, found.getKey())
+                        && !(found.getKey() instanceof IfStmt branch && (onlyFails(branch) || shapesSetUpData(test, branch))))
                 .filter(found -> LOOPS.stream().noneMatch(loop -> loop.isInstance(found.getKey()))
-                        || found.getKey().findAll(MethodCallExpr.class).stream().anyMatch(UnitTestMethods::isAssertion)
-                                && !(found.getKey() instanceof ForStmt loop && isRepetition(loop)))
+                        || asserts(found.getKey()) && !(found.getKey() instanceof ForStmt loop && isRepetition(loop)))
                 .min(Comparator.comparingInt(found -> Scopes.line(found.getKey())));
+    }
+
+    /**
+     * Whether the {@code if} is an assertion written by hand: it has no {@code else}, and all it does is fail, as
+     * {@code if (size != 2) { fail("got " + size); }} and {@code throw new AssertionError(...)} do. It checks the same
+     * thing on every run.
+     */
+    private static boolean onlyFails(IfStmt branch) {
+        Statement then = branch.getThenStmt();
+        List<Statement> statements = then.isBlockStmt() ? then.asBlockStmt().getStatements() : List.of(then);
+        return branch.getElseStmt().isEmpty() && !statements.isEmpty() && statements.stream().allMatch(statement ->
+                statement.isExpressionStmt() && statement.asExpressionStmt().getExpression() instanceof MethodCallExpr call
+                        && FAIL.equals(call.getNameAsString())
+                || statement.isThrowStmt() && statement.asThrowStmt().getExpression() instanceof ObjectCreationExpr error
+                        && error.getType().getNameAsString().endsWith(ERROR_SUFFIX));
+    }
+
+    /**
+     * Whether the {@code if} shapes the data a loop sets up, as {@code if (i > 0) json.append(',')} does: it asserts
+     * nothing, and neither does any loop around it, which only sets up data.
+     */
+    private static boolean shapesSetUpData(MethodDeclaration test, IfStmt branch) {
+        List<Node> loops = Stream.iterate(branch.getParentNode(), Optional::isPresent, node -> node.flatMap(Node::getParentNode))
+                .map(Optional::get)
+                .takeWhile(node -> !node.equals(test))
+                .filter(node -> LOOPS.stream().anyMatch(loop -> loop.isInstance(node)))
+                .toList();
+        return !loops.isEmpty() && loops.stream().noneMatch(BranchingTestsCheck::asserts);
+    }
+
+    private static boolean asserts(Node code) {
+        return code.findAll(MethodCallExpr.class).stream().anyMatch(UnitTestMethods::isAssertion);
     }
 
     /**
