@@ -1359,12 +1359,16 @@ real class, and a project class the test uses, or its superclass, that creates i
 calls, as a template dialect creates its processors and a document's `select(...)` calls the selector, or registers
 it by its class, as a Jackson module registers a mixin with `setMixInAnnotation(Money.class, MoneyMixin.class)`, uses
 it too, and so does a test that calls, on a supertype of the class it names, a method the class overrides, as
-`node.hasAttributes()` runs a leaf node's own; a class the test only mocks runs none of its code, a `@SpringBootTest`
-boots the `@SpringBootApplication` class, and requests a booted test (`@SpringBootTest`, `@QuarkusTest`,
-`@MicronautTest`) sends reach any bean: a Spring component or CDI-scoped class, or a class the wiring code creates in
-a `@Bean` method. A test extending a class that declares tests runs them, so it uses what they use, as
-`FruitResourceIT extends FruitResourceTest` does. Tests named after no project class are skipped, and so are abstract
-test classes, which run only through their subclasses, named after what they test.
+`node.hasAttributes()` runs a leaf node's own. So does a test of a handler the project picks by the type of value it
+handles, its supertype's type argument or a return type it narrows from `Object`, as `IntStreamSerializer extends
+StdSerializer<IntStream>` handles `IntStream`, when the test names that type and uses a project class that reaches
+the handler, itself or through a test-source class such as its base, as a test of a Jackson serializer passes values
+to an `ObjectMapper`; a class the test only mocks runs none of its code, a `@SpringBootTest` boots the
+`@SpringBootApplication` class, and requests a booted test (`@SpringBootTest`, `@QuarkusTest`, `@MicronautTest`)
+sends reach any bean: a Spring component or CDI-scoped class, or a class the wiring code creates in a `@Bean` method.
+A test extending a class that declares tests runs them, so it uses what they use, as `FruitResourceIT extends
+FruitResourceTest` does. Tests named after no project class are skipped, and so are abstract test classes, which run
+only through their subclasses, named after what they test.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.
 

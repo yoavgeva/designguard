@@ -4,7 +4,6 @@ import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
-import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.nodeTypes.NodeWithSimpleName;
@@ -137,17 +136,7 @@ final class IndirectUses {
      * their code runs, and a mocked class runs none of its own.
      */
     boolean isCreatedByAUsedClass(ParsedFile file, TypeDeclaration<?> test, JavaClass subject) {
-        Set<String> mocked = MockSites.in(file.unit()).filter(mock -> !mock.spy()).map(MockSites.MockSite::typeName)
-                .collect(Collectors.toSet());
-        Stream<String> typeNames = test.findAll(ClassOrInterfaceType.class).stream().map(ClassOrInterfaceType::getNameWithScope);
-        Stream<String> scopes = test.findAll(MethodCallExpr.class).stream()
-                .flatMap(call -> call.getScope().filter(Expression::isNameExpr).stream())
-                .map(scope -> scope.asNameExpr().getNameAsString());
-        Set<JavaClass> named = Stream.concat(typeNames, scopes)
-                .filter(name -> !mocked.contains(name.substring(name.lastIndexOf('.') + 1)))
-                .flatMap(name -> types.resolve(file.unit(), name).stream())
-                .filter(type -> !type.equals(subject))
-                .collect(Collectors.toSet());
+        Set<JavaClass> named = UsedClasses.named(file, test, subject, types);
         Set<JavaClass> used = named.stream()
                 .flatMap(type -> Stream.concat(Stream.of(type), type.getAllRawSuperclasses().stream()))
                 .collect(Collectors.toSet());

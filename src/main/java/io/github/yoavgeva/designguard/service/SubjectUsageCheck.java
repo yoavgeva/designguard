@@ -42,7 +42,7 @@ public final class SubjectUsageCheck {
         SourceTypes types = new SourceTypes(code.projectClasses());
         IndirectUses uses = new IndirectUses(types, code.wiring());
         SuiteTypes tests = new SuiteTypes(code.testSources());
-        Context context = new Context(types, uses, tests);
+        Context context = new Context(types, uses, tests, new ReachingClasses());
         return tests.all().stream()
                 .filter(test -> Scopes.selected(filter, test.file(), test.type()) && !isAbstract(test.type()))
                 .flatMap(test -> subject(test.file(), test.type(), types).stream()
@@ -92,8 +92,20 @@ public final class SubjectUsageCheck {
                 || IndirectUses.isInjectedThroughSupertype(test, subject)
                 || context.uses().isRunByTheApplication(file, test, subject)
                 || context.uses().isCreatedByAUsedClass(file, test, subject)
+                || HandledTypes.areNamedIn(file, test, subject) && isReached(testType, subject, context, depth)
                 || depth > 0 && context.tests().testSuperclassesOf(testType)
                         .anyMatch(parent -> uses(parent, subject, context, depth - 1));
+    }
+
+    /**
+     * Whether a class the test uses, itself or through the test-source classes it names, such as the base class holding
+     * its mapper, reaches the subject: a framework class that picks the subject for the values the test names, as an
+     * ObjectMapper picks a serializer, runs it.
+     */
+    private static boolean isReached(TestType testType, JavaClass subject, Context context, int depth) {
+        return context.reaching().isReachedByAClassUsedIn(testType.file(), testType.type(), subject, context.types())
+                || depth > 0 && context.tests().helpersOf(testType)
+                        .anyMatch(helper -> isReached(helper, subject, context, depth - 1));
     }
 
     /** Whether the helper names the subject other than to mock it. */
@@ -119,7 +131,7 @@ public final class SubjectUsageCheck {
                 .flatMap(uses -> uses);
     }
 
-    /** What a check of one test needs: the source types, indirect uses and the test sources' types. */
-    private record Context(SourceTypes types, IndirectUses uses, SuiteTypes tests) {
+    /** What a check of one test needs: the source types, indirect uses, the test sources' types and what reaches what. */
+    private record Context(SourceTypes types, IndirectUses uses, SuiteTypes tests, ReachingClasses reaching) {
     }
 }
