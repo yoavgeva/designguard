@@ -180,6 +180,35 @@ class FocusedInterfacesRuleTest {
                         + "        return service.isRunning() + service.state() + service.failureCause();\n    }\n}\n")
                 .add("Watcher", "package shop;\n\npublic class Watcher {\n    public void watch(Lifecycle service) {\n"
                         + "        service.awaitRunning();\n        service.awaitTerminated();\n    }\n}\n")
+                .add("Request", """
+                        package shop;
+
+                        public interface Request {
+                            Request url(String url);
+
+                            Request timeout(int millis);
+
+                            Request header(String name, String value);
+
+                            Request cookie(String name, String value);
+
+                            Request data(String key, String value);
+
+                            Request method(String method);
+
+                            Request followRedirects(boolean follow);
+
+                            Request userAgent(String agent);
+
+                            Request proxy(String host, int port);
+
+                            String execute();
+                        }
+                        """)
+                .add("Fetcher", "package shop;\n\npublic class Fetcher {\n    public String fetch(Request request) {\n"
+                        + "        return request.url(\"https://a\").timeout(1).execute();\n    }\n}\n")
+                .add("Poster", "package shop;\n\npublic class Poster {\n    public String post(Request request) {\n"
+                        + "        return request.data(\"a\", \"b\").method(\"POST\").execute();\n    }\n}\n")
                 .guard(SHOP);
 
         assertThat(guard.types().interfacesAreFocused().evaluate()).extracting(Violation::message, Violation::fix)

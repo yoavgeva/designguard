@@ -4,6 +4,7 @@ import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.domain.JavaModifier;
+import com.tngtech.archunit.core.domain.JavaTypeVariable;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
@@ -19,7 +20,8 @@ import java.util.stream.Collectors;
  * provide them all. Overloads count as one method, since no split would part them, and methods a supertype from
  * outside the project declares, as {@code ExecutorService.submit} or {@code Object.equals}, don't count: the interface
  * can't drop them. A smaller interface is one role whose clients each use a part, as a store's reads and writes are.
- * Value types the project implements without effects, as a collection or a sink, are left out.
+ * Value types the project implements without effects, as a collection or a sink, are left out, and so are builders,
+ * whose methods return the interface so callers chain the settings they need.
  */
 public final class FatInterfaceCheck {
 
@@ -46,12 +48,14 @@ public final class FatInterfaceCheck {
     }
 
     private static Optional<Violation> violation(ProjectClasses classes, JavaClass type) {
-        Map<String, String> operations = type.getMethods().stream()
+        List<JavaMethod> declared = type.getMethods().stream()
                 .filter(method -> method.getModifiers().contains(JavaModifier.ABSTRACT)
                         && !Hierarchy.isDeclaredOutside(type, method, classes::isProject))
+                .toList();
+        Map<String, String> operations = declared.stream()
                 .collect(Collectors.toMap(JavaMethod::getFullName, JavaMethod::getName));
         long count = operations.values().stream().distinct().count();
-        if (count < MIN_METHODS) {
+        if (count < MIN_METHODS || isFluent(type, declared)) {
             return Optional.empty();
         }
         Map<JavaClass, Set<String>> usedByClient = type.getAccessesToSelf().stream()
@@ -78,6 +82,19 @@ public final class FatInterfaceCheck {
     private static boolean isValue(JavaClass type, ServiceLikeClasses serviceLike) {
         return !serviceLike.contains(type) && type.getAllSubclasses().stream()
                 .anyMatch(subclass -> !subclass.isInterface() && !subclass.getModifiers().contains(JavaModifier.ABSTRACT));
+    }
+
+    /**
+     * Whether the interface is a builder: at least half of its methods return it, or its own type variable as
+     * {@code Base<T extends Base<T>>} does, so callers chain the settings they need. It configures one thing.
+     */
+    private static boolean isFluent(JavaClass type, List<JavaMethod> methods) {
+        long chained = methods.stream()
+                .filter(method -> method.getRawReturnType().equals(type)
+                        || method.getReturnType() instanceof JavaTypeVariable<?> variable
+                                && variable.toErasure().equals(type))
+                .count();
+        return chained * 2 >= methods.size();
     }
 
     private static boolean isClient(ProjectClasses classes, JavaClass type, JavaClass origin) {

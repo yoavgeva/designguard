@@ -789,8 +789,10 @@ since no split would part them, and so do none of the methods a supertype from o
 `ExecutorService.submit` or `Object.equals`: the interface can't drop them. A smaller interface is one role whose
 clients each use a part, as a store's reads and writes or a lifecycle's start and await are. Value types are left
 out: an interface the project implements without effects, as a collection, a graph or a hash sink is, offers the
-operations of one data type, and nobody fakes it. What other classes implementing a JDK collection or iterator
-interface do doesn't make a project collection effectful: `iterator().next()` reads the collection it's called on.
+operations of one data type, and nobody fakes it. So are builders, whose methods mostly return the interface, or its
+own type variable, so callers chain the settings they need, as jsoup's `Connection` does. What other classes
+implementing a JDK collection or iterator interface do doesn't make a project collection effectful:
+`iterator().next()` reads the collection it's called on.
 
 Why: every client depends on methods it never uses, and every implementation, fakes included, has to provide them
 all (the interface segregation principle).
