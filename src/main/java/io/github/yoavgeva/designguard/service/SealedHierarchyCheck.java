@@ -1,18 +1,24 @@
 package io.github.yoavgeva.designguard.service;
 
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Finds interfaces and abstract classes implemented only inside the project that aren't sealed. Sealing them lets
  * the compiler check switches over them for missing cases. Functional interfaces are skipped, because lambdas
- * implement them and lambdas can't implement a sealed interface. So are service-like ones, which are there to be
- * replaced, by test doubles and a container's proxies, and nothing switches over, and those with an implementation
- * the build generates, as MapStruct does for a mapper, which can't be declared to fit the permits.
+ * implement them and lambdas can't implement a sealed interface. So are the ones there to be replaced, which nothing
+ * switches over: service-like ones, those a component a container manages implements, as a Spring bean's interface,
+ * and those tests mock or implement with a fake, which a sealed type would refuse. So are those with an
+ * implementation the build generates, as MapStruct does for a mapper, which can't be declared to fit the permits.
  */
 public final class SealedHierarchyCheck {
 
@@ -29,9 +35,11 @@ public final class SealedHierarchyCheck {
         ProjectClasses classes = code.projectClasses();
         JavaSources sources = code.sources();
         ServiceLikeClasses serviceLike = code.serviceLike();
+        Set<String> replacedInTests = replacedInTests(code.testSources());
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && isOpenAbstraction(type) && !type.getSubclasses().isEmpty()
-                        && !serviceLike.contains(type))
+                        && !serviceLike.contains(type) && !replacedInTests.contains(type.getSimpleName())
+                        && type.getSubclasses().stream().noneMatch(ManagedComponents::contains))
                 .filter(type -> sources.declaration(canonicalName(type)).map(declared -> !declared.isSealed()).orElse(false)
                         && type.getSubclasses().stream().allMatch(subclass -> sources.declaration(canonicalName(subclass)).isPresent()))
                 .map(type -> {
@@ -47,6 +55,19 @@ public final class SealedHierarchyCheck {
                 })
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
+    }
+
+    /** The simple names of the types tests mock or implement, as a fake does: a sealed type would refuse them. */
+    private static Set<String> replacedInTests(JavaSources tests) {
+        Stream<String> mocked = tests.files().stream().flatMap(file -> MockSites.in(file.unit())).map(MockSites.MockSite::typeName);
+        Stream<String> implemented = tests.files().stream()
+                .flatMap(file -> Stream.concat(file.unit().findAll(ClassOrInterfaceDeclaration.class).stream()
+                                .flatMap(type -> Stream.concat(type.getImplementedTypes().stream(), type.getExtendedTypes().stream())),
+                        file.unit().findAll(ObjectCreationExpr.class).stream()
+                                .filter(creation -> creation.getAnonymousClassBody().isPresent())
+                                .map(ObjectCreationExpr::getType)))
+                .map(ClassOrInterfaceType::getNameAsString);
+        return Stream.concat(mocked, implemented).collect(Collectors.toSet());
     }
 
     private static boolean isOpenAbstraction(JavaClass type) {

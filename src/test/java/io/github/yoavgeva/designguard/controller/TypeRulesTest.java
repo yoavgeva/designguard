@@ -506,6 +506,27 @@ class TypeRulesTest {
                 .addGenerated("OrderMapperImpl", "package shop;\n\npublic class OrderMapperImpl implements OrderMapper {\n"
                         + "    public String toDto(String order) {\n        return order;\n    }\n\n"
                         + "    public String toEntity(String dto) {\n        return dto;\n    }\n}\n")
+                .add("Component", "package org.springframework.stereotype;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "public @interface Component {\n}\n")
+                .add("SchemeManager", "package shop;\n\npublic interface SchemeManager {\n    String scheme(String name);\n\n"
+                        + "    int size();\n}\n")
+                .add("DefaultSchemeManager", "package shop;\n\n@org.springframework.stereotype.Component\n"
+                        + "public class DefaultSchemeManager implements SchemeManager {\n"
+                        + "    public String scheme(String name) {\n        return name;\n    }\n\n"
+                        + "    public int size() {\n        return 0;\n    }\n}\n")
+                .add("ThemeGetter", "package shop;\n\npublic interface ThemeGetter {\n    String theme();\n\n"
+                        + "    String root();\n}\n")
+                .add("DefaultThemeGetter", "package shop;\n\npublic class DefaultThemeGetter implements ThemeGetter {\n"
+                        + "    public String theme() {\n        return \"light\";\n    }\n\n"
+                        + "    public String root() {\n        return \"/\";\n    }\n}\n")
+                .add("Pricing", "package shop;\n\npublic interface Pricing {\n    long price();\n\n    long tax();\n}\n")
+                .add("FixedPricing", "package shop;\n\npublic class FixedPricing implements Pricing {\n"
+                        + "    public long price() {\n        return 1;\n    }\n\n    public long tax() {\n        return 0;\n    }\n}\n")
+                .addTest("ThemeTest", "package shop;\n\nclass ThemeTest {\n"
+                        + "    private final ThemeGetter themes = org.mockito.Mockito.mock(ThemeGetter.class);\n}\n")
+                .addTest("FakePricing", "package shop;\n\nclass FakePricing implements Pricing {\n"
+                        + "    public long price() {\n        return 2;\n    }\n\n    public long tax() {\n        return 0;\n    }\n}\n")
                 .guard(SHOP);
 
         assertThat(guard.types().closedHierarchiesAreSealed().evaluate()).singleElement().satisfies(violation -> {
