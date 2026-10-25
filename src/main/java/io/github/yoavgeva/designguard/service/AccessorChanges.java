@@ -31,8 +31,9 @@ import org.objectweb.asm.tree.VarInsnNode;
  * {@code count.incrementAndGet()} do, or through a method of the class it calls. Lazy initialization isn't a change: a
  * change inside code that runs only while a field is still {@code null} or a flag still {@code false}, and that sets
  * that field, as {@code if (name == null) { name = load(); }} or {@code if (!loaded) { ...; loaded = true; }} do. So is
- * caching in a map the method checks first, and a field set only for a while: a flag the accessor sets both
- * {@code true} and {@code false}, or a field it both sets and clears, itself or through the methods it calls.
+ * caching in a map the method checks first, or in an atomic reference whose update keeps the value or replaces it with
+ * one made without it, and a field set only for a while: a flag the accessor sets both {@code true} and {@code false},
+ * or a field it both sets and clears, itself or through the methods it calls.
  */
 final class AccessorChanges {
 
@@ -49,6 +50,7 @@ final class AccessorChanges {
             "updateAndGet", "getAndUpdate", "accumulateAndGet", "getAndAccumulate", "increment", "decrement", "reset");
 
     private final Map<String, Body> bodies;
+    private final UpdateFunctions updates;
 
     /**
      * Analyzes the accessors of the class and the methods of the class they call, directly or not; other methods can't
@@ -57,6 +59,7 @@ final class AccessorChanges {
     private AccessorChanges(ClassNode node) {
         Map<String, MethodNode> methods = node.methods.stream()
                 .collect(Collectors.toMap(method -> method.name + method.desc, method -> method, (first, second) -> first));
+        this.updates = new UpdateFunctions(node.name, methods);
         Set<String> reached = reachedFromAccessors(node.name, methods);
         Map<String, Set<String>> reads = reached.stream().flatMap(key -> calledInClass(node.name, methods.get(key)))
                 .filter(methods::containsKey)
@@ -293,7 +296,8 @@ final class AccessorChanges {
                 callEvents.add(new Event(call.name + call.desc, index, line));
             } else if (call.owner.startsWith("java/util/") && call.getOpcode() != Opcodes.INVOKESTATIC
                     && (MUTATORS.contains(call.name) || CACHING.contains(call.name))) {
-                List<Event> events = MUTATORS.contains(call.name) ? changeEvents : cachingEvents;
+                boolean changes = MUTATORS.contains(call.name) && !updates.refreshes(call, receivers.stackAt(call, 0));
+                List<Event> events = changes ? changeEvents : cachingEvents;
                 ownField(receivers.stackAt(call, arguments)).ifPresent(field -> events.add(new Event(field, index, line)));
             }
         }

@@ -1045,13 +1045,15 @@ method of the class that does. Writing the fields of another object, such as a c
 Lazy initialization is fine too: a change made only while a field is still `null`, a flag still `false` or a value
 still equal to a sentinel, that sets it. That covers `if (name == null) { name = load(); }`, `if (!loaded) { ...;
 loaded = true; }`, `if (cached != null) return cached;` followed by the load, `d != null ? d : (d = load())`, double-
-checked locking, and caching in a map the method checks first or fills with `computeIfAbsent`. A field set only while
-the method runs is fine: a flag it sets both `true` and `false`, or a field it both sets and clears to `null`, as a
-query's `before()` and `after()` do with the mode they save, itself or through the methods it calls. So are
-`getAnd...` methods, whose names say they change something, a cursor's `hasNext()`, which may read ahead, void
-methods, a builder's setters, which take a value and return the builder, as Lombok's `isBound(boolean)` does, and
-methods implementing an interface from outside the project, such as JDBC's `Statement.getResultSet()`, whose name the
-interface dictates.
+checked locking, caching in a map the method checks first or fills with `computeIfAbsent`, and caching in an atomic
+reference whose `updateAndGet` keeps the value or replaces it with one made without it, as `ref.updateAndGet(pair ->
+pair != null && pair.key().equals(key) ? pair : load(key))` does. An update built on the old value, as `count ->
+count + 1`, is a change. A field set only while the method runs is fine: a flag it sets both `true` and `false`, or a
+field it both sets and clears to `null`, as a query's `before()` and `after()` do with the mode they save, itself or
+through the methods it calls. So are `getAnd...` methods, whose names say they change something, a cursor's
+`hasNext()`, which may read ahead, void methods, a builder's setters, which take a value and return the builder, as
+Lombok's `isBound(boolean)` does, and methods implementing an interface from outside the project, such as JDBC's
+`Statement.getResultSet()`, whose name the interface dictates.
 
 Why: callers read accessors as queries and call them freely, so a hidden change surprises them (command-query
 separation).
