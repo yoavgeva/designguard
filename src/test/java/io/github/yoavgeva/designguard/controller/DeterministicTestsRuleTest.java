@@ -13,6 +13,9 @@ import org.junit.jupiter.api.io.TempDir;
 class DeterministicTestsRuleTest {
 
     private static final String SHOP = "shop";
+    private static final String CART = "Cart";
+    private static final String CART_SOURCE =
+            "package shop;\n\npublic class Cart {\n    public int total() {\n        return 3;\n    }\n}\n";
 
     @TempDir
     private Path directory;
@@ -20,7 +23,7 @@ class DeterministicTestsRuleTest {
     @Test
     void testsUseFixedTimeDataAndSettings() {
         DesignGuard guard = new CompiledProject(directory)
-                .add("Cart", "package shop;\n\npublic class Cart {\n    public int total() {\n        return 3;\n    }\n}\n")
+                .add(CART, CART_SOURCE)
                 .addTest("CartTest", """
                         package shop;
 
@@ -39,7 +42,7 @@ class DeterministicTestsRuleTest {
                                 int discount = new Random().nextInt(10);
                                 String region = System.getenv("REGION");
                                 Thread.sleep(100);
-                                org.assertj.core.api.Assertions.assertThat(new Cart().total() + discount).isPositive();
+                                org.assertj.core.api.Assertions.assertThat(new Cart().total() + discount + today.getDayOfMonth() + region).isNotEmpty();
                             }
 
                             @org.junit.jupiter.api.Test
@@ -79,7 +82,7 @@ class DeterministicTestsRuleTest {
     @Test
     void onlyCodeTheTestsRunIsTestCode() {
         DesignGuard guard = new CompiledProject(directory)
-                .add("Cart", "package shop;\n\npublic class Cart {\n    public int total() {\n        return 3;\n    }\n}\n")
+                .add(CART, CART_SOURCE)
                 .addTest("CartSamples", """
                         package shop;
 
@@ -115,7 +118,7 @@ class DeterministicTestsRuleTest {
     @Test
     void clockReadingsOverwrittenBeforeUseAreFixed() {
         DesignGuard guard = new CompiledProject(directory)
-                .add("Cart", "package shop;\n\npublic class Cart {\n    public int total() {\n        return 3;\n    }\n}\n")
+                .add(CART, CART_SOURCE)
                 .addTest("CartTest", """
                         package shop;
 
@@ -209,5 +212,115 @@ class DeterministicTestsRuleTest {
         assertThat(guard.tests().testsDontReadTheEnvironment().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(tuple(38,
                         "test PathsTest.homeIsUnderTheMachinesHome() reads the environment through System.getProperty()"));
+    }
+
+    @Test
+    void readingsATestOnlyPrintsOrIgnoresDontDecideItsOutcome() {
+        DesignGuard guard = new CompiledProject(directory)
+                .add(CART, CART_SOURCE)
+                .addTest("CartTimingTest", """
+                        package shop;
+
+                        import java.util.Arrays;
+                        import java.util.Random;
+                        import java.util.concurrent.TimeUnit;
+                        import java.util.concurrent.atomic.AtomicLongArray;
+                        import java.util.logging.Logger;
+                        import org.junit.jupiter.api.Test;
+
+                        class CartTimingTest {
+                            private static final Logger LOG = Logger.getLogger("timing");
+                            private final Cart cart = new Cart();
+
+                            @Test
+                            void printsHowLongTotalsTake() {
+                                long t1 = System.currentTimeMillis();
+                                cart.total();
+                                long t2 = System.currentTimeMillis();
+                                long took = (t2 - t1) / 10;
+                                System.out.printf("totals took %d ms on %s%n", took, System.getProperty("os.name"));
+                                t1 = System.nanoTime();
+                                cart.total();
+                                LOG.info("again: " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t1));
+                            }
+
+                            @Test
+                            void benchmarksTotals() {
+                                long[] times = new long[5];
+                                for (int i = 0; i < times.length; i++) {
+                                    long start = System.nanoTime();
+                                    cart.total();
+                                    times[i] = System.nanoTime() - start;
+                                }
+                                printStats(times);
+                                long ignored = System.currentTimeMillis();
+                                org.assertj.core.api.Assertions.assertThat(cart.total()).isEqualTo(3);
+                            }
+
+                            @Test
+                            void measuresTotals() {
+                                AtomicLongArray elapsed = measure();
+                                org.assertj.core.api.Assertions.assertThat(cart.total()).isEqualTo(3);
+                            }
+
+                            @Test
+                            void totalsQuickly() {
+                                long start = System.nanoTime();
+                                cart.total();
+                                org.assertj.core.api.Assertions.assertThat(System.nanoTime() - start).isLessThan(1_000_000L);
+                            }
+
+                            @Test
+                            void totalsWithASeed() {
+                                long seed = System.currentTimeMillis();
+                                org.assertj.core.api.Assertions.assertThat(new Random(seed).nextInt(1) + cart.total()).isEqualTo(3);
+                            }
+
+                            @Test
+                            void totalsForTheUser() {
+                                String user = System.getProperty("user.name");
+                                org.assertj.core.api.Assertions.assertThat(user.length() + cart.total()).isPositive();
+                            }
+
+                            private AtomicLongArray measure() {
+                                AtomicLongArray total = new AtomicLongArray(1);
+                                Runnable run = () -> {
+                                    long before = System.currentTimeMillis();
+                                    cart.total();
+                                    total.addAndGet(0, System.currentTimeMillis() - before);
+                                };
+                                run.run();
+                                return total;
+                            }
+
+                            private void printStats(long[] timesNanos) {
+                                Arrays.sort(timesNanos);
+                                long sum = 0;
+                                for (long time : timesNanos) {
+                                    sum += time;
+                                }
+                                System.out.println("median " + millis(timesNanos[timesNanos.length / 2])
+                                        + " average " + millis((double) sum / timesNanos.length));
+                            }
+
+                            private double millis(double nanos) {
+                                return nanos / 1_000_000.0;
+                            }
+
+                            private double millis(long nanos) {
+                                return nanos / 1_000_000.0;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(Stream.of(guard.tests().testsUseAFixedClock(), guard.tests().testsDontReadTheEnvironment())
+                .flatMap(rule -> rule.evaluate().stream()))
+                .extracting(Violation::line, Violation::message)
+                .containsExactly(
+                        tuple(47, "test CartTimingTest.totalsQuickly() reads the system clock through System.nanoTime()"),
+                        tuple(49, "test CartTimingTest.totalsQuickly() reads the system clock through System.nanoTime()"),
+                        tuple(54, "test CartTimingTest.totalsWithASeed() reads the system clock through System.currentTimeMillis()"),
+                        tuple(60, "test CartTimingTest.totalsForTheUser() reads the environment through System.getProperty()"));
     }
 }

@@ -1409,10 +1409,13 @@ Fix: one test per case, or a `@ParameterizedTest` with the cases as parameters.
 Test code that reads the system clock is reported: `now()` without a `Clock`, `System.currentTimeMillis()`,
 `nanoTime()`, `new Date()`, `new GregorianCalendar()`, `Calendar.getInstance()` and the system `Clock`s. A reading
 the test overwrites before using it is fine: `Calendar.getInstance()` stored in a variable whose next use is
-`clear()`, `setTime(...)` or `setTimeInMillis(...)`. Test methods, helpers and field initializers are all checked, in
-the code tests run: the classes that declare tests and the test-source classes they use, such as fixtures and sample
-builders, but not other code that lives in the test sources, such as a Gatling simulation; fixture code inside
-strings isn't code.
+`clear()`, `setTime(...)` or `setTimeInMillis(...)`. So is a reading the test only prints, logs or ignores, as a
+benchmark that prints how long the work took does: the reading, and every value computed from it, through local
+variables, the arrays, collections and atomics they fill, and the private methods of the test class they pass
+through, ends up only in `System.out`, a logger, or nowhere. A reading that reaches an assertion, a condition, a
+field or the code under test counts. Test methods, helpers and field initializers are all checked, in the code tests
+run: the classes that declare tests and the test-source classes they use, such as fixtures and sample builders, but
+not other code that lives in the test sources, such as a Gatling simulation; fixture code inside strings isn't code.
 
 Why: a test that reads the clock can pass today and fail at midnight, at month end, or in another time zone.
 
@@ -1434,7 +1437,8 @@ clock `Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC)`.
 `tests().testsUseSeededRandomness()` · **recommended**
 
 Test code using unseeded randomness is reported: `new Random()`, `new SecureRandom()`, `Math.random()`,
-`UUID.randomUUID()`, `ThreadLocalRandom.current()`. A seeded `new Random(42)` is fine.
+`UUID.randomUUID()`, `ThreadLocalRandom.current()`. A seeded `new Random(42)` is fine, and so is a value the test
+only prints, logs or ignores, as for [`tests-fixed-clock`](#tests-fixed-clock).
 
 Why: a test on random data can fail once and never again, and the failing case is gone.
 
@@ -1453,7 +1457,8 @@ Fix: use fixed data, or `new Random(42)`.
 
 Test code reading environment variables or system properties is reported. A property the test saves to restore is
 fine: a variable or field whose every use puts the value back with `System.setProperty(...)` or checks it for null,
-as a test that sets `user.home` itself does in its `finally` block or `@AfterEach` method.
+as a test that sets `user.home` itself does in its `finally` block or `@AfterEach` method. So is a value the test
+only prints, logs or ignores, as for [`tests-fixed-clock`](#tests-fixed-clock).
 
 Why: such a test passes on one machine and fails on another, or in CI.
 
