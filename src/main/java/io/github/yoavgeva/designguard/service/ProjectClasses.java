@@ -17,6 +17,7 @@ final class ProjectClasses {
     private final JavaClasses classes;
     private final SourceFiles sourceFiles;
     private final Bytecode compiledCode;
+    private final Memo<MyBatisGeneratorOutput> myBatisGenerated;
 
     /**
      * Wraps imported classes.
@@ -29,6 +30,7 @@ final class ProjectClasses {
         this.classes = classes;
         this.sourceFiles = sourceFiles;
         this.compiledCode = bytecode;
+        this.myBatisGenerated = new Memo<>(() -> new MyBatisGeneratorOutput(classes.stream().toList()));
     }
 
     Stream<JavaClass> stream() {
@@ -45,12 +47,17 @@ final class ProjectClasses {
 
     /**
      * Whether the filter selects the class: by its package, and the annotations on it and the classes around it. Code
-     * the build generates is never selected ({@link SourceFiles#isGenerated(JavaClass)}): rules analyse it, but report
-     * only the code people write.
+     * the build generates is never selected ({@link SourceFiles#isGenerated(JavaClass)}), nor is what MyBatis Generator
+     * writes into the sources ({@link MyBatisGeneratorOutput}): rules analyse it, but report only the code people
+     * write.
      */
     boolean selected(ClassFilter filter, JavaClass javaClass) {
-        return !sourceFiles.isGenerated(javaClass)
-                && filter.selects(javaClass.getPackageName(), annotationsAround(javaClass).toList());
+        return !isGenerated(javaClass) && filter.selects(javaClass.getPackageName(), annotationsAround(javaClass).toList());
+    }
+
+    /** Whether the build or a generator wrote the class: its source is elsewhere, or it is MyBatis Generator's. */
+    private boolean isGenerated(JavaClass javaClass) {
+        return sourceFiles.isGenerated(javaClass) || myBatisGenerated.get().contains(javaClass);
     }
 
     /**
@@ -58,7 +65,7 @@ final class ProjectClasses {
      * its class and the classes around that.
      */
     boolean selected(ClassFilter filter, JavaMember member) {
-        if (sourceFiles.isGenerated(member.getOwner())) {
+        if (isGenerated(member.getOwner())) {
             return false;
         }
         List<String> annotations = Stream.concat(names(member.getAnnotations()), annotationsAround(member.getOwner()))

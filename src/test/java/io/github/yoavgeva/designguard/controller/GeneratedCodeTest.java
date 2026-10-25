@@ -66,4 +66,93 @@ class GeneratedCodeTest {
         assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
                 "Ledger is service-like, but its field 'entries' isn't final");
     }
+
+    @Test
+    void whatMyBatisGeneratorWritesIntoTheSourcesIsGeneratedCode() {
+        DesignGuard guard = new CompiledProject(directory)
+                .add("Product", """
+                        package shop.model;
+
+                        public class Product {
+                            private Long id;
+                            private String name;
+
+                            public Long getId() {
+                                return id;
+                            }
+
+                            public void setId(Long id) {
+                                this.id = id;
+                            }
+
+                            public String getName() {
+                                return name;
+                            }
+
+                            public void setName(String name) {
+                                this.name = name;
+                            }
+                        }
+                        """)
+                .add("ProductExample", """
+                        package shop.model;
+
+                        public class ProductExample {
+                            protected String orderByClause;
+
+                            public void setOrderByClause(String orderByClause) {
+                                this.orderByClause = orderByClause;
+                            }
+
+                            protected abstract static class GeneratedCriteria {
+                                protected boolean valid;
+                            }
+
+                            public static class Criteria extends GeneratedCriteria {
+                            }
+                        }
+                        """)
+                .add("ProductMapper", """
+                        package shop.mapper;
+
+                        import java.util.List;
+                        import shop.model.Product;
+                        import shop.model.ProductExample;
+
+                        public interface ProductMapper {
+                            long countByExample(ProductExample example);
+
+                            int deleteByExample(ProductExample example);
+
+                            int deleteByPrimaryKey(Long id);
+
+                            int insert(Product row);
+
+                            int insertSelective(Product row);
+
+                            List<Product> selectByExample(ProductExample example);
+
+                            Product selectByPrimaryKey(Long id);
+
+                            int updateByExampleSelective(Product row, ProductExample example);
+
+                            int updateByExample(Product row, ProductExample example);
+
+                            int updateByPrimaryKeySelective(Product row);
+
+                            int updateByPrimaryKey(Product row);
+                        }
+                        """)
+                .add("Catalog", "package shop;\n\npublic class Catalog {\n    public String name(shop.mapper.ProductMapper mapper) {\n"
+                        + "        return mapper.selectByPrimaryKey(1L).getName();\n    }\n}\n")
+                .add("Inventory", "package shop;\n\npublic class Inventory {\n    public long count(shop.mapper.ProductMapper mapper) {\n"
+                        + "        return mapper.countByExample(new shop.model.ProductExample());\n    }\n}\n")
+                .add("Basket", "package shop;\n\npublic class Basket {\n    private int items;\n\n"
+                        + "    public void add() {\n        items++;\n    }\n}\n")
+                .guard("shop");
+
+        assertThat(guard.types().interfacesAreFocused().evaluate()).isEmpty();
+        assertThat(guard.types().valueTypesAreImmutable().evaluate()).extracting(Violation::message).containsExactly(
+                "Basket is a value, but its field 'items' isn't final");
+    }
 }

@@ -49,7 +49,9 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   it, aren't services; the clock read is reported where it happens. **Value**: any other class.
 - **Collaborator**: an instance of another project type that a class holds in a field, as injected services are.
 - **Generated code**: classes the build generates, such as MapStruct mappers or OpenAPI models, whose sources lie
-  outside the source roots while other classes' sources are found there. Rules analyse them, so a generated DAO still
+  outside the source roots while other classes' sources are found there, and what MyBatis Generator writes into the
+  sources: its `...Example` classes, with their nested `GeneratedCriteria`, the models they're named after, and the
+  mappers whose `countByExample` and `selectByExample` take them. Rules analyse them, so a generated DAO still
   makes its callers service-like, but report only the code people write.
 - **Wiring code**: code whose job is to assemble the application, which may create and hold concrete services:
   classes with a `main` method, Spring `@Configuration` and `@SpringBootApplication` classes, Dagger `@Module`s,
