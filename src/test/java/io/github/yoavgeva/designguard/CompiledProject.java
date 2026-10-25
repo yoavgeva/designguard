@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard;
 
-import io.github.yoavgeva.designguard.controller.DesignGuard;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;

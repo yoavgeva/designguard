@@ -37,6 +37,9 @@ testImplementation("io.github.yoavgeva:designguard:0.1.0")
 Start with the recommended rules. They need no configuration:
 
 ```java
+import io.github.yoavgeva.designguard.DesignGuard;
+import org.junit.jupiter.api.Test;
+
 class DesignTest {
 
     private static final DesignGuard GUARD = new DesignGuard("com.shop");
@@ -63,6 +66,11 @@ them with `GUARD.recommended().frozen("recommended").check()` (see below). A new
 Architecture styles and opinionated rules are a choice, so pick them as tests of their own:
 
 ```java
+import io.github.yoavgeva.designguard.DesignGuard;
+import io.github.yoavgeva.designguard.model.InterfacePolicy;
+import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
+import org.junit.jupiter.api.Test;
+
 class DesignTest {
 
     private static final DesignGuard GUARD = new DesignGuard("com.shop");
@@ -163,6 +171,10 @@ annotations on pull requests; the JSON lists each violation's rule, severity, fi
 To write a report and fail with one run of the rules, check what `evaluate()` found:
 
 ```java
+import io.github.yoavgeva.designguard.Checkable;
+import io.github.yoavgeva.designguard.model.Violation;
+import io.github.yoavgeva.designguard.report.SarifReport;
+
 @Test
 void recommended() throws IOException {
     List<Violation> found = GUARD.recommended().evaluate();

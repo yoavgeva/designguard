@@ -1,0 +1,103 @@
+package io.github.yoavgeva.designguard.internal;
+
+import com.tngtech.archunit.core.domain.JavaAccess;
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaModifier;
+import com.tngtech.archunit.core.domain.JavaTypeVariable;
+import io.github.yoavgeva.designguard.model.ClassFilter;
+import io.github.yoavgeva.designguard.model.Violation;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Finds interfaces wider than any of their clients needs (the interface segregation principle): an interface with at
+ * least ten abstract methods, used by at least two classes other than its implementations, where each of them calls
+ * at most half of its methods. Each client then depends on methods it never uses, and every implementation has to
+ * provide them all. Overloads count as one method, since no split would part them, and methods a supertype from
+ * outside the project declares, as {@code ExecutorService.submit} or {@code Object.equals}, don't count: the interface
+ * can't drop them. A smaller interface is one role whose clients each use a part, as a store's reads and writes are.
+ * Value types the project implements without effects, as a collection or a sink, are left out, and so are builders,
+ * whose methods return the interface so callers chain the settings they need.
+ */
+public final class FatInterfaceCheck {
+
+    private static final String RULE = "focused-interfaces";
+    private static final int MIN_METHODS = 10;
+    private static final int MIN_CLIENTS = 2;
+
+    /**
+     * Finds violations in the classes the filter selects.
+     *
+     * @param code   the code base
+     * @param filter which classes to check
+     * @return violations ordered by file
+     */
+    public List<Violation> check(CodeBase code, ClassFilter filter) {
+        ProjectClasses classes = code.projectClasses();
+        ServiceLikeClasses serviceLike = code.serviceLike();
+        return classes.stream()
+                .filter(type -> type.isInterface() && !type.isAnnotation() && classes.selected(filter, type)
+                        && !isValue(type, serviceLike))
+                .flatMap(type -> violation(classes, type).stream())
+                .sorted(Scopes.BY_LOCATION)
+                .toList();
+    }
+
+    private static Optional<Violation> violation(ProjectClasses classes, JavaClass type) {
+        List<JavaMethod> declared = type.getMethods().stream()
+                .filter(method -> method.getModifiers().contains(JavaModifier.ABSTRACT)
+                        && !Hierarchy.isDeclaredOutside(type, method, classes::isProject))
+                .toList();
+        Map<String, String> operations = declared.stream()
+                .collect(Collectors.toMap(JavaMethod::getFullName, JavaMethod::getName));
+        long count = operations.values().stream().distinct().count();
+        if (count < MIN_METHODS || isFluent(type, declared)) {
+            return Optional.empty();
+        }
+        Map<JavaClass, Set<String>> usedByClient = type.getAccessesToSelf().stream()
+                .filter(access -> operations.containsKey(access.getTarget().getFullName()))
+                .filter(access -> isClient(classes, type, access.getOriginOwner()))
+                .collect(Collectors.groupingBy(JavaAccess::getOriginOwner,
+                        Collectors.mapping(access -> access.getTarget().getName(), Collectors.toSet())));
+        int mostUsed = usedByClient.values().stream().mapToInt(Set::size).max().orElse(0);
+        if (usedByClient.size() < MIN_CLIENTS || mostUsed * 2 > count) {
+            return Optional.empty();
+        }
+        String name = ProjectClasses.nameOf(type);
+        return Optional.of(classes.violation(RULE, type, 0, name + " has " + count + " methods, but each of its "
+                        + usedByClient.size() + " clients uses at most " + mostUsed + " of them",
+                "split it into smaller interfaces, one for each role its clients need, and let implementations"
+                        + " implement several")
+                .identifiedAs(name + " is wider than any of its clients needs"));
+    }
+
+    /**
+     * Whether the interface is a value type, as a collection, a graph or a sink is: the project implements it, and no
+     * implementation reaches effects. Its clients use the operations of one data type, which nobody fakes.
+     */
+    private static boolean isValue(JavaClass type, ServiceLikeClasses serviceLike) {
+        return !serviceLike.contains(type) && type.getAllSubclasses().stream()
+                .anyMatch(subclass -> !subclass.isInterface() && !subclass.getModifiers().contains(JavaModifier.ABSTRACT));
+    }
+
+    /**
+     * Whether the interface is a builder: at least half of its methods return it, or its own type variable as
+     * {@code Base<T extends Base<T>>} does, so callers chain the settings they need. It configures one thing.
+     */
+    private static boolean isFluent(JavaClass type, List<JavaMethod> methods) {
+        long chained = methods.stream()
+                .filter(method -> method.getRawReturnType().equals(type)
+                        || method.getReturnType() instanceof JavaTypeVariable<?> variable
+                                && variable.toErasure().equals(type))
+                .count();
+        return chained * 2 >= methods.size();
+    }
+
+    private static boolean isClient(ProjectClasses classes, JavaClass type, JavaClass origin) {
+        return classes.isProject(origin) && !origin.isAssignableTo(type.getName()) && !Hierarchy.isSelfOrNested(type, origin);
+    }
+}

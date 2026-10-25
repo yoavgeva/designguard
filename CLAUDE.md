@@ -14,8 +14,9 @@ A library of deterministic design checks for AI-written Java code. See README.md
   `@ParameterizedClass` over `CompiledProject#releases`, so they run on each version's class files; tests of newer
   syntax or APIs use `@EnabledForJreRange`. To run the tests on another JVM:
   `mise exec -- mvn verify -Djvm=$(mise where java@temurin-17)/bin/java`. CI runs them on 17, 21, 25 and 27.
-- Layers: `model` (immutable data), `service` (checks), `view` (output formats), `controller` (public entry point).
-  `ArchitectureTest` enforces who may depend on whom.
+- Layers: the root package (the public API: `DesignGuard` and its rules), `internal` (the checks; not API), `model`
+  (immutable data) and `report` (output formats). `ArchitectureTest` enforces who may depend on whom, and that the
+  API's public signatures name no `internal` type.
 - Every rule belongs in `RuleFiltersContractTest`, with code in `LegacyShop` that breaks it, so it honours `that()`,
   `excluding()` and `frozen()`. A rule that reports fields, methods, constructors or calls also belongs in
   `MemberIgnoringContractTest`, which checks that `ignoring()` skips an annotated member.

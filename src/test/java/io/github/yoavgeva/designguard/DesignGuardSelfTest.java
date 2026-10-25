@@ -1,7 +1,5 @@
 package io.github.yoavgeva.designguard;
 
-import io.github.yoavgeva.designguard.controller.DesignGuard;
-import io.github.yoavgeva.designguard.controller.Checkable;
 import io.github.yoavgeva.designguard.model.InheritancePolicy;
 import io.github.yoavgeva.designguard.model.InterfacePolicy;
 import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
@@ -13,14 +11,16 @@ import org.junit.jupiter.params.provider.MethodSource;
 /** designguard holds itself to its own rules: every rule here passes on this repository. */
 class DesignGuardSelfTest {
 
-    private static final DesignGuard GUARD = new DesignGuard("io.github.yoavgeva.designguard");
+    private static final String API = "io.github.yoavgeva.designguard";
+    private static final DesignGuard GUARD = new DesignGuard(API);
 
     static Stream<Arguments> rules() {
         return Stream.of(
                 Arguments.of("the recommended rules", GUARD.recommended()),
-                Arguments.of("model-view-controller layers", GUARD.architecture().mvc()),
+                Arguments.of("model-view-controller layers",
+                        GUARD.architecture().mvc().controllers(API).views("..report..").services("..internal..")),
                 Arguments.of("no class cycles", GUARD.architecture().classesHaveNoCycles()),
-                Arguments.of("thin controllers", GUARD.architecture().adaptersStayThin("..controller..")),
+                Arguments.of("a thin API", GUARD.architecture().adaptersStayThin(API)),
                 Arguments.of("no frameworks in the model", GUARD.architecture().frameworksStayOutOf("..model..")),
                 Arguments.of("clock is injected", GUARD.dependencies().clockIsInjected()),
                 Arguments.of("randomness is injected", GUARD.dependencies().randomnessIsInjected()),
