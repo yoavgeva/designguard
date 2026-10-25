@@ -1359,7 +1359,8 @@ it too, and so does a test that calls, on a supertype of the class it names, a m
 boots the `@SpringBootApplication` class, and requests a booted test (`@SpringBootTest`, `@QuarkusTest`,
 `@MicronautTest`) sends reach any bean: a Spring component or CDI-scoped class, or a class the wiring code creates in
 a `@Bean` method. A test extending a class that declares tests runs them, so it uses what they use, as
-`FruitResourceIT extends FruitResourceTest` does. Tests named after no project class are skipped.
+`FruitResourceIT extends FruitResourceTest` does. Tests named after no project class are skipped, and so are abstract
+test classes, which run only through their subclasses, named after what they test.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.
 

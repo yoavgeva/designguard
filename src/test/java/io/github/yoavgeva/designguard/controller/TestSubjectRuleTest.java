@@ -732,6 +732,19 @@ class TestSubjectRuleTest {
                             }
                         }
                         """)
+                .add("Source", "package shop.html;\n\npublic abstract class Source {\n    public abstract String read();\n}\n")
+                .addTest("SourceTest", """
+                        package shop.html;
+
+                        public abstract class SourceTest {
+                            protected abstract Object open();
+
+                            @org.junit.jupiter.api.Test
+                            void opens() {
+                                org.assertj.core.api.Assertions.assertThat(open()).isNotNull();
+                            }
+                        }
+                        """)
                 .addTest("ResolverTest", """
                         package shop.html;
 

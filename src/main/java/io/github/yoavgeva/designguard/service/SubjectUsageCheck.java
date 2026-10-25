@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.AnnotationExpr;
 import com.github.javaparser.ast.expr.NameExpr;
@@ -43,11 +44,16 @@ public final class SubjectUsageCheck {
         SuiteTypes tests = new SuiteTypes(code.testSources());
         Context context = new Context(types, uses, tests);
         return tests.all().stream()
-                .filter(test -> Scopes.selected(filter, test.file(), test.type()))
+                .filter(test -> Scopes.selected(filter, test.file(), test.type()) && !isAbstract(test.type()))
                 .flatMap(test -> subject(test.file(), test.type(), types).stream()
                         .flatMap(subject -> violation(test, subject, context).stream()))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
+    }
+
+    /** An abstract test class runs only through its subclasses, which are named after what they test. */
+    private static boolean isAbstract(TypeDeclaration<?> test) {
+        return test instanceof ClassOrInterfaceDeclaration type && (type.isAbstract() || type.isInterface());
     }
 
     private static Optional<JavaClass> subject(ParsedFile file, TypeDeclaration<?> test, SourceTypes types) {
