@@ -507,6 +507,44 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
+                .add("Cookies", """
+                        package shop;
+
+                        import java.net.CookieManager;
+                        import java.net.HttpCookie;
+                        import java.net.URI;
+
+                        public final class Cookies {
+                            private final CookieManager manager = new CookieManager();
+
+                            public Cookies(String name, String value) {
+                                manager.getCookieStore().add(URI.create("https://shop.example"), new HttpCookie(name, value));
+                            }
+
+                            public int count() {
+                                return manager.getCookieStore().getCookies().size();
+                            }
+                        }
+                        """)
+                .add("PasswordPrompt", """
+                        package shop;
+
+                        import java.net.Authenticator;
+                        import java.net.PasswordAuthentication;
+
+                        public final class PasswordPrompt extends Authenticator {
+                            private final String user;
+
+                            public PasswordPrompt(String user) {
+                                this.user = user;
+                            }
+
+                            @Override
+                            protected PasswordAuthentication getPasswordAuthentication() {
+                                return new PasswordAuthentication(user, new char[0]);
+                            }
+                        }
+                        """)
                 .guard(SHOP);
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();

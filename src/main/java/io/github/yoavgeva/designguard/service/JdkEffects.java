@@ -73,7 +73,8 @@ final class JdkEffects {
     /**
      * Types whose values are data, with the methods that are effects: holding a {@code Path}, a {@code Thread} or an
      * {@code ExecutorService} isn't one, but reading the file, starting the thread or running work on it is. The
-     * {@code java.net} and {@code java.sql} types listed are values: addresses, encoders and SQL dates and types.
+     * {@code java.net} and {@code java.sql} types listed are values: addresses, encoders, in-memory cookies and
+     * credentials, and SQL dates and types. Installing the JVM's default authenticator, or asking it, is an effect.
      */
     private static final Map<String, Set<String>> EFFECTS_OF_VALUE_TYPES = Map.ofEntries(
             Map.entry("java.nio.file.Path", Set.of("toRealPath", "register")),
@@ -94,6 +95,11 @@ final class JdkEffects {
             Map.entry("java.net.URLEncoder", Set.of()),
             Map.entry("java.net.URLDecoder", Set.of()),
             Map.entry("java.net.IDN", Set.of()),
+            Map.entry("java.net.CookieManager", Set.of()),
+            Map.entry("java.net.CookieStore", Set.of()),
+            Map.entry("java.net.HttpCookie", Set.of()),
+            Map.entry("java.net.PasswordAuthentication", Set.of()),
+            Map.entry("java.net.Authenticator", Set.of("setDefault", "requestPasswordAuthentication")),
             Map.entry("java.sql.Timestamp", Set.of()),
             Map.entry("java.sql.Date", Set.of()),
             Map.entry("java.sql.Time", Set.of()),
