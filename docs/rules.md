@@ -1344,14 +1344,14 @@ interface or superclass of the class uses it, and so does a test of a web contro
 JAX-RS resource or provider that sends requests through `MockMvc`, `WebTestClient`, `TestRestTemplate`, REST Assured
 or an `HttpClient`, as Micronaut tests inject one. A test named after an interface or abstract class uses it through
 an implementation, a type nested in the class, as `HtmlTreeBuilderState.Constants`, stands for it, a spy runs the
-real class, and a project class the test uses, or its superclass, that creates or calls it, as a template dialect
-creates its processors and a document's `select(...)` calls the selector, or registers it by its class, as a Jackson
-module registers a mixin with `setMixInAnnotation(Money.class, MoneyMixin.class)`, uses it too; a class the test only
-mocks runs none of its code, a `@SpringBootTest` boots the `@SpringBootApplication` class, and requests a booted test
-(`@SpringBootTest`, `@QuarkusTest`, `@MicronautTest`) sends reach any bean: a Spring component or CDI-scoped class,
-or a class the wiring code creates in a `@Bean` method. A test extending a class that declares tests runs them, so it
-uses what they use, as `FruitResourceIT extends FruitResourceTest` does. Tests named after no project class are
-skipped.
+real class, and a project class the test uses, or its superclass, that creates it, or calls it from a method the test
+calls, as a template dialect creates its processors and a document's `select(...)` calls the selector, or registers
+it by its class, as a Jackson module registers a mixin with `setMixInAnnotation(Money.class, MoneyMixin.class)`, uses
+it too; a class the test only mocks runs none of its code, a `@SpringBootTest` boots the `@SpringBootApplication`
+class, and requests a booted test (`@SpringBootTest`, `@QuarkusTest`, `@MicronautTest`) sends reach any bean: a
+Spring component or CDI-scoped class, or a class the wiring code creates in a `@Bean` method. A test extending a
+class that declares tests runs them, so it uses what they use, as `FruitResourceIT extends FruitResourceTest` does.
+Tests named after no project class are skipped.
 
 Why: a test named after a class that only tests mocks of it checks nothing about it.
 

@@ -698,6 +698,22 @@ class TestSubjectRuleTest {
                 .add("Pricing", "package shop.html;\n\npublic class Pricing {\n    public long price() {\n        return 1;\n    }\n}\n")
                 .add("Basket", "package shop.html;\n\npublic class Basket {\n    public long total() {\n"
                         + "        return new Pricing().price();\n    }\n}\n")
+                .add("Resolver", "package shop.html;\n\npublic class Resolver {\n    public String resolve() {\n"
+                        + "        return \"jar\";\n    }\n}\n")
+                .add("Files", "package shop.html;\n\npublic final class Files {\n    private Files() {\n    }\n\n"
+                        + "    public static void delete(String path) {\n    }\n\n"
+                        + "    public static String resolved(Resolver resolver) {\n        return resolver.resolve();\n    }\n}\n")
+                .addTest("ResolverTest", """
+                        package shop.html;
+
+                        class ResolverTest {
+                            @org.junit.jupiter.api.Test
+                            void cleansUp() {
+                                Files.delete("cache");
+                                org.assertj.core.api.Assertions.assertThat("jar").isNotEmpty();
+                            }
+                        }
+                        """)
                 .addTest("PrinterTest", """
                         package shop.html;
 
@@ -746,6 +762,7 @@ class TestSubjectRuleTest {
                 .guard(SHOP);
 
         assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message).containsExactly(
-                "PricingTest never uses Pricing, the class it's named after");
+                "PricingTest never uses Pricing, the class it's named after",
+                "ResolverTest never uses Resolver, the class it's named after");
     }
 }

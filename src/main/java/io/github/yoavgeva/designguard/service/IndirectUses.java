@@ -130,7 +130,8 @@ final class IndirectUses {
 
     /**
      * Whether a project class the test uses, other than through a mock, reaches the subject: creates it, as a dialect
-     * creates its processors, calls it, as a document's {@code select(...)} calls the selector, or registers it by its
+     * creates its processors, calls it from a method the test calls, as a document's {@code select(...)} calls the
+     * selector, or registers it by its
      * class, as a Jackson module registers a mixin with {@code setMixInAnnotation(Money.class, MoneyMixin.class)}. A
      * used class's superclasses count, since their code runs, and a mocked class runs none of its own.
      */
@@ -147,8 +148,11 @@ final class IndirectUses {
                 .filter(type -> !type.equals(subject))
                 .flatMap(type -> Stream.concat(Stream.of(type), type.getAllRawSuperclasses().stream()))
                 .collect(Collectors.toSet());
+        Set<String> called = test.findAll(MethodCallExpr.class).stream().map(MethodCallExpr::getNameAsString)
+                .collect(Collectors.toSet());
         return isCreatedBy(subject, used::contains)
-                || subject.getMethodCallsToSelf().stream().anyMatch(call -> used.contains(call.getOriginOwner()))
+                || subject.getMethodCallsToSelf().stream().anyMatch(call -> used.contains(call.getOriginOwner())
+                        && called.contains(call.getOrigin().getName()))
                 || used.stream()
                         .flatMap(type -> type.getReferencedClassObjects().stream())
                         .anyMatch(reference -> reference.getRawType().equals(subject));
