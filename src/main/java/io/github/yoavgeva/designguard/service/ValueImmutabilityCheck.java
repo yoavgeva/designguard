@@ -12,7 +12,8 @@ import java.util.regex.Pattern;
 /**
  * Finds values with mutable state: classes that aren't service-like (no I/O, clock, randomness...) but have a
  * non-final instance field. A field a container injects is reported as one to take in the constructor. Enums,
- * records, exceptions, wiring code, persistence entities and builders, which change on purpose, are skipped.
+ * records, exceptions, wiring code, persistence entities and builders, which change on purpose, are skipped, and so
+ * are the other fields of components a container manages ({@link ManagedComponents}), which aren't values.
  */
 public final class ValueImmutabilityCheck {
 
@@ -36,6 +37,7 @@ public final class ValueImmutabilityCheck {
                         .filter(field -> !field.getModifiers().contains(JavaModifier.STATIC)
                                 && !field.getModifiers().contains(JavaModifier.FINAL)
                                 && !field.getModifiers().contains(JavaModifier.SYNTHETIC)
+                                && (!ManagedComponents.contains(value) || WiringCode.isInjected(field))
                                 && classes.selected(filter, field))
                         .map(field -> violation(classes, value, field)))
                 .sorted(Scopes.BY_LOCATION)
@@ -45,7 +47,8 @@ public final class ValueImmutabilityCheck {
     private static Violation violation(ProjectClasses classes, JavaClass value, JavaField field) {
         String name = ProjectClasses.nameOf(value);
         if (WiringCode.isInjected(field)) {
-            return classes.violation(RULE, value, 0, name + " is a value, but its injected field '" + field.getName()
+            String kind = ManagedComponents.contains(value) ? " is a component" : " is a value";
+            return classes.violation(RULE, value, 0, name + kind + ", but its injected field '" + field.getName()
                     + "' isn't final", WiringCode.INJECT_IN_CONSTRUCTOR);
         }
         return classes.violation(RULE, value, 0, name + " is a value, but its field '" + field.getName() + "' isn't final",

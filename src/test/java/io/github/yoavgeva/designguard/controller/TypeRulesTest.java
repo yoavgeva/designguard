@@ -108,6 +108,44 @@ class TypeRulesTest {
     }
 
     @Test
+    void componentsAContainerManagesAreNoValues() {
+        String annotation = "package %s;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                + "public @interface %s {\n    String value() default \"\";\n}\n";
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Component", annotation.formatted("org.springframework.stereotype", "Component"))
+                .add("RestController", "package org.springframework.web.bind.annotation;\n\n"
+                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "@org.springframework.stereotype.Component\npublic @interface RestController {\n}\n")
+                .add("Aspect", annotation.formatted("org.aspectj.lang.annotation", "Aspect"))
+                .add("Provider", annotation.formatted("jakarta.ws.rs.ext", "Provider"))
+                .add("ServerEndpoint", annotation.formatted("jakarta.websocket.server", "ServerEndpoint"))
+                .add("Value", annotation.formatted("org.springframework.beans.factory.annotation", "Value"))
+                .add("Filter", "package jakarta.servlet;\n\npublic interface Filter {\n    void doFilter(Object request);\n}\n")
+                .add("Ticker", "package shop;\n\n@org.springframework.stereotype.Component\npublic class Ticker {\n"
+                        + "    private int ticks;\n\n    @org.springframework.beans.factory.annotation.Value(\"${zone}\")\n"
+                        + "    private String zone;\n}\n")
+                .add("PingController", "package shop;\n\n@org.springframework.web.bind.annotation.RestController\n"
+                        + "public class PingController {\n    private String last;\n}\n")
+                .add("Timing", "package shop;\n\n@org.aspectj.lang.annotation.Aspect\npublic class Timing {\n"
+                        + "    private long calls;\n}\n")
+                .add("ErrorMapper", "package shop;\n\n@jakarta.ws.rs.ext.Provider\npublic class ErrorMapper {\n"
+                        + "    private int mapped;\n}\n")
+                .add("Socket", "package shop;\n\n@jakarta.websocket.server.ServerEndpoint(\"/ws\")\npublic class Socket {\n"
+                        + "    private Object session;\n}\n")
+                .add("RefererFilter", "package shop;\n\npublic class RefererFilter implements jakarta.servlet.Filter {\n"
+                        + "    private String allowed;\n\n    public void doFilter(Object request) {\n    }\n}\n")
+                .add("Tally", "package shop;\n\npublic class Tally {\n    private int total;\n}\n")
+                .guard(SHOP);
+
+        assertThat(guard.types().valueTypesAreImmutable().evaluate()).extracting(Violation::message, Violation::fix)
+                .containsExactly(
+                        tuple("Tally is a value, but its field 'total' isn't final",
+                                "make the field final and return a new Tally instead of changing it, or turn Tally into a record"),
+                        tuple("Ticker is a component, but its injected field 'zone' isn't final",
+                                "take it as a constructor parameter and make the field final"));
+    }
+
+    @Test
     void servicesHoldNoChangingState() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Storage", "package shop;\n\npublic interface Storage {\n    void save(String text);\n}\n")
