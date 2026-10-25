@@ -380,6 +380,21 @@ class TypeRulesTest {
                 .add("Queries", "package shop;\n\npublic final class Queries {\n"
                         + "    public static final String QUERY_LIKE = \"LIKE\";\n    public static final String QUERY_EQ = \"EQ\";\n\n"
                         + "    private Queries() {\n    }\n}\n")
+                .add("Origins", """
+                        package shop;
+
+                        public final class Origins {
+                            static final String SCHEME_HTTP = "http";
+                            static final String SCHEME_HTTPS = "https";
+
+                            private Origins() {
+                            }
+
+                            static boolean isWeb(java.net.URI uri) {
+                                return SCHEME_HTTP.equalsIgnoreCase(uri.getScheme()) || SCHEME_HTTPS.equalsIgnoreCase(uri.getScheme());
+                            }
+                        }
+                        """)
                 .guard(SHOP);
 
         assertThat(guard.types().enumsOverConstants().evaluate())

@@ -36,16 +36,8 @@ public final class StringlyTypedChoicesCheck {
 
     private static final String RULE = "no-stringly-typed-choices";
     private static final int MIN_STRINGS = 3;
-    private static final Set<String> HTTP_METHODS = Set.of("GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
-            "TRACE", "PATCH");
     private static final Pattern NOT_IDENTIFIER = Pattern.compile("[^A-Za-z0-9]+");
     private static final Set<String> EQUALS = Set.of("equals", "equalsIgnoreCase");
-    private static final Set<String> PRIMITIVES = Set.of("boolean", "byte", "char", "short", "int", "long", "float",
-            "double", "void");
-    private static final Set<String> OBJECT_METHODS = Set.of("toString", "hashCode", "equals", "getClass");
-    private static final Pattern DIGIT = Pattern.compile("\\d");
-    /** A character that no identifier-like word has: punctuation, quotes, brackets, dots or spaces. */
-    private static final Pattern SYNTAX = Pattern.compile("[^\\p{L}\\p{N}_-]");
 
     /**
      * Finds violations in the sources the filter selects.
@@ -59,7 +51,7 @@ public final class StringlyTypedChoicesCheck {
         return sources.files().stream()
                 .flatMap(file -> Stream.concat(switches(file), chains(file))
                         .filter(choice -> Scopes.selected(filter, file, choice.node()) && !converters.contain(choice.node())
-                                && !isOutsideVocabulary(choice.strings()))
+                                && !OutsideVocabulary.isOfChoices(choice.strings()))
                         .map(choice -> choice.violation(file)))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
@@ -132,21 +124,6 @@ public final class StringlyTypedChoicesCheck {
         return Optional.empty();
     }
 
-    /**
-     * Whether the strings are words of a vocabulary from outside the code, which an enum can't own: property keys,
-     * class names or SQL, which have dots or spaces, tokens a parser reads, any of which is punctuation such as
-     * {@code "("}, single characters such as operators, Java's type names, codes such as SQL states, which all have
-     * digits, method names a proxy dispatches on, which include {@code toString}, HTTP's method names, HTML's element
-     * names, as a parser of HTML compares tags with, or command-line options, which start with a dash.
-     */
-    private static boolean isOutsideVocabulary(List<String> strings) {
-        return strings.stream().anyMatch(string -> SYNTAX.matcher(string).find() || OBJECT_METHODS.contains(string)
-                        || string.startsWith("-"))
-                || strings.stream().allMatch(string -> string.length() <= 1 || DIGIT.matcher(string).find())
-                || strings.stream().allMatch(string -> HTTP_METHODS.contains(string.toUpperCase(Locale.ROOT)))
-                || strings.stream().filter(PRIMITIVES::contains).count() * 2 >= strings.size()
-                || strings.stream().filter(HtmlElements::contains).count() * 2 >= strings.size();
-    }
 
     private static String subjectOf(Expression selector) {
         return selector instanceof NodeWithSimpleName<?> named ? named.getNameAsString() : selector.toString();

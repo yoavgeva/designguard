@@ -768,7 +768,8 @@ only in converters, which turn outside input into a type, as `toPermissions(int 
 or String values with syntax beyond the name, as `"rmi:"` has. Nor do the known values of an open vocabulary:
 constants declared in the class named after their prefix, as `StatusInfo` is for `STATUS_UP`, which holds a value of
 their type and takes any such value from callers, as `StatusInfo.valueOf(String)` takes custom health statuses that
-an enum would reject.
+an enum would reject. Nor do well-known names from outside the code: URI schemes, as `SCHEME_HTTP = "http"` and
+`SCHEME_HTTPS = "https"` are, HTTP's method names and HTML's element names.
 
 Why: an `int` status accepts any number, and the compiler can't tell when a `switch` misses one (Effective Java,
 item 34).

@@ -30,7 +30,8 @@ import java.util.stream.Stream;
  * constants that are keys of a format, which every use passes to a lookup, constants used only in converters, which are
  * the encoding of a type, or String values with syntax beyond the name, as {@code "rmi:"} has. Nor do the known values
  * of an open vocabulary, declared in the class named after their prefix that takes any value, as {@code
- * StatusInfo.valueOf(String)} does.
+ * StatusInfo.valueOf(String)} does, nor well-known names from outside the code, as URI schemes such as {@code "https"}
+ * are ({@link OutsideVocabulary#areNames}).
  */
 public final class EnumLikeConstantsCheck {
 
@@ -58,7 +59,8 @@ public final class EnumLikeConstantsCheck {
                         .filter(type -> Scopes.selected(filter, file, type))
                         .flatMap(type -> groups(constants(type))
                                 .filter(group -> !group.isOfStrings() || !uses.areKeys(group.names()))
-                                .filter(group -> !uses.encode(group.names()) && !isOpenVocabulary(type, group))
+                                .filter(group -> !uses.encode(group.names()) && !isOpenVocabulary(type, group)
+                                        && !(group.isOfStrings() && OutsideVocabulary.areNames(group.values())))
                                 .map(group -> violation(file, type, group))))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
@@ -174,6 +176,10 @@ public final class EnumLikeConstantsCheck {
 
         List<String> names() {
             return constants.stream().map(Constant::name).toList();
+        }
+
+        List<String> values() {
+            return constants.stream().map(Constant::value).toList();
         }
 
         boolean enumeratesCases() {
