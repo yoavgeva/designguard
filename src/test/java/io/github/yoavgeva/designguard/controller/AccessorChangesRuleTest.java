@@ -83,4 +83,60 @@ class AccessorChangesRuleTest {
                         tuple(41, "Mailers.getBoxed() changes the field 'boxed'"),
                         tuple(45, "Mailers.getAttempts() changes the field 'attempts'"));
     }
+
+    @Test
+    void aReaderTellingIfInputIsLeftMayReadAhead() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("CharacterReader", """
+                        package shop;
+
+                        import java.io.IOException;
+                        import java.io.Reader;
+                        import java.io.UncheckedIOException;
+
+                        public class CharacterReader {
+                            private final Reader reader;
+                            private final char[] buffer = new char[64];
+                            private int length;
+                            private int position;
+
+                            public CharacterReader(Reader reader) {
+                                this.reader = reader;
+                            }
+
+                            public boolean isEmpty() {
+                                fill();
+                                return position >= length;
+                            }
+
+                            private void fill() {
+                                if (position < length) {
+                                    return;
+                                }
+                                try {
+                                    length = reader.read(buffer);
+                                    position = 0;
+                                } catch (IOException e) {
+                                    throw new UncheckedIOException(e);
+                                }
+                            }
+                        }
+                        """)
+                .add("Basket", """
+                        package shop;
+
+                        public class Basket {
+                            private int checks;
+
+                            public boolean isEmpty() {
+                                checks++;
+                                return checks > 3;
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.api().accessorsChangeNothing().evaluate()).extracting(Violation::message)
+                .containsExactly("Basket.isEmpty() changes the field 'checks'");
+    }
 }

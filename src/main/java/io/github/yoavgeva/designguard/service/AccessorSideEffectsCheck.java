@@ -25,6 +25,10 @@ public final class AccessorSideEffectsCheck {
     private static final Pattern ACCESSOR = Pattern.compile("(get|is|has)[A-Z].*");
     private static final String CHANGING_GETTER = "getAnd";
     private static final Set<String> READS_AHEAD = Set.of("hasNext", "hasPrevious", "hasMoreElements", "hasMoreTokens");
+    /** What a reader of input answers by reading ahead from the input it holds, as a buffered reader does. */
+    private static final Set<String> INPUT_LEFT = Set.of("isEmpty", "hasRemaining");
+    private static final List<String> INPUTS = List.of("java.io.Reader", "java.io.InputStream",
+            "java.nio.channels.ReadableByteChannel");
 
     /**
      * Finds violations in the classes the filter selects.
@@ -54,9 +58,16 @@ public final class AccessorSideEffectsCheck {
     private static boolean isAccessor(ProjectClasses classes, JavaClass type, JavaMethod method) {
         Set<JavaModifier> modifiers = method.getModifiers();
         return ACCESSOR.matcher(method.getName()).matches() && !method.getName().startsWith(CHANGING_GETTER)
-                && !READS_AHEAD.contains(method.getName()) && !method.getRawReturnType().isEquivalentTo(void.class)
+                && !READS_AHEAD.contains(method.getName()) && !(INPUT_LEFT.contains(method.getName()) && readsInput(type))
+                && !method.getRawReturnType().isEquivalentTo(void.class)
                 && !modifiers.contains(JavaModifier.STATIC) && !modifiers.contains(JavaModifier.SYNTHETIC)
                 && !isFluentSetter(type, method) && !Hierarchy.isDeclaredOutside(type, method, classes::isProject);
+    }
+
+    /** Whether the class holds input it reads, a reader, stream or channel, so asking what is left may read ahead. */
+    private static boolean readsInput(JavaClass type) {
+        return type.getAllFields().stream()
+                .anyMatch(field -> INPUTS.stream().anyMatch(field.getRawType()::isAssignableTo));
     }
 
     /** A method that takes a value and returns its own type, as a builder's {@code isBound(boolean)} does, sets it. */

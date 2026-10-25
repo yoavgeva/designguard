@@ -1080,8 +1080,9 @@ pair != null && pair.key().equals(key) ? pair : load(key))` does. An update buil
 count + 1`, is a change. A field set only while the method runs is fine: a flag it sets both `true` and `false`, or a
 field it both sets and clears to `null`, as a query's `before()` and `after()` do with the mode they save, itself or
 through the methods it calls. So are `getAnd...` methods, whose names say they change something, a cursor's
-`hasNext()`, which may read ahead, void methods, a builder's setters, which take a value and return the builder, as
-Lombok's `isBound(boolean)` does, and methods implementing an interface from outside the project, such as JDBC's
+`hasNext()`, which may read ahead, and so may `isEmpty()` or `hasRemaining()` on a class that reads a reader, stream
+or channel, void methods, a builder's setters, which take a value and return the builder, as Lombok's
+`isBound(boolean)` does, and methods implementing an interface from outside the project, such as JDBC's
 `Statement.getResultSet()`, whose name the interface dictates.
 
 Why: callers read accessors as queries and call them freely, so a hidden change surprises them (command-query
