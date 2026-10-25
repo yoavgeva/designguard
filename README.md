@@ -32,6 +32,10 @@ repository and depend on `0.1.0-SNAPSHOT`.
 testImplementation("io.github.yoavgeva:designguard:0.1.0")
 ```
 
+designguard brings its own ASM, so an older one in your build doesn't affect it. ArchUnit, which it builds on, logs
+through SLF4J: if your tests have no SLF4J provider, SLF4J prints a three-line notice. A test dependency on
+`org.slf4j:slf4j-simple` shows the logs, or `org.slf4j:slf4j-nop` drops them.
+
 ## Use it
 
 Start with the recommended rules. They need no configuration:

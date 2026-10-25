@@ -195,6 +195,59 @@
       </plugin>
 
       <plugin>
+        <!--
+          ASM goes inside the jar under designguard's package, as ArchUnit does with its own: an older ASM that a
+          project's build resolves can't replace the one that reads new class files.
+        -->
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.2</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <artifactSet>
+                <includes>
+                  <include>org.ow2.asm:*</include>
+                </includes>
+              </artifactSet>
+              <relocations>
+                <relocation>
+                  <pattern>org.objectweb.asm</pattern>
+                  <shadedPattern>io.github.yoavgeva.designguard.internal.asm</shadedPattern>
+                </relocation>
+              </relocations>
+              <filters>
+                <filter>
+                  <artifact>org.ow2.asm:*</artifact>
+                  <excludes>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/**</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <!-- Runs the *IT tests, which check the packaged jar. -->
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
         <artifactId>maven-pmd-plugin</artifactId>
         <version>3.28.0</version>
         <configuration>
