@@ -459,7 +459,10 @@ every constructor, and are reported once. A call to a collaborator counts only i
 touches the outside world, and calls to JDK interfaces such as `Iterator.hasNext()` don't count. Reading a stream the
 constructor is given, wrapping it, or creating an in-memory one such as `StringWriter`, isn't I/O, and neither is
 creating a client or a clock, as `new RestTemplate()` and `Clock.systemUTC()` do, or configuring a client with a
-setter or a fluent method such as `withTableName(...)`. Creating objects is left to `inject-services`, and wiring
+setter or a fluent method such as `withTableName(...)`. Neither is preparing what does nothing yet: creating or
+configuring a thread it doesn't start, as a `Thread` subclass's `super(name)` and `setDaemon(true)` do, calling an
+abstract class's constructor, as a `super()` into `FileChannel` does, or setting up a `URLConnection` before it
+connects, as `getURL()` and `setConnectTimeout(...)` do. Creating objects is left to `inject-services`, and wiring
 code is exempt.
 
 Why: a class whose constructor does work can't be created without it, so tests can't create it cheaply, and a

@@ -123,17 +123,19 @@ final class Effects {
     boolean isImpure(Bytecode bytecode, JavaCodeUnitAccess<?> access) {
         return JdkEffects.isImpure(access.getTarget(), extraImpurePackages)
                 && !bytecode.isCall(Bytecode.CallKind.RESTORED_INTERRUPT, access)
-                && !(bytecode.isCall(Bytecode.CallKind.ON_PARAMETER, access) && JdkEffects.readsOrBindsJdbcData(access.getTarget()))
+                && !(bytecode.isCall(Bytecode.CallKind.ON_PARAMETER, access) && JdkPassiveCalls.readsOrBindsJdbcData(access.getTarget()))
                 || bytecode.isCall(Bytecode.CallKind.CONSOLE, access)
                 || libraries.isCall(access);
     }
 
     /**
      * Whether the call does work, which may be slow or fail: it is {@link #isImpure}, other than reading the clock,
-     * randomness or the process's configuration.
+     * randomness or the process's configuration, or preparing something that does nothing yet
+     * ({@link JdkPassiveCalls#onlyPrepares}).
      */
     boolean doesWork(Bytecode bytecode, JavaCodeUnitAccess<?> access) {
-        return isImpure(bytecode, access) && !JdkEffects.readsProcessState(access.getTarget());
+        return isImpure(bytecode, access) && !JdkEffects.readsProcessState(access.getTarget())
+                && !JdkPassiveCalls.onlyPrepares(access.getTarget());
     }
 
     /**

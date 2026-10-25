@@ -526,6 +526,54 @@ class ConstructorWorkRuleTest {
                             }
                         }
                         """)
+                .add("Reaper", """
+                        package shop;
+
+                        final class Reaper extends Thread {
+                            Reaper() {
+                                super("reaper");
+                                setPriority(Thread.MAX_PRIORITY);
+                                setDaemon(true);
+                            }
+                        }
+                        """)
+                .add("NoPipe", """
+                        package shop;
+
+                        public final class NoPipe extends java.nio.channels.Pipe {
+                            private final String name;
+
+                            public NoPipe(String name) {
+                                this.name = name;
+                            }
+
+                            @Override
+                            public SourceChannel source() {
+                                throw new UnsupportedOperationException(name + " has no source");
+                            }
+
+                            @Override
+                            public SinkChannel sink() {
+                                throw new UnsupportedOperationException(name + " has no sink");
+                            }
+                        }
+                        """)
+                .add("Link", """
+                        package shop;
+
+                        public final class Link {
+                            private final java.net.URL url;
+
+                            public Link(java.net.URLConnection connection) {
+                                connection.setConnectTimeout(1000);
+                                this.url = connection.getURL();
+                            }
+
+                            public java.net.URL url() {
+                                return url;
+                            }
+                        }
+                        """)
                 .add("PasswordPrompt", """
                         package shop;
 

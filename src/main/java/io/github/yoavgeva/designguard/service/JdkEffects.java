@@ -6,7 +6,6 @@ import com.tngtech.archunit.core.domain.PackageMatcher;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -63,8 +62,14 @@ final class JdkEffects {
             "java.util.zip.ZipFile", FILE_NAMES,
             "java.util.jar.JarFile", FILE_NAMES,
             "java.util.Formatter", FILE_NAMES);
-    /** What binds a statement's parameters or reads a called procedure's results, rather than running it. */
-    private static final Pattern JDBC_BINDING = Pattern.compile("(set|get)[A-Z].*|clearParameters|registerOutParameter|wasNull");
+    /** What makes a URL connection connect, or reads what the connection returned; its setters and getURL() don't. */
+    private static final Set<String> CONNECTS = Set.of("connect", "getInputStream", "getOutputStream", "getContent",
+            "getContentType", "getContentLength", "getContentLengthLong", "getContentEncoding", "getExpiration", "getDate",
+            "getLastModified", "getHeaderField", "getHeaderFields", "getHeaderFieldInt", "getHeaderFieldLong",
+            "getHeaderFieldDate", "getHeaderFieldKey", "getPermission");
+    private static final Set<String> HTTP_CONNECTS = Stream.concat(CONNECTS.stream(),
+            Stream.of("getResponseCode", "getResponseMessage", "getErrorStream", "disconnect", "usingProxy"))
+            .collect(Collectors.toUnmodifiableSet());
     private static final Set<String> RUNS_WORK = Set.of("execute", "submit", "invokeAll", "invokeAny", "schedule",
             "scheduleAtFixedRate", "scheduleWithFixedDelay", "shutdown", "shutdownNow", "close", "awaitTermination");
     private static final Set<String> STARTS_POOLS = Set.of(CONSTRUCTOR, "execute", "submit", "invokeAll", "invokeAny",
@@ -100,6 +105,8 @@ final class JdkEffects {
             Map.entry("java.net.HttpCookie", Set.of()),
             Map.entry("java.net.PasswordAuthentication", Set.of()),
             Map.entry("java.net.Authenticator", Set.of("setDefault", "requestPasswordAuthentication")),
+            Map.entry("java.net.URLConnection", CONNECTS),
+            Map.entry("java.net.HttpURLConnection", HTTP_CONNECTS),
             Map.entry("java.sql.Timestamp", Set.of()),
             Map.entry("java.sql.Date", Set.of()),
             Map.entry("java.sql.Time", Set.of()),
@@ -161,17 +168,6 @@ final class JdkEffects {
         return readsTimeOrChance(target) || CONFIGURATION_CALLS.contains(target.getOwner().getName() + "." + target.getName());
     }
 
-    /**
-     * Whether calling the target reads the rows of a JDBC result, as {@code rows.getString("name")} does, or binds a
-     * parameter of a statement, as {@code statement.setString(1, name)} does: on a result or statement a method is
-     * given, the caller ran the query, and the method only maps or fills in data, as a row mapper or binder does.
-     */
-    static boolean readsOrBindsJdbcData(CodeUnitAccessTarget target) {
-        JavaClass owner = target.getOwner();
-        String name = target.getName();
-        return owner.isAssignableTo("java.sql.ResultSet")
-                || owner.isAssignableTo("java.sql.PreparedStatement") && JDBC_BINDING.matcher(name).matches();
-    }
 
     /**
      * Whether the call on a clock or random type creates one rather than reading it, as {@code Clock.systemUTC()},
