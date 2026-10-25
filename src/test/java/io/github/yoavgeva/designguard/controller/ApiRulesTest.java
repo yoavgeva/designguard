@@ -20,6 +20,7 @@ class ApiRulesTest {
     private static final String SHOP = "shop";
     private static final String ORDER = "Order";
     private static final String ORDERS = "Orders";
+    private static final String RUNTIME = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n";
 
     @Parameter
     private int release;
@@ -156,7 +157,7 @@ class ApiRulesTest {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("JsonNode", "package com.fasterxml.jackson.databind;\n\npublic abstract class JsonNode {\n}\n")
                 .add("Around", "package org.aspectj.lang.annotation;\n\n"
-                        + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + RUNTIME
                         + "public @interface Around {\n    String value();\n}\n")
                 .add("Timing", """
                         package shop;
@@ -165,6 +166,62 @@ class ApiRulesTest {
                             @org.aspectj.lang.annotation.Around("execution(* shop..*(..))")
                             public Object time(java.util.function.Supplier<Object> call) {
                                 return call.get();
+                            }
+                        }
+                        """)
+                .add("RequestMapping", "package org.springframework.web.bind.annotation;\n\n"
+                        + RUNTIME
+                        + "public @interface RequestMapping {\n    String[] value() default {};\n}\n")
+                .add("GetMapping", "package org.springframework.web.bind.annotation;\n\n"
+                        + RUNTIME
+                        + "@RequestMapping\npublic @interface GetMapping {\n    String[] value() default {};\n}\n")
+                .add("RequestBody", "package org.springframework.web.bind.annotation;\n\n"
+                        + RUNTIME
+                        + "public @interface RequestBody {\n}\n")
+                .add("JsonAnyGetter", "package com.fasterxml.jackson.annotation;\n\n"
+                        + RUNTIME
+                        + "public @interface JsonAnyGetter {\n}\n")
+                .add("JsonAnySetter", "package com.fasterxml.jackson.annotation;\n\n"
+                        + RUNTIME
+                        + "public @interface JsonAnySetter {\n}\n")
+                .add("CargoController", """
+                        package shop;
+
+                        import java.util.Map;
+                        import org.springframework.web.bind.annotation.GetMapping;
+                        import org.springframework.web.bind.annotation.RequestBody;
+                        import org.springframework.web.bind.annotation.RequestMapping;
+
+                        public class CargoController {
+                            @GetMapping("/show")
+                            public String show(String id, Map<String, Object> model) {
+                                model.put("id", id);
+                                return "show";
+                            }
+
+                            @RequestMapping("/save")
+                            public String save(@RequestBody Map<String, Object> body) {
+                                return "saved " + body.size();
+                            }
+                        }
+                        """)
+                .add("Extras", """
+                        package shop;
+
+                        import java.util.HashMap;
+                        import java.util.Map;
+
+                        public class Extras {
+                            private final Map<String, Object> values = new HashMap<>();
+
+                            @com.fasterxml.jackson.annotation.JsonAnyGetter
+                            public Map<String, Object> values() {
+                                return values;
+                            }
+
+                            @com.fasterxml.jackson.annotation.JsonAnySetter
+                            public void put(String key, Object value) {
+                                values.put(key, value);
                             }
                         }
                         """)
@@ -209,10 +266,11 @@ class ApiRulesTest {
                 .guard(SHOP);
 
         assertThat(guard.api().typedApis().evaluate()).extracting(Violation::message).containsExactly(
+                "CargoController.save() takes an untyped Map<String, Object>",
                 "Orders.create() takes an untyped Map<String, Object>",
                 "Orders.find() returns an untyped Object",
                 "Orders.export() returns an untyped JsonNode");
-        assertThat(guard.api().typedApis().evaluate().get(0).fix())
+        assertThat(guard.api().typedApis().evaluate().get(1).fix())
                 .isEqualTo("define a record with named, typed fields and use it instead");
 
         DesignGuard library = new CompiledProject(directory.resolve("gson")).release(release)

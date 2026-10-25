@@ -1006,7 +1006,9 @@ Fix: make `read` an instance method, and give `Lookup` a `Disk` in its construct
 Public methods of public classes that take or return untyped data are reported: `Object`, a map to `Object` such as
 `Map<String, Object>`, or a JSON tree from Jackson, Gson, org.json or Jakarta JSON, unless the project is that
 library and the tree its own model. Type variables, inherited signatures such as `equals(Object)`, AspectJ `@Around`
-advice, which returns whatever the advised method returns, and wiring code are skipped.
+advice, which returns whatever the advised method returns, Jackson's `@JsonAnyGetter` and `@JsonAnySetter`, which
+hold the properties a class doesn't name, the model map Spring MVC gives a request handler, and wiring code are
+skipped. A map a handler binds from the request, as an `@RequestBody Map<String, Object>` is, still counts.
 
 Why: callers and the compiler can't tell what to pass or what comes back. A record names the fields and their
 types.

@@ -3,6 +3,7 @@ package io.github.yoavgeva.designguard.service;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.domain.JavaModifier;
+import com.tngtech.archunit.core.domain.JavaParameter;
 import com.tngtech.archunit.core.domain.JavaParameterizedType;
 import com.tngtech.archunit.core.domain.JavaType;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -18,12 +19,17 @@ import java.util.stream.Stream;
  * such as {@code Map<String, Object>}, or a JSON tree from Jackson, Gson, org.json or Jakarta JSON. A record names
  * the fields and their types, so callers and the compiler know what to pass. Type variables, inherited signatures
  * such as {@code equals(Object)}, AspectJ {@code @Around} advice, which returns whatever the advised method returns,
- * and wiring code are skipped.
+ * Jackson's {@code @JsonAnyGetter} and {@code @JsonAnySetter}, the model a Spring MVC handler is given, and wiring
+ * code are skipped.
  */
 public final class UntypedApiCheck {
 
     private static final String RULE = "typed-apis";
     private static final String AROUND_ADVICE = "org.aspectj.lang.annotation.Around";
+    /** Jackson's catch-alls for the properties a class doesn't name, which take and return them untyped. */
+    private static final List<String> ANY_PROPERTIES = List.of("com.fasterxml.jackson.annotation.JsonAnyGetter",
+            "com.fasterxml.jackson.annotation.JsonAnySetter");
+    private static final String REQUEST_MAPPING = "org.springframework.web.bind.annotation.RequestMapping";
     private static final int MAP_TYPE_ARGUMENTS = 2;
     private static final Set<String> JSON_TREES = Set.of("com.fasterxml.jackson.databind.JsonNode",
             "com.fasterxml.jackson.databind.node.ObjectNode", "com.fasterxml.jackson.databind.node.ArrayNode",
@@ -58,17 +64,28 @@ public final class UntypedApiCheck {
         Set<JavaModifier> modifiers = method.getModifiers();
         return modifiers.contains(JavaModifier.PUBLIC) && !modifiers.contains(JavaModifier.SYNTHETIC)
                 && !modifiers.contains(JavaModifier.BRIDGE) && !Hierarchy.isInherited(type, method)
-                && !method.isAnnotatedWith(AROUND_ADVICE);
+                && !method.isAnnotatedWith(AROUND_ADVICE) && ANY_PROPERTIES.stream().noneMatch(method::isAnnotatedWith);
     }
 
     private static Stream<String> untyped(ProjectClasses classes, JavaMethod method) {
-        Stream<String> taken = method.getParameterTypes().stream()
+        Stream<String> taken = method.getParameters().stream()
+                .filter(parameter -> !isModel(method, parameter))
+                .map(JavaParameter::getType)
                 .filter(type -> isUntyped(classes, type))
                 .map(type -> "takes an untyped " + describe(type));
         Stream<String> returned = Stream.of(method.getReturnType())
                 .filter(type -> isUntyped(classes, type))
                 .map(type -> "returns an untyped " + describe(type));
         return Stream.concat(taken, returned);
+    }
+
+    /**
+     * Whether the parameter is the model Spring MVC gives a request handler for its view, as {@code Map<String, Object>
+     * model} is: a map nothing binds from the request.
+     */
+    private static boolean isModel(JavaMethod method, JavaParameter parameter) {
+        return method.isMetaAnnotatedWith(REQUEST_MAPPING) && parameter.getAnnotations().isEmpty()
+                && parameter.getRawType().isAssignableTo(Map.class);
     }
 
     /** Whether the type is {@code Object}, a map to objects, or a JSON tree of a library the project uses, not its own. */
