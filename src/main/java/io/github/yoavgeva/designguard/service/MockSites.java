@@ -52,23 +52,25 @@ final class MockSites {
     }
 
     /**
-     * Whether the test only watches the mock: verifies calls on it, as {@code verify(closed).close()} does, and never
-     * stubs it, as {@code when(...)}, {@code given(...)} and {@code doReturn(...).when(...)} do. Such a mock observes
-     * what the code does with a real-like object, which a real one can't show when the call changes nothing visible.
+     * The calls the test verifies on the mock, as {@code verify(closed).close()} does, if it never stubs it, as
+     * {@code when(...)}, {@code given(...)} and {@code doReturn(...).when(...)} do; none if it stubs it or verifies
+     * nothing on it.
      */
-    static boolean isOnlyVerified(CompilationUnit unit, MockSite mock) {
+    static List<MethodCallExpr> verifiedCalls(CompilationUnit unit, MockSite mock) {
         Optional<String> variable = variableOf(mock);
         if (variable.isEmpty()) {
-            return false;
+            return List.of();
         }
         String name = variable.get();
         List<MethodCallExpr> calls = unit.findAll(MethodCallExpr.class);
-        boolean verified = calls.stream().anyMatch(call -> "verify".equals(call.getNameAsString())
-                && !call.getArguments().isEmpty() && isName(call.getArgument(0), name));
         boolean stubbed = calls.stream().anyMatch(call -> STUBS.contains(call.getNameAsString()) && call.getArguments().size() == 1
                 && (isName(call.getArgument(0), name) || call.getArgument(0) instanceof MethodCallExpr stubbedCall
                         && stubbedCall.getScope().filter(scope -> isName(scope, name)).isPresent()));
-        return verified && !stubbed;
+        return stubbed ? List.of() : calls.stream()
+                .filter(call -> call.getScope().filter(scope -> scope instanceof MethodCallExpr verify
+                        && "verify".equals(verify.getNameAsString()) && !verify.getArguments().isEmpty()
+                        && isName(verify.getArgument(0), name)).isPresent())
+                .toList();
     }
 
     /** The name of the variable, field or parameter the mock is held in. */

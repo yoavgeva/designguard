@@ -1400,10 +1400,11 @@ class, holds a library object other than data, or calls one of its own, as a sea
 manager extending pf4j's does, since that library may do I/O. Calls on parameters belong to the caller, so an entity
 that checks a password with an encoder it is given is still a value. An interface with one abstract method is a role,
 such as a strategy or a callback, which tests mock to see it called, so it isn't a value. A mock the test only
-verifies calls on, and never stubs, watches what the code does with the value, as `verify(stream).close()` checks
-that a stream is closed, which a real in-memory one can't show, so it's fine too. Mocks come from Mockito's or
-EasyMock's `mock(Type.class)`, `spy(Type.class)`, `spy(new Type(...))` and `createMock(Type.class)`, and from fields
-and parameters annotated `@Mock`, `@Spy` or Spring's mock-bean annotations.
+verifies commands on, and never stubs, watches what the code does with the value, as `verify(stream).close()` checks
+that a stream is closed, which a real in-memory one can't show, so it's fine too. A verified query, as
+`verify(password).matches(raw)`, returns what a real value would show, so it's still reported. Mocks come from
+Mockito's or EasyMock's `mock(Type.class)`, `spy(Type.class)`, `spy(new Type(...))` and `createMock(Type.class)`, and
+from fields and parameters annotated `@Mock`, `@Spy` or Spring's mock-bean annotations.
 
 Why: a value is cheap and safe to create, so a test should use a real one. A mock of a value tests the mock.
 

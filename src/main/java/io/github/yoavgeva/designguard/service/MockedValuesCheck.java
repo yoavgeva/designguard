@@ -1,7 +1,9 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
@@ -13,7 +15,7 @@ import java.util.List;
  * does. A value is cheap and safe to create, so a test should use a real one; a mock of it tests the mock. Mocks come
  * from Mockito's or EasyMock's {@code mock(Type.class)}, {@code spy(Type.class)}, {@code spy(new Type(...))} and
  * {@code createMock(Type.class)}, and from fields and parameters annotated {@code @Mock}, {@code @Spy} or Spring's
- * mock-bean annotations. A mock the test only verifies calls on, and never stubs, watches what the code does with
+ * mock-bean annotations. A mock the test only verifies commands on, and never stubs, watches what the code does with
  * the value, as a check that a stream is closed does, and is fine.
  */
 public final class MockedValuesCheck {
@@ -35,9 +37,10 @@ public final class MockedValuesCheck {
         SourceTypes types = new SourceTypes(classes);
         return code.testSources().files().stream()
                 .flatMap(file -> MockSites.in(file.unit())
-                        .filter(mock -> Scopes.selected(filter, file, mock.site()) && !MockSites.isOnlyVerified(file.unit(), mock))
+                        .filter(mock -> Scopes.selected(filter, file, mock.site()))
                         .flatMap(mock -> types.resolve(file.unit(), mock.typeName()).stream()
-                                .filter(type -> isValue(classes, serviceLike, visible, type) && !wiring.contains(type))
+                                .filter(type -> isValue(classes, serviceLike, visible, type) && !wiring.contains(type)
+                                        && !isOnlyWatched(type, MockSites.verifiedCalls(file.unit(), mock)))
                                 .map(type -> violation(file, mock.site(), type))))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
@@ -66,6 +69,21 @@ public final class MockedValuesCheck {
 
     private static boolean isConcreteValue(ServiceLikeClasses serviceLike, VisibleCode visible, JavaClass type) {
         return !serviceLike.contains(type) && !serviceLike.isTimeOrChanceData(type) && visible.isSeenThrough(type);
+    }
+
+    /**
+     * Whether the test only watches the mock: it stubs nothing on it, and verifies only commands, as
+     * {@code verify(stream).close()} checks a stream is closed, which a real in-memory one can't show. A verified query,
+     * as {@code verify(password).matches(raw)}, returns what a real value would show.
+     */
+    private static boolean isOnlyWatched(JavaClass type, List<MethodCallExpr> verified) {
+        return !verified.isEmpty() && verified.stream().allMatch(call -> {
+            List<JavaMethod> candidates = type.getAllMethods().stream()
+                    .filter(method -> method.getName().equals(call.getNameAsString())
+                            && method.getRawParameterTypes().size() == call.getArguments().size())
+                    .toList();
+            return !candidates.isEmpty() && candidates.stream().allMatch(CommandMethods::isCommand);
+        });
     }
 
     private static boolean isRole(JavaClass type) {

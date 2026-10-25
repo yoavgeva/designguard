@@ -283,6 +283,13 @@ class MockedValuesRuleTest {
                                 Buffer dummy = mock(Buffer.class);
                                 org.assertj.core.api.Assertions.assertThat(new Tee(stubbed, dummy).length()).isEqualTo(3);
                             }
+
+                            @org.junit.jupiter.api.Test
+                            void asksBothForTheirLength() {
+                                Buffer asked = mock(Buffer.class);
+                                new Tee(asked, spied).length();
+                                verify(asked).length();
+                            }
                         }
                         """)
                 .guard(SHOP);
@@ -290,6 +297,7 @@ class MockedValuesRuleTest {
         assertThat(guard.tests().testsDontMockValues().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
                         tuple(21, "TeeTest mocks Buffer, which is a value"),
-                        tuple(23, "TeeTest mocks Buffer, which is a value"));
+                        tuple(23, "TeeTest mocks Buffer, which is a value"),
+                        tuple(29, "TeeTest mocks Buffer, which is a value"));
     }
 }
