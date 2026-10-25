@@ -180,6 +180,23 @@ class BranchingTestsRuleTest {
                                     }
                                 }
                             }
+
+                            @org.junit.jupiter.params.ParameterizedTest
+                            @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+                            void failsOnlyWhenTheCaseSays(boolean shouldFail) {
+                                if (shouldFail) {
+                                    fail("the case said so");
+                                }
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void throwsForEachBadPath() {
+                                for (String path : java.util.List.of("/", "/api")) {
+                                    if (path.isEmpty()) {
+                                        throw new IllegalStateException(path + ": expected a path");
+                                    }
+                                }
+                            }
                         }
                         """)
                 .guard("shop");
@@ -187,6 +204,8 @@ class BranchingTestsRuleTest {
         assertThat(guard.tests().testsHaveNoLogic().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
                         tuple(31, "test ListTest.failsOnlySometimes() has an if: a test should take one path"),
-                        tuple(40, "test ListTest.checksEachEntry() has a for loop: a test should take one path"));
+                        tuple(40, "test ListTest.checksEachEntry() has a for loop: a test should take one path"),
+                        tuple(50, "test ListTest.failsOnlyWhenTheCaseSays() has an if: a test should take one path"),
+                        tuple(58, "test ListTest.throwsForEachBadPath() has an if: a test should take one path"));
     }
 }

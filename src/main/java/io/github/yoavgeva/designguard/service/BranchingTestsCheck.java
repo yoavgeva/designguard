@@ -2,6 +2,7 @@ package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.Expression;
@@ -16,6 +17,7 @@ import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.stmt.SwitchStmt;
+import com.github.javaparser.ast.stmt.ThrowStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
@@ -23,6 +25,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -74,21 +78,27 @@ public final class BranchingTestsCheck {
                 .flatMap(node -> LOGIC.stream().filter(kind -> kind.getKey().isInstance(node))
                         .map(kind -> Map.entry(node, kind.getValue())))
                 .filter(found -> !inClassOf(test, found.getKey())
-                        && !(found.getKey() instanceof IfStmt branch && (onlyFails(branch) || shapesSetUpData(test, branch))))
+                        && !(found.getKey() instanceof IfStmt branch
+                                && (onlyFails(test, branch) || shapesSetUpData(test, branch))))
                 .filter(found -> LOOPS.stream().noneMatch(loop -> loop.isInstance(found.getKey()))
                         || asserts(found.getKey()) && !(found.getKey() instanceof ForStmt loop && isRepetition(loop)))
                 .min(Comparator.comparingInt(found -> Scopes.line(found.getKey())));
     }
 
     /**
-     * Whether the {@code if} is an assertion written by hand: it has no {@code else}, and all it does is fail, as
-     * {@code if (size != 2) { fail("got " + size); }} and {@code throw new AssertionError(...)} do. It checks the same
-     * thing on every run.
+     * Whether the {@code if} is an assertion written by hand: it has no {@code else}, all it does is fail, as
+     * {@code if (size != 2) { fail("got " + size); }} and {@code throw new AssertionError(...)} do, and it tests what the
+     * test observed, not which case runs, as {@code if (shouldFail)} on a parameter does. It checks the same thing on
+     * every run.
      */
-    private static boolean onlyFails(IfStmt branch) {
+    private static boolean onlyFails(MethodDeclaration test, IfStmt branch) {
         Statement then = branch.getThenStmt();
         List<Statement> statements = then.isBlockStmt() ? then.asBlockStmt().getStatements() : List.of(then);
-        return branch.getElseStmt().isEmpty() && !statements.isEmpty() && statements.stream().allMatch(statement ->
+        Set<String> parameters = test.getParameters().stream().map(Parameter::getNameAsString).collect(Collectors.toSet());
+        return branch.getElseStmt().isEmpty() && !statements.isEmpty()
+                && branch.getCondition().findAll(NameExpr.class).stream()
+                        .noneMatch(name -> parameters.contains(name.getNameAsString()))
+                && statements.stream().allMatch(statement ->
                 statement.isExpressionStmt() && statement.asExpressionStmt().getExpression() instanceof MethodCallExpr call
                         && FAIL.equals(call.getNameAsString())
                 || statement.isThrowStmt() && statement.asThrowStmt().getExpression() instanceof ObjectCreationExpr error
@@ -96,8 +106,9 @@ public final class BranchingTestsCheck {
     }
 
     /**
-     * Whether the {@code if} shapes the data a loop sets up, as {@code if (i > 0) json.append(',')} does: it asserts
-     * nothing, and neither does any loop around it, which only sets up data.
+     * Whether the {@code if} shapes the data a loop sets up, as {@code if (i > 0) json.append(',')} does: it checks
+     * nothing, and neither does any loop around it, which only sets up data. A {@code throw} checks, as
+     * {@code if (info.isResource()) throw new IllegalStateException(...)} in a loop over cases does.
      */
     private static boolean shapesSetUpData(MethodDeclaration test, IfStmt branch) {
         List<Node> loops = Stream.iterate(branch.getParentNode(), Optional::isPresent, node -> node.flatMap(Node::getParentNode))
@@ -105,7 +116,7 @@ public final class BranchingTestsCheck {
                 .takeWhile(node -> !node.equals(test))
                 .filter(node -> LOOPS.stream().anyMatch(loop -> loop.isInstance(node)))
                 .toList();
-        return !loops.isEmpty() && loops.stream().noneMatch(BranchingTestsCheck::asserts);
+        return !loops.isEmpty() && loops.stream().noneMatch(loop -> asserts(loop) || !loop.findAll(ThrowStmt.class).isEmpty());
     }
 
     private static boolean asserts(Node code) {
