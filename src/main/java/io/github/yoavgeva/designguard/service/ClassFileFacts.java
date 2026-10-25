@@ -475,8 +475,8 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
     /**
      * The calls a method makes on one of its parameters while the parameter still holds what the caller passed, as
      * {@code storage.load()} in {@code count(Storage storage)} is: they run the implementation the caller chose, not
-     * any the project has. Only calls that may dispatch to project code are kept: virtual and interface calls of
-     * types outside the JDK.
+     * any the project has. Only calls that may dispatch to project code are kept, virtual and interface calls of
+     * types outside the JDK, and those on JDBC's, whose results and statements the caller ran.
      */
     static final class ParameterCalls {
 
@@ -525,7 +525,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         private static boolean mayDispatch(AbstractInsnNode instruction) {
             return instruction instanceof MethodInsnNode call
                     && (call.getOpcode() == Opcodes.INVOKEVIRTUAL || call.getOpcode() == Opcodes.INVOKEINTERFACE)
-                    && !call.owner.startsWith("java/") && !call.owner.startsWith("javax/");
+                    && (!call.owner.startsWith("java/") && !call.owner.startsWith("javax/") || call.owner.startsWith("java/sql/"));
         }
     }
 

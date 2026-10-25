@@ -572,4 +572,58 @@ class ServiceLikeClassesRuleTest {
                         }
                         """);
     }
+
+    @Test
+    void readingTheRowsOrBindingTheStatementACallIsGivenIsTheCallersQuery() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("VisitRowMapper", """
+                        package shop;
+
+                        import java.sql.ResultSet;
+                        import java.sql.SQLException;
+
+                        public class VisitRowMapper {
+                            private int mapped;
+
+                            public String mapRow(ResultSet rows, int row) throws SQLException {
+                                mapped++;
+                                return rows.getString("name") + rows.getInt("id") + rows.getMetaData().getColumnCount();
+                            }
+                        }
+                        """)
+                .add("VisitBinder", """
+                        package shop;
+
+                        import java.sql.PreparedStatement;
+                        import java.sql.SQLException;
+
+                        public class VisitBinder {
+                            private int bound;
+
+                            public void bind(PreparedStatement statement, String name) throws SQLException {
+                                bound++;
+                                statement.setString(1, name);
+                            }
+                        }
+                        """)
+                .add("VisitCounter", """
+                        package shop;
+
+                        import java.sql.Connection;
+                        import java.sql.SQLException;
+
+                        public class VisitCounter {
+                            private int counted;
+
+                            public boolean count(Connection connection) throws SQLException {
+                                counted++;
+                                return connection.prepareStatement("select count(*) from visit").execute();
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
+                "VisitCounter is service-like, but its field 'counted' isn't final");
+    }
 }

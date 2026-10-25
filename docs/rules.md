@@ -20,7 +20,9 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   passed, so `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface
   annotated `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do, or a call
   of a JDK collection, map or iterator method, as `iterator().next()` on a project collection, which reads the
-  collection it's called on, whatever other classes implementing the interface do. Creating
+  collection it's called on, whatever other classes implementing the interface do. Reading the rows or binding the
+  parameters of a JDBC `ResultSet` or `PreparedStatement` a method is given, as a row mapper or a binder does, isn't
+  an effect either: the caller runs the query. Creating
   a clock or a random source, as `Clock.systemUTC()`, `new SecureRandom()` and `ThreadLocalRandom.current()` do, isn't
   an effect; reading the time or a number from it is. The clock includes `new Date()` and `Calendar.getInstance()`,
   and the environment includes `System.getProperties()` and `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an

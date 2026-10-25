@@ -117,11 +117,13 @@ final class Effects {
     /**
      * Whether making the call uses an outside-world API: I/O, the clock, randomness, the environment, threads, or the
      * console, as {@code System.out.println(...)} does, or a library's database, HTTP, messaging or mail client.
-     * {@code Thread.currentThread().interrupt()} only restores the current thread's interrupt flag, so it doesn't.
+     * {@code Thread.currentThread().interrupt()} only restores the current thread's interrupt flag, so it doesn't, and
+     * neither does reading the rows or binding the parameters of a JDBC result or statement the method is given.
      */
     boolean isImpure(Bytecode bytecode, JavaCodeUnitAccess<?> access) {
         return JdkEffects.isImpure(access.getTarget(), extraImpurePackages)
                 && !bytecode.isCall(Bytecode.CallKind.RESTORED_INTERRUPT, access)
+                && !(bytecode.isCall(Bytecode.CallKind.ON_PARAMETER, access) && JdkEffects.readsOrBindsJdbcData(access.getTarget()))
                 || bytecode.isCall(Bytecode.CallKind.CONSOLE, access)
                 || libraries.isCall(access);
     }
