@@ -820,8 +820,10 @@ Fix: split it into role interfaces, such as `Feeding` and `Reporting`, and let o
 `types().closedHierarchiesAreSealed()`
 
 Interfaces and abstract classes implemented only inside the project that aren't sealed are reported. Functional
-interfaces are skipped, because lambdas can't implement a sealed interface. Meant for applications, since a
-library's users may implement its interfaces. This needs code that targets Java 17.
+interfaces are skipped, because lambdas can't implement a sealed interface. So are service-like ones, which are there
+to be replaced, by test doubles and a container's proxies, and nothing switches over, and those with an
+implementation the build generates, as MapStruct does for a mapper, which can't be declared to fit the permits. Meant
+for applications, since a library's users may implement its interfaces. This needs code that targets Java 17.
 
 Why: sealing lets the compiler check switches over the type for missing cases.
 

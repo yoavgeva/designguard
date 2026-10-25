@@ -10,7 +10,9 @@ import java.util.stream.Collectors;
 /**
  * Finds interfaces and abstract classes implemented only inside the project that aren't sealed. Sealing them lets
  * the compiler check switches over them for missing cases. Functional interfaces are skipped, because lambdas
- * implement them and lambdas can't implement a sealed interface.
+ * implement them and lambdas can't implement a sealed interface. So are service-like ones, which are there to be
+ * replaced, by test doubles and a container's proxies, and nothing switches over, and those with an implementation
+ * the build generates, as MapStruct does for a mapper, which can't be declared to fit the permits.
  */
 public final class SealedHierarchyCheck {
 
@@ -26,9 +28,12 @@ public final class SealedHierarchyCheck {
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         ProjectClasses classes = code.projectClasses();
         JavaSources sources = code.sources();
+        ServiceLikeClasses serviceLike = code.serviceLike();
         return classes.stream()
-                .filter(type -> classes.selected(filter, type) && isOpenAbstraction(type) && !type.getSubclasses().isEmpty())
-                .filter(type -> sources.declaration(canonicalName(type)).map(declared -> !declared.isSealed()).orElse(false))
+                .filter(type -> classes.selected(filter, type) && isOpenAbstraction(type) && !type.getSubclasses().isEmpty()
+                        && !serviceLike.contains(type))
+                .filter(type -> sources.declaration(canonicalName(type)).map(declared -> !declared.isSealed()).orElse(false)
+                        && type.getSubclasses().stream().allMatch(subclass -> sources.declaration(canonicalName(subclass)).isPresent()))
                 .map(type -> {
                     String name = ProjectClasses.nameOf(type);
                     String permits = type.getSubclasses().stream().map(ProjectClasses::nameOf).sorted()

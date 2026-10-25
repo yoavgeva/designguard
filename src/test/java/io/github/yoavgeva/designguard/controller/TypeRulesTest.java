@@ -478,6 +478,34 @@ class TypeRulesTest {
                 .add("Handler", "package shop;\n\npublic interface Handler {\n    void handle(String event);\n}\n")
                 .add("Logger", "package shop;\n\npublic class Logger implements Handler {\n"
                         + "    public void handle(String event) {\n        event.length();\n    }\n}\n")
+                .add("Gateway", "package shop;\n\npublic interface Gateway {\n    String charge(String card);\n\n"
+                        + "    String refund(String card);\n}\n")
+                .add("FileGateway", """
+                        package shop;
+
+                        public class FileGateway implements Gateway {
+                            public String charge(String card) {
+                                return read(card);
+                            }
+
+                            public String refund(String card) {
+                                return read(card);
+                            }
+
+                            private static String read(String card) {
+                                try {
+                                    return java.nio.file.Files.readString(java.nio.file.Path.of(card));
+                                } catch (java.io.IOException e) {
+                                    throw new java.io.UncheckedIOException(e);
+                                }
+                            }
+                        }
+                        """)
+                .add("OrderMapper", "package shop;\n\npublic interface OrderMapper {\n    String toDto(String order);\n\n"
+                        + "    String toEntity(String dto);\n}\n")
+                .addGenerated("OrderMapperImpl", "package shop;\n\npublic class OrderMapperImpl implements OrderMapper {\n"
+                        + "    public String toDto(String order) {\n        return order;\n    }\n\n"
+                        + "    public String toEntity(String dto) {\n        return dto;\n    }\n}\n")
                 .guard(SHOP);
 
         assertThat(guard.types().closedHierarchiesAreSealed().evaluate()).singleElement().satisfies(violation -> {
