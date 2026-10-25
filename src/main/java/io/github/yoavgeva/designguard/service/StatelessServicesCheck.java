@@ -18,8 +18,8 @@ import java.util.stream.Stream;
  * collection, atomic or string builder, by its type or by what a constructor assigns it. A service is shared by its
  * callers, so its state leaks between them and races under concurrency. A non-final field a container injects, as
  * {@code @Autowired}, {@code @Value}, {@code @Inject}, {@code @Resource} and {@code @PersistenceContext} do, holds a
- * collaborator or setting rather than state, so it is reported as one to take in the constructor. Wiring code, enums
- * and records are skipped.
+ * collaborator or setting rather than state, so it is reported as one to take in the constructor. Wiring code, enums,
+ * records and what a framework creates for each use, as a command for each run, are skipped.
  */
 public final class StatelessServicesCheck {
 
@@ -52,7 +52,8 @@ public final class StatelessServicesCheck {
         WiringCode wiring = code.wiring();
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && serviceLike.contains(type) && Hierarchy.isConcrete(type)
-                        && !type.isEnum() && !type.isRecord() && !wiring.contains(type))
+                        && !type.isEnum() && !type.isRecord() && !wiring.contains(type)
+                        && !ManagedComponents.isCreatedPerUse(type))
                 .flatMap(type -> type.getFields().stream()
                         .filter(field -> !field.getModifiers().contains(JavaModifier.STATIC)
                                 && !field.getModifiers().contains(JavaModifier.SYNTHETIC)

@@ -63,4 +63,42 @@ class StatelessServicesRuleTest {
                         tuple("Accounts is service-like, but its injected field 'storage' isn't final",
                                 "take it as a constructor parameter and make the field final"));
     }
+
+    @Test
+    void objectsAFrameworkCreatesForEachUseHoldTheirOwnState() {
+        String annotation = "package %s;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                + "public @interface %s {\n    String name() default \"\";\n}\n";
+        String command = """
+                package shop;
+
+                @%s
+                public class %s {
+                    private String name;
+                    private int written;
+
+                    public void run() throws java.io.IOException {
+                        written++;
+                        java.nio.file.Files.writeString(java.nio.file.Path.of(name), "alias");
+                    }
+                }
+                """;
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("CommandDefinition", annotation.formatted("org.aesh.command", "CommandDefinition"))
+                .add("CommandLine", "package picocli;\n\npublic final class CommandLine {\n"
+                        + "    @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+                        + "    public @interface Command {\n        String name() default \"\";\n    }\n}\n")
+                .add("ServerEndpoint", annotation.formatted("jakarta.websocket.server", "ServerEndpoint"))
+                .add("RequestScoped", annotation.formatted("jakarta.enterprise.context", "RequestScoped"))
+                .add("AliasAdd", command.formatted("org.aesh.command.CommandDefinition(name = \"add\")", "AliasAdd"))
+                .add("Export", command.formatted("picocli.CommandLine.Command(name = \"export\")", "Export"))
+                .add("Socket", command.formatted("jakarta.websocket.server.ServerEndpoint(name = \"/ws\")", "Socket"))
+                .add("Cart", command.formatted("jakarta.enterprise.context.RequestScoped", "Cart"))
+                .add("Archive", command.formatted("Deprecated", "Archive"))
+                .guard("shop");
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
+                "Archive is service-like, but its field 'name' isn't final",
+                "Archive is service-like, but its field 'written' isn't final");
+        assertThat(guard.types().valueTypesAreImmutable().evaluate()).isEmpty();
+    }
 }

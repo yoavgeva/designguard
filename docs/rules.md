@@ -671,10 +671,10 @@ Values with a non-final instance field are reported. A field a container injects
 like, is reported as one to take as a constructor parameter. Enums, records, exceptions, wiring code, persistence
 entities and builders are skipped, and so are the other fields of components a container manages, which aren't
 values: Spring beans, including stereotypes such as `@RestController`, CDI and `@Singleton` beans, Micronaut
-controllers, JAX-RS resources and providers, AspectJ aspects, WebSocket endpoints, and servlets and filters. A
-builder changes on purpose, and what it builds is the value: it has a `build()` that returns something else, or
-fluent setters that return the builder and either a name ending in `Builder` or a `build...` or `create...` method
-that returns something else.
+controllers, JAX-RS resources and providers, AspectJ aspects, WebSocket endpoints, servlets and filters, and
+command-line commands. A builder changes on purpose, and what it builds is the value: it has a `build()` that returns
+something else, or fluent setters that return the builder and either a name ending in `Builder` or a `build...` or
+`create...` method that returns something else.
 
 Why: a value that changes can't be shared or used as a map key, and changes behind its holders' backs.
 
@@ -698,9 +698,11 @@ Fix: `record Tally(int total) { Tally add(int amount) { return new Tally(total +
 `types().servicesAreStateless()`
 
 Service-like classes that hold changing state are reported: a non-final instance field, or a final one holding a
-mutable collection, an atomic or a string builder. A non-final field a container injects, with `@Autowired`, `@Value`,
-`@Inject`, `@Resource` or `@PersistenceContext`, holds a collaborator or a setting, not state, so it is reported as
-one to take as a constructor parameter. Wiring code, enums and records are skipped.
+mutable collection, an atomic or a string builder. A non-final field a container injects, with `@Autowired`,
+`@Value`, `@Inject`, `@Resource` or `@PersistenceContext`, holds a collaborator or a setting, not state, so it is
+reported as one to take as a constructor parameter. Wiring code, enums and records are skipped, and so is what a
+framework creates for each use, which holds the state of that use: an aesh or picocli command, a WebSocket endpoint,
+and a request- or session-scoped bean.
 
 Why: a service is shared by its callers, so its state leaks between them and races under concurrency.
 
