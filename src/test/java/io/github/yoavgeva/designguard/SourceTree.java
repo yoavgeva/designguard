@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** Writes Java source files into a directory, so tests can point designguard at a source root. */
+/** Writes Java source files, and other files, into a directory, so tests can point designguard at a source root. */
 public final class SourceTree {
 
     private final Path rootDirectory;
@@ -33,10 +33,22 @@ public final class SourceTree {
                 .findFirst()
                 .map(line -> line.substring("package ".length(), line.indexOf(';')))
                 .orElse("");
-        Path file = rootDirectory.resolve(packageName.replace('.', '/')).resolve(typeName + ".java");
+        String directory = packageName.isEmpty() ? "" : packageName.replace('.', '/') + "/";
+        return addFile(directory + typeName + ".java", source);
+    }
+
+    /**
+     * Writes any file, such as a resource.
+     *
+     * @param path    the file's path under the root, e.g. {@code META-INF/services/shop.Greeter}
+     * @param content the full file content
+     * @return this tree, for chaining
+     */
+    public SourceTree addFile(String path, String content) {
+        Path file = rootDirectory.resolve(path);
         try {
             Files.createDirectories(file.getParent());
-            Files.writeString(file, source, StandardCharsets.UTF_8);
+            Files.writeString(file, content, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

@@ -1205,11 +1205,12 @@ Fix: add `DiskTest`.
 
 `guardrails().noUnusedPublicCode()`
 
-Public top-level types nothing depends on, and public methods nothing calls or references, are reported. Likely
-entry points are skipped: wiring code, annotated types and methods, inherited signatures, record accessors, enum
-helpers, bean accessors (`get`, `set`, `is`), and the methods of JMX interfaces (`...MBean`, `...MXBean`), which
-management clients call. Meant for applications, since in a library unused public code is
-the API.
+Public top-level types nothing depends on, and public methods nothing calls or references, are reported. Likely entry
+points are skipped: wiring code, annotated types and methods, types a framework finds or that the resources packaged
+with the classes name, as `META-INF/services` files and logging configuration do, inherited signatures, record
+accessors, enum helpers, bean accessors (`get`, `set`, `is`), and the methods of JMX interfaces (`...MBean`,
+`...MXBean`), which management clients call. Meant for applications, since in a library unused public code is the
+API.
 
 Why: agents leave code behind that nothing uses, and it still has to be read and maintained.
 

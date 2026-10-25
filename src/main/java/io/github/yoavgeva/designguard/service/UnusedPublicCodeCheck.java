@@ -13,8 +13,9 @@ import java.util.stream.Stream;
 /**
  * Finds public code nothing in the project uses: public top-level types nothing depends on, and public methods
  * nothing calls or references. Meant for applications. Skipped as likely entry points: wiring code, annotated types
- * and methods, types a framework finds and creates, inherited signatures, record accessors, enum helpers, bean
- * accessors ({@code get}/{@code set}/{@code is}) and the methods of JMX interfaces.
+ * and methods, types a framework finds and creates or the packaged resources name ({@link ResourceNames}), inherited
+ * signatures, record accessors, enum helpers, bean accessors ({@code get}/{@code set}/{@code is}) and the methods of
+ * JMX interfaces.
  */
 public final class UnusedPublicCodeCheck {
 
@@ -34,9 +35,10 @@ public final class UnusedPublicCodeCheck {
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         ProjectClasses classes = code.projectClasses();
         WiringCode wiring = code.wiring();
+        Set<String> named = code.resourceNames();
         return classes.stream()
                 .filter(type -> classes.selected(filter, type) && !wiring.contains(type) && type.getAnnotations().isEmpty())
-                .flatMap(type -> isUnusedType(classes, type)
+                .flatMap(type -> isUnusedType(classes, type) && !named.contains(type.getName())
                         ? Stream.of(classes.violation(RULE, type, 0, ProjectClasses.nameOf(type)
                                 + " is public, but nothing uses it",
                                 "delete it, or make it package-private until something needs it"))

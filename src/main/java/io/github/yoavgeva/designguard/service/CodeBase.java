@@ -6,6 +6,7 @@ import io.github.yoavgeva.designguard.model.ProjectSettings;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -86,6 +87,9 @@ public abstract sealed class CodeBase {
 
     abstract ServiceLikeClasses serviceLike();
 
+    /** The class names the resources packaged with the classes mention, see {@link ResourceNames}. */
+    abstract Set<String> resourceNames();
+
     WiringCode wiring() {
         return new WiringCode(settings().wiringPackages(), javaRelease());
     }
@@ -99,6 +103,7 @@ public abstract sealed class CodeBase {
         private final Memo<JavaSources> parsedTestSources;
         private final Memo<ServiceLikeClasses> classification;
         private final Memo<Integer> release;
+        private final Memo<Set<String>> namesInResources;
 
         OnDisk(ProjectSettings settings) {
             this.projectSettings = settings;
@@ -108,6 +113,7 @@ public abstract sealed class CodeBase {
                     settings.testSourceRoots().stream().filter(Files::isDirectory).toList(), settings.sourceRoots()));
             this.classification = new Memo<>(() -> new ServiceLikeClasses(projectClasses(), settings.impurePackages()));
             this.release = new Memo<>(() -> releaseOf(settings, importedClasses));
+            this.namesInResources = new Memo<>(() -> ResourceNames.in(projectClasses(), settings.sourceRoots()));
         }
 
         @Override
@@ -148,6 +154,11 @@ public abstract sealed class CodeBase {
         @Override
         ServiceLikeClasses serviceLike() {
             return classification.get();
+        }
+
+        @Override
+        Set<String> resourceNames() {
+            return namesInResources.get();
         }
 
         private static int releaseOf(ProjectSettings settings, Memo<ProjectClasses> classes) {

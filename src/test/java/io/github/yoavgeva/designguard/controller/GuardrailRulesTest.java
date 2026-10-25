@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import io.github.yoavgeva.designguard.CompiledProject;
+import io.github.yoavgeva.designguard.SourceTree;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -193,5 +194,42 @@ class GuardrailRulesTest {
         assertThat(guard.guardrails().noUnusedPublicCode().evaluate()).extracting(Violation::message).containsExactly(
                 "FixedPricing is public, but nothing uses it",
                 "Pricing.price() is public, but nothing calls it");
+    }
+
+    @Test
+    void typesTheResourcesTheBuildPackagesNameAreUsed() {
+        // Maven copies resources in with the classes; Gradle keeps them beside the sources
+        CompiledProject project = new CompiledProject(directory).release(release)
+                .add("LogFormatter", """
+                        package shop;
+
+                        public class LogFormatter extends java.util.logging.Formatter {
+                            @Override
+                            public String format(java.util.logging.LogRecord record) {
+                                return record.getMessage();
+                            }
+                        }
+                        """)
+                .add("Greeter", "package shop.spi;\n\npublic interface Greeter {\n    String greet();\n}\n")
+                .add("EnglishGreeter", """
+                        package shop.spi;
+
+                        public class EnglishGreeter implements Greeter {
+                            @Override
+                            public String greet() {
+                                return "hello";
+                            }
+                        }
+                        """)
+                .add("Leftover", "package shop;\n\npublic class Leftover {\n}\n");
+        new SourceTree(directory.resolve("classes")).addFile("logging.properties",
+                "handlers=java.util.logging.ConsoleHandler\njava.util.logging.ConsoleHandler.formatter=shop.LogFormatter\n");
+        new SourceTree(directory.resolve("resources")).addFile("META-INF/services/shop.spi.Greeter",
+                "# the greeters\nshop.spi.EnglishGreeter\n");
+        DesignGuard guard = project.guard(SHOP);
+
+        assertThat(guard.guardrails().noUnusedPublicCode().evaluate()).extracting(Violation::message).containsExactly(
+                "Leftover is public, but nothing uses it",
+                "Greeter.greet() is public, but nothing calls it");
     }
 }
