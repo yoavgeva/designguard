@@ -1,6 +1,7 @@
 package io.github.yoavgeva.designguard.service;
 
 import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.CallableDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.VariableDeclarator;
@@ -15,6 +16,7 @@ import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -22,12 +24,15 @@ import java.util.stream.Stream;
  * returns a value. Stub queries and assert on the result; verify only commands: methods that return nothing, or only a
  * {@code Void} publisher or future such as {@code Mono<Void>}, and methods named for a change, as {@code update} or
  * {@code sendCode} are, which may return what they stored, as reactive clients and repositories do. A verification
- * with a mode, such as {@code times(1)} or {@code never()}, counts calls on purpose and is fine.
+ * with a mode, such as {@code times(1)} or {@code never()}, counts calls on purpose and is fine, and so is verifying a
+ * query the test stubs, whose result it controls and can check.
  */
 public final class QueryVerificationCheck {
 
     private static final String RULE = "tests-check-results";
     private static final String VERIFY = "verify";
+    /** Mockito's and BDDMockito's stubbing calls: {@code when(...)} and {@code given(...)}. */
+    private static final Set<String> STUBS = Set.of("when", "given");
 
     /**
      * Finds violations in the test sources the filter selects.
@@ -41,7 +46,7 @@ public final class QueryVerificationCheck {
         return code.testSources().files().stream()
                 .flatMap(file -> file.unit().findAll(MethodCallExpr.class).stream()
                         .filter(call -> Scopes.selected(filter, file, call))
-                        .flatMap(call -> verifiedMock(call).stream()
+                        .flatMap(call -> verifiedMock(call).filter(mock -> !isStubbedThere(call, mock)).stream()
                                 .flatMap(mock -> mockType(file.unit(), mock, types).stream())
                                 .filter(type -> isQuery(type, call))
                                 .map(type -> violation(file, call, type))))
@@ -55,6 +60,31 @@ public final class QueryVerificationCheck {
                 .flatMap(Expression::toMethodCallExpr)
                 .filter(verify -> VERIFY.equals(verify.getNameAsString()) && verify.getArguments().size() == 1)
                 .flatMap(verify -> verify.getArgument(0).toNameExpr());
+    }
+
+    /**
+     * Whether the test stubs the verified method of the mock, as {@code when(rates.rateOf("EUR"))} and
+     * {@code doReturn(2L).when(rates).rateOf("EUR")} do: it controls the result and can check what the code makes of
+     * it, so the verification only repeats the stub.
+     */
+    private static boolean isStubbedThere(MethodCallExpr verified, NameExpr mock) {
+        String method = verified.getNameAsString();
+        return Scopes.enclosingCallable(verified).stream()
+                .flatMap(callable -> callable.findAll(MethodCallExpr.class).stream())
+                .anyMatch(call -> STUBS.contains(call.getNameAsString()) && call.getArguments().size() == 1
+                        && (isCallOn(call.getArgument(0), mock, method) || isName(call.getArgument(0), mock)
+                                && call.getParentNode().filter(parent -> isCallOn(parent, mock, method)).isPresent()));
+    }
+
+    /** Whether the node calls the method on the mock, or on {@code when(mock)}, as a stub's last step does. */
+    private static boolean isCallOn(Node node, NameExpr mock, String method) {
+        return node instanceof MethodCallExpr call && call.getNameAsString().equals(method)
+                && call.getScope().filter(scope -> isName(scope, mock) || scope instanceof MethodCallExpr when
+                        && STUBS.contains(when.getNameAsString())).isPresent();
+    }
+
+    private static boolean isName(Node node, NameExpr mock) {
+        return node instanceof NameExpr name && name.getNameAsString().equals(mock.getNameAsString());
     }
 
     /** The project class the mock variable is declared as: a local, a parameter or a field. */

@@ -1306,7 +1306,8 @@ Tests that verify queries are reported: `verify(mock).method(...)` where every s
 a value. Commands are fine to verify: methods that return nothing or only a `Void` publisher or future, such as
 `Mono<Void>`, and methods named for a change (`create`, `update`, `save`, `send`, `publish` and the like), which
 reactive clients and repositories make return what they stored. A verification with a mode, such as `times(1)` or
-`never()`, counts calls on purpose, so it's fine.
+`never()`, counts calls on purpose, so it's fine, and so is verifying a query the same test stubs with `when(...)` or
+`doReturn(...)`: the test controls its result and can check what the code makes of it.
 
 Why: verifying that a query was called checks how the code works, not what it returns. Stub queries and assert on
 the result, and verify only commands, which return nothing.

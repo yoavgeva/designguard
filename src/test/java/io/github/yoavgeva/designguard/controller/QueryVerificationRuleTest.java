@@ -17,6 +17,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 @MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class QueryVerificationRuleTest {
 
+    private static final String SHOP = "shop";
+
     @Parameter
     private int release;
 
@@ -75,7 +77,7 @@ class QueryVerificationRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsCheckResults().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
@@ -126,7 +128,7 @@ class QueryVerificationRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsCheckResults().evaluate()).extracting(Violation::message)
                 .containsExactly("test PostsTest.edits() verifies Posts.fetch(), a query that returns a value");
@@ -166,9 +168,67 @@ class QueryVerificationRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsCheckResults().evaluate()).extracting(Violation::message).containsExactly(
                 "test PostsTest.posts() verifies Posts.processLink(), a query that returns a value");
+    }
+
+    @Test
+    void aQueryTheTestStubsIsOneItChecksTheResultOf() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Rates", "package shop;\n\npublic interface Rates {\n    long rateOf(String currency);\n}\n")
+                .add("Converter", """
+                        package shop;
+
+                        public class Converter {
+                            private final Rates rates;
+
+                            public Converter(Rates rates) {
+                                this.rates = rates;
+                            }
+
+                            public long convert(long cents, String currency) {
+                                return cents * rates.rateOf(currency);
+                            }
+                        }
+                        """)
+                .addTest("ConverterTest", """
+                        package shop;
+
+                        import static org.mockito.Mockito.doReturn;
+                        import static org.mockito.Mockito.mock;
+                        import static org.mockito.Mockito.verify;
+                        import static org.mockito.Mockito.when;
+
+                        class ConverterTest {
+                            private final Rates rates = mock(Rates.class);
+
+                            @org.junit.jupiter.api.Test
+                            void convertsWithTheStubbedRate() {
+                                when(rates.rateOf("EUR")).thenReturn(2L);
+                                org.assertj.core.api.Assertions.assertThat(new Converter(rates).convert(3, "EUR")).isEqualTo(6);
+                                verify(rates).rateOf("EUR");
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void convertsWithARateStubbedFirst() {
+                                doReturn(3L).when(rates).rateOf("GBP");
+                                org.assertj.core.api.Assertions.assertThat(new Converter(rates).convert(2, "GBP")).isEqualTo(6);
+                                verify(rates).rateOf("GBP");
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void convertsWithoutAStub() {
+                                new Converter(rates).convert(2, "USD");
+                                verify(rates).rateOf("USD");
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsCheckResults().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(tuple(28, "test ConverterTest.convertsWithoutAStub() verifies Rates.rateOf(), a query that"
+                        + " returns a value"));
     }
 }
