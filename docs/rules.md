@@ -1495,8 +1495,11 @@ Fix: use fixed data, or `new Random(42)`.
 
 Test code reading environment variables or system properties is reported. A property the test saves to restore is
 fine: a variable or field whose every use puts the value back with `System.setProperty(...)` or checks it for null,
-as a test that sets `user.home` itself does in its `finally` block or `@AfterEach` method. So is a value the test
-only prints, logs or ignores, as for [`tests-fixed-clock`](#tests-fixed-clock).
+as a test that sets `user.home` itself does in its `finally` block or `@AfterEach` method. So are the properties that
+say where the JVM, its classes and the working directory are, and what separates lines and paths: `line.separator`,
+`file.separator`, `path.separator`, `java.home`, `java.class.path`, `java.io.tmpdir` and `user.dir`, as a test reads
+to expect the platform's line ends or start a child JVM. So is a value the test only prints, logs or ignores, as for
+[`tests-fixed-clock`](#tests-fixed-clock).
 
 Why: such a test passes on one machine and fails on another, or in CI.
 

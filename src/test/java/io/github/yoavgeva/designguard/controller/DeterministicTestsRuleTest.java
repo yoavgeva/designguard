@@ -200,6 +200,21 @@ class DeterministicTestsRuleTest {
                             }
 
                             @Test
+                            void printsOnePerLine() {
+                                String lf = System.getProperty("line.separator");
+                                String key = "user.dir";
+                                String java = System.getProperty("java.home") + "/bin/java " + System.getProperty("java.class.path");
+                                org.assertj.core.api.Assertions.assertThat(new Paths().home() + lf + System.getProperty(key) + java)
+                                        .contains(lf);
+                            }
+
+                            @Test
+                            void opensOnWindows() {
+                                org.assertj.core.api.Assertions.assertThat(System.getProperty("os.name").contains("Windows")
+                                        || new Paths().home().isEmpty()).isTrue();
+                            }
+
+                            @Test
                             void homeIsUnderTheMachinesHome() {
                                 String home = System.getProperty("user.home");
                                 System.setProperty("user.home", home + "/ada");
@@ -210,8 +225,9 @@ class DeterministicTestsRuleTest {
                 .guard(SHOP);
 
         assertThat(guard.tests().testsDontReadTheEnvironment().evaluate()).extracting(Violation::line, Violation::message)
-                .containsExactly(tuple(38,
-                        "test PathsTest.homeIsUnderTheMachinesHome() reads the environment through System.getProperty()"));
+                .containsExactly(
+                        tuple(47, "test PathsTest.opensOnWindows() reads the environment through System.getProperty()"),
+                        tuple(53, "test PathsTest.homeIsUnderTheMachinesHome() reads the environment through System.getProperty()"));
     }
 
     @Test
