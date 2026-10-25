@@ -92,6 +92,13 @@ final class ReadingUses {
                 .findFirst());
     }
 
+    /** Whether the declaration is of a local variable the code creates an array, collection or other object for. */
+    static boolean isCreatedThere(Node declaration) {
+        return declaration instanceof VariableDeclarator variable && variable.getInitializer()
+                .filter(value -> value.isObjectCreationExpr() || value.isArrayCreationExpr() || value.isArrayInitializerExpr())
+                .isPresent();
+    }
+
     /** The expressions that read the variable or parameter, in the method or constructor that declares it. */
     static List<NameExpr> usesOf(Node declaration) {
         String name = declaration instanceof NodeWithSimpleName<?> named ? named.getNameAsString() : "";

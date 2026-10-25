@@ -11,7 +11,9 @@ import com.github.javaparser.ast.expr.ConditionalExpr;
 import com.github.javaparser.ast.expr.EnclosedExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
+import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.MethodReferenceExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
@@ -75,15 +77,18 @@ final class ReportedReadings {
         }
         if (parent instanceof VariableDeclarator variable) {
             return variable.getParentNode().filter(VariableDeclarationExpr.class::isInstance).isPresent()
-                    && intoUses(variable, false);
+                    && followOnce(variable, ReadingUses.usesOf(variable), false);
         }
         if (parent instanceof ForEachStmt loop) {
-            return loop.getIterable().equals(value) && intoUses(loop.getVariableDeclarator(), false);
+            VariableDeclarator element = loop.getVariableDeclarator();
+            return loop.getIterable().equals(value) && followOnce(element, ReadingUses.usesOf(element), false);
         }
         if (parent instanceof ReturnStmt returned) {
-            return intoCallers(returned);
+            Optional<MethodDeclaration> method = ReadingUses.returningMethod(returned);
+            return method.flatMap(ReadingUses::callsOf).filter(calls -> followOnce(method.get(), calls, false)).isPresent();
         }
-        return parent instanceof ExpressionStmt;
+        return parent instanceof ExpressionStmt statement
+                && statement.getParentNode().filter(LambdaExpr.class::isInstance).isEmpty();
     }
 
     private boolean intoExpression(Expression value, Expression parent) {
@@ -106,7 +111,8 @@ final class ReportedReadings {
     /** Follows a value a call takes: into its result, the collection it stores it in, or the parameter it binds. */
     private boolean intoCall(Expression value, MethodCallExpr call) {
         if (call.getScope().filter(value::equals).isPresent()) {
-            return holders.contains(value) && ReadingUses.isSize(call.getNameAsString()) || next(call);
+            return holders.contains(value) && ReadingUses.isSize(call.getNameAsString())
+                    || call.getArguments().stream().allMatch(this::intoArgument) && next(call);
         }
         if (ReadingUses.isReport(call)) {
             return true;
@@ -120,8 +126,25 @@ final class ReportedReadings {
         }
         int index = call.getArguments().indexOf(value);
         List<MethodDeclaration> methods = ReadingUses.ownMethods(call);
-        return !methods.isEmpty() && methods.stream()
-                .allMatch(method -> index < method.getParameters().size() && intoUses(method.getParameter(index), false));
+        return !methods.isEmpty() && methods.stream().allMatch(method -> index < method.getParameters().size()
+                && followOnce(method.getParameter(index), ReadingUses.usesOf(method.getParameter(index)), false));
+    }
+
+    /**
+     * Follows what a call on a value may give its argument: the data it fills a local array or collection with, as
+     * {@code random.nextBytes(bytes)} does, or the values it passes a lambda, as {@code times.forEach(...)} does.
+     * Fields, elements and method references it may fill or run can't be followed.
+     */
+    private boolean intoArgument(Expression argument) {
+        if (argument instanceof NameExpr name) {
+            return intoLocal(name, true);
+        }
+        if (argument instanceof LambdaExpr lambda) {
+            return lambda.getParameters().stream()
+                    .allMatch(parameter -> followOnce(parameter, ReadingUses.usesOf(parameter), false));
+        }
+        return !(argument instanceof FieldAccessExpr || argument instanceof ArrayAccessExpr
+                || argument instanceof MethodReferenceExpr);
     }
 
     /** Follows a value assigned to a local variable, or to an element of a local array. */
@@ -132,34 +155,27 @@ final class ReportedReadings {
         return variable instanceof NameExpr name && intoLocal(name, element) && next(assignment);
     }
 
+    /**
+     * Follows the local variable the name reads. A holder values are stored in must be one the test creates there, as
+     * {@code new long[5]}: one it got from elsewhere, as from {@code map.computeIfAbsent(...)}, may be read elsewhere.
+     */
     private boolean intoLocal(NameExpr name, boolean holder) {
-        return ReadingUses.declarationOf(name).filter(declaration -> intoUses(declaration, holder)).isPresent();
+        return ReadingUses.declarationOf(name)
+                .filter(declaration -> !holder || ReadingUses.isCreatedThere(declaration))
+                .filter(declaration -> followOnce(declaration, ReadingUses.usesOf(declaration), holder))
+                .isPresent();
     }
 
     /**
-     * Follows a variable or parameter into every expression that reads it, each once: a value it holds, or a holder
-     * the values are stored in.
+     * Follows the values next, once for each variable, parameter or method they come from: the reads of a value, or
+     * of a holder the values are stored in, or the calls of a method returning one.
      */
-    private boolean intoUses(Node declaration, boolean holder) {
-        if (followed.add(declaration)) {
-            List<NameExpr> uses = ReadingUses.usesOf(declaration);
-            pending.addAll(uses);
+    private boolean followOnce(Node source, List<? extends Expression> values, boolean holder) {
+        if (followed.add(source)) {
+            pending.addAll(values);
             if (holder) {
-                holders.addAll(uses);
+                holders.addAll(values);
             }
-        }
-        return true;
-    }
-
-    /** Follows a value a private method of the test class returns into the calls of that method. */
-    private boolean intoCallers(ReturnStmt returned) {
-        Optional<MethodDeclaration> method = ReadingUses.returningMethod(returned);
-        Optional<List<MethodCallExpr>> calls = method.flatMap(ReadingUses::callsOf);
-        if (calls.isEmpty()) {
-            return false;
-        }
-        if (followed.add(method.get())) {
-            pending.addAll(calls.get());
         }
         return true;
     }

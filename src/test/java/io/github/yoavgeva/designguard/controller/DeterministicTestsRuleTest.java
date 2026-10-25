@@ -282,6 +282,27 @@ class DeterministicTestsRuleTest {
                                 org.assertj.core.api.Assertions.assertThat(user.length() + cart.total()).isPositive();
                             }
 
+                            @Test
+                            void totalsForRandomNames() {
+                                byte[] bytes = new byte[4];
+                                new Random().nextBytes(bytes);
+                                org.assertj.core.api.Assertions.assertThat(new String(bytes) + cart.total()).isNotEmpty();
+                            }
+
+                            @Test
+                            void totalsForAHome() {
+                                java.util.function.Supplier<String> home = () -> System.getProperty("user.home");
+                                org.assertj.core.api.Assertions.assertThat(home.get() + cart.total()).isNotEmpty();
+                            }
+
+                            @Test
+                            void recordsTimesByCart() {
+                                java.util.Map<String, java.util.List<Long>> byCart = new java.util.HashMap<>();
+                                java.util.List<Long> times = byCart.computeIfAbsent("cart", key -> new java.util.ArrayList<>());
+                                times.add(System.currentTimeMillis());
+                                org.assertj.core.api.Assertions.assertThat(byCart.get("cart").get(0) + cart.total()).isPositive();
+                            }
+
                             private AtomicLongArray measure() {
                                 AtomicLongArray total = new AtomicLongArray(1);
                                 Runnable run = () -> {
@@ -314,13 +335,17 @@ class DeterministicTestsRuleTest {
                         """)
                 .guard(SHOP);
 
-        assertThat(Stream.of(guard.tests().testsUseAFixedClock(), guard.tests().testsDontReadTheEnvironment())
+        assertThat(Stream.of(guard.tests().testsUseAFixedClock(), guard.tests().testsDontReadTheEnvironment(),
+                        guard.tests().testsUseSeededRandomness())
                 .flatMap(rule -> rule.evaluate().stream()))
                 .extracting(Violation::line, Violation::message)
                 .containsExactly(
                         tuple(47, "test CartTimingTest.totalsQuickly() reads the system clock through System.nanoTime()"),
                         tuple(49, "test CartTimingTest.totalsQuickly() reads the system clock through System.nanoTime()"),
                         tuple(54, "test CartTimingTest.totalsWithASeed() reads the system clock through System.currentTimeMillis()"),
-                        tuple(60, "test CartTimingTest.totalsForTheUser() reads the environment through System.getProperty()"));
+                        tuple(81, "test CartTimingTest.recordsTimesByCart() reads the system clock through System.currentTimeMillis()"),
+                        tuple(60, "test CartTimingTest.totalsForTheUser() reads the environment through System.getProperty()"),
+                        tuple(73, "test CartTimingTest.totalsForAHome() reads the environment through System.getProperty()"),
+                        tuple(67, "test CartTimingTest.totalsForRandomNames() uses unseeded randomness through new Random()"));
     }
 }
