@@ -73,7 +73,8 @@ final class LibraryEffects {
             "io.micronaut.http.client.HttpClient", "io.micronaut.email.EmailSender",
             "io.lettuce.core.AbstractRedisClient", "io.lettuce.core.api.StatefulConnection", "redis.clients.jedis.UnifiedJedis",
             "redis.clients.jedis.Jedis", "co.elastic.clients.elasticsearch.ElasticsearchClient",
-            "software.amazon.awssdk.core.SdkClient", "com.amazonaws.AmazonWebServiceClient");
+            "software.amazon.awssdk.core.SdkClient", "com.amazonaws.AmazonWebServiceClient",
+            "com.hazelcast.core.HazelcastInstance", "com.hazelcast.map.IMap", "com.hazelcast.core.IMap");
     /**
      * Repositories a project class implements without code of its own: the library's default methods, which Quarkus
      * completes at build time, run the queries.

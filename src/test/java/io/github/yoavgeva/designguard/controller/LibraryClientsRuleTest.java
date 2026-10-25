@@ -257,7 +257,7 @@ class LibraryClientsRuleTest {
     }
 
     @Test
-    void micronautRepositoriesDeclarativeClientsAndCloudSdksTouchTheOutsideWorld() {
+    void micronautRepositoriesDeclarativeClientsCloudSdksAndDataGridsTouchTheOutsideWorld() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("GenericRepository", "package io.micronaut.data.repository;\n\n"
                         + "public interface GenericRepository<E, I> {\n}\n")
@@ -271,6 +271,11 @@ class LibraryClientsRuleTest {
                         + "public interface S3Client extends software.amazon.awssdk.core.SdkClient {\n"
                         + "    String getObject(String key);\n\n    static S3ClientBuilder builder() {\n"
                         + "        return null;\n    }\n}\n")
+                .add("IMap", "package com.hazelcast.map;\n\npublic interface IMap<K, V> {\n    V get(Object key);\n}\n")
+                .add("EventLog", "package shop;\n\npublic class EventLog {\n"
+                        + "    private final com.hazelcast.map.IMap<String, String> events;\n    private String last;\n\n"
+                        + "    public EventLog(com.hazelcast.map.IMap<String, String> events) {\n        this.events = events;\n    }\n\n"
+                        + "    public String find(String id) {\n        last = events.get(id);\n        return last;\n    }\n}\n")
                 .add("S3ClientBuilder", "package software.amazon.awssdk.services.s3;\n\n"
                         + "public interface S3ClientBuilder {\n    S3ClientBuilder region(String region);\n\n    S3Client build();\n}\n")
                 .add("StorageConfig", """
@@ -348,6 +353,7 @@ class LibraryClientsRuleTest {
         assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
                 "Archive is service-like, but its field 'reads' isn't final",
                 "Billing is service-like, but its field 'last' isn't final",
+                "EventLog is service-like, but its field 'last' isn't final",
                 "Registration is service-like, but its field 'registered' isn't final");
     }
 
