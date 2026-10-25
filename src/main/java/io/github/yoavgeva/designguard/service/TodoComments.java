@@ -12,12 +12,17 @@ import java.util.stream.Stream;
 
 /**
  * Finds comments with a line starting with a {@code TODO} or {@code FIXME} marker, after any Javadoc tag, HTML tag or
- * commented-out slashes, as in {@code @deprecated TODO} or {@code <p>TODO}; mentions in prose don't count.
+ * commented-out slashes, as in {@code @deprecated TODO} or {@code <p>TODO}; mentions in prose don't count. Neither does
+ * a comment that cites the issue tracking the work, as {@code TODO(b/27479612)}, {@code TODO: HHH-6484},
+ * {@code FIXME #42} or a link do: the work is tracked.
  */
 final class TodoComments implements SourceFinder {
 
     private static final Pattern TODO_OR_FIXME = Pattern.compile("^(?:(?:@\\w+|<[^>]*>|/{2,})\\s*)*(TODO|FIXME)\\b");
     private static final int MAX_QUOTE = 80;
+    /** A bug id, a Jira key that isn't a standard's name such as UTF-8, a GitHub issue number, or a link. */
+    private static final Pattern ISSUE = Pattern.compile("\\b[a-z]/\\d{4,}\\b"
+            + "|\\b(?!(?:UTF|SHA|ISO|RFC|JSR|JEP|CP|MD|ECMA)-)[A-Z][A-Z0-9]+-\\d+\\b|(?<![\\w&])#\\d+\\b|https?://");
 
     private final String rule;
 
@@ -38,6 +43,9 @@ final class TodoComments implements SourceFinder {
     }
 
     private Optional<Violation> violation(ParsedFile file, Comment comment) {
+        if (ISSUE.matcher(comment.getContent()).find()) {
+            return Optional.empty();
+        }
         return lines(comment.getContent())
                 .filter(line -> TODO_OR_FIXME.matcher(line).find())
                 .findFirst()

@@ -1101,7 +1101,8 @@ Fix: drop `public` from the class.
 
 Unfinished code is reported:
 - `TODO` and `FIXME` markers that start a comment line, also after a Javadoc tag, an HTML tag or commented-out
-  slashes, as in `@deprecated TODO` or `<p>TODO`;
+  slashes, as in `@deprecated TODO` or `<p>TODO`, unless the comment cites the issue tracking the work, as
+  `TODO(b/27479612)`, `TODO: HHH-6484`, `FIXME #42` or a link do;
 - throws whose message says the code is unfinished, such as "not implemented yet" or "TODO", whatever the exception,
   and any `NotImplementedException`;
 - methods whose whole body is `throw new UnsupportedOperationException()`, unless the refusal is deliberate: the

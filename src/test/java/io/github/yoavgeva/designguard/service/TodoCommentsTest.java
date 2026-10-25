@@ -78,6 +78,31 @@ class TodoCommentsTest {
                         tuple(15, "TODO left in the code: // TODO: charge fees"));
     }
 
+    @Test
+    void ignoresMarkersThatCiteTheIssueTrackingThem() {
+        assertThat(violations(CART, """
+                package shop;
+
+                class Cart {
+                    // TODO(b/27479612): consider removing this
+                    int total() {
+                        // TODO: HHH-6484 drop the orphan hack
+                        return 3; /* FIXME #42 rounding */
+                    }
+
+                    /*
+                     * TODO split taxes out, see
+                     * https://github.com/shop/cart/issues/7
+                     */
+                    int tax() {
+                        // TODO(kevinb): caveats about UTF-8 names
+                        return 1;
+                    }
+                }
+                """)).extracting(Violation::line, Violation::message).containsExactly(
+                        tuple(15, "TODO left in the code: TODO(kevinb): caveats about UTF-8 names"));
+    }
+
     private List<Violation> violations(String typeName, String source) {
         new SourceTree(root).add(typeName, source);
         TodoComments todos = new TodoComments("no-stubs");
