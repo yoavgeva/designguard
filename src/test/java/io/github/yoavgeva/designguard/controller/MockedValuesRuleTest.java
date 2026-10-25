@@ -267,6 +267,18 @@ class MockedValuesRuleTest {
 
                         class TeeTest {
                             private final Buffer spied = spy(new Buffer());
+                            private Buffer original;
+
+                            @org.junit.jupiter.api.BeforeEach
+                            void setUp() {
+                                original = spy(new Buffer());
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void closesTheOriginal() {
+                                new Tee(original, spied).close();
+                                verify(original).close();
+                            }
 
                             @org.junit.jupiter.api.Test
                             void closesBoth() {
@@ -296,8 +308,8 @@ class MockedValuesRuleTest {
 
         assertThat(guard.tests().testsDontMockValues().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
-                        tuple(21, "TeeTest mocks Buffer, which is a value"),
-                        tuple(23, "TeeTest mocks Buffer, which is a value"),
-                        tuple(29, "TeeTest mocks Buffer, which is a value"));
+                        tuple(33, "TeeTest mocks Buffer, which is a value"),
+                        tuple(35, "TeeTest mocks Buffer, which is a value"),
+                        tuple(41, "TeeTest mocks Buffer, which is a value"));
     }
 }

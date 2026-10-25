@@ -5,7 +5,10 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.expr.AssignExpr;
 import com.github.javaparser.ast.expr.ClassExpr;
+import com.github.javaparser.ast.expr.Expression;
+import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
@@ -73,7 +76,7 @@ final class MockSites {
                 .toList();
     }
 
-    /** The name of the variable, field or parameter the mock is held in. */
+    /** The name of the variable, field or parameter the mock is held in, where it is declared or assigned. */
     private static Optional<String> variableOf(MockSite mock) {
         Node site = mock.site();
         Optional<Node> parent = site.getParentNode();
@@ -85,6 +88,11 @@ final class MockSites {
         }
         if (parent.orElse(null) instanceof Parameter parameter) {
             return Optional.of(parameter.getNameAsString());
+        }
+        if (parent.orElse(null) instanceof AssignExpr assignment && assignment.getValue().equals(site)) {
+            Expression target = assignment.getTarget();
+            return target instanceof NameExpr name ? Optional.of(name.getNameAsString())
+                    : target instanceof FieldAccessExpr field ? Optional.of(field.getNameAsString()) : Optional.empty();
         }
         return Optional.empty();
     }
