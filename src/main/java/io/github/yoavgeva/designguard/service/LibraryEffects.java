@@ -6,6 +6,7 @@ import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaCodeUnitAccess;
 import com.tngtech.archunit.core.domain.JavaConstructor;
 import com.tngtech.archunit.core.domain.JavaModifier;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,11 +18,12 @@ import java.util.stream.Stream;
  * Which library APIs touch the outside world, beyond the JDK's: databases, HTTP clients, message brokers and mail. A
  * type counts if it is one of them or extends one, as a Spring Data repository the project declares does: the library
  * implements it at run time, so the project has no code of its own that shows the I/O. So do the interfaces a library
- * implements from annotations: MyBatis {@code @Mapper}s, OpenFeign {@code @FeignClient}s, Spring HTTP interfaces,
- * MicroProfile REST clients and Micronaut's declarative HTTP, Kafka and RabbitMQ clients. A type the project implements, as a library checking its own code or Hibernate implementing
- * JPA's {@code EntityManager} does, is judged by that implementation's code instead, except a Panache repository, whose
- * methods the library supplies. An active-record entity is data, but the persistence methods it inherits from
- * Panache's {@code PanacheEntityBase}, such as {@code listAll()} and {@code persist()}, query.
+ * implements from annotations: MyBatis {@code @Mapper}s and the interfaces in the packages a {@code @MapperScan}
+ * names, OpenFeign {@code @FeignClient}s, Spring HTTP interfaces, MicroProfile REST clients and Micronaut's declarative
+ * HTTP, Kafka and RabbitMQ clients. A type the project implements, as a library checking its own code or Hibernate
+ * implementing JPA's {@code EntityManager} does, is judged by that implementation's code instead, except a Panache
+ * repository, whose methods the library supplies. An active-record entity is data, but the persistence methods it
+ * inherits from Panache's {@code PanacheEntityBase}, such as {@code listAll()} and {@code persist()}, query.
  */
 final class LibraryEffects {
 
@@ -95,6 +97,7 @@ final class LibraryEffects {
     private static final Pattern SETTER = Pattern.compile("set[A-Z].*");
 
     private final Memo<Set<String>> implemented;
+    private final Memo<List<Pattern>> mapperPackages;
     private final Map<String, Boolean> impureTypes = new ConcurrentHashMap<>();
 
     LibraryEffects(ProjectClasses classes) {
@@ -103,19 +106,26 @@ final class LibraryEffects {
                 .flatMap(LibraryEffects::selfAndSupertypes)
                 .map(JavaClass::getName)
                 .collect(Collectors.toUnmodifiableSet()));
+        this.mapperPackages = new Memo<>(() -> MapperScans.in(classes));
     }
 
     /** Whether using this type at all means touching the outside world, like a repository or a REST client. */
     boolean isImpureType(JavaClass type) {
         return impureTypes.computeIfAbsent(type.getName(), name ->
                 selfAndSupertypes(type).anyMatch(supertype -> REPOSITORY_MIXINS.contains(supertype.getName()))
-                        || !implemented.get().contains(name) && selfAndSupertypes(type)
-                                .anyMatch(supertype -> IMPURE_TYPES.contains(supertype.getName()) || isAnnotatedClient(supertype)));
+                        || !implemented.get().contains(name) && (isScannedMapper(type) || selfAndSupertypes(type)
+                                .anyMatch(supertype -> IMPURE_TYPES.contains(supertype.getName()) || isAnnotatedClient(supertype))));
     }
 
     private static Stream<JavaClass> selfAndSupertypes(JavaClass type) {
         return Stream.concat(Stream.of(type),
                 Stream.concat(type.getAllRawSuperclasses().stream(), type.getAllRawInterfaces().stream()));
+    }
+
+    /** Whether the type is an interface in a package MyBatis scans for mappers, see {@link MapperScans}. */
+    private boolean isScannedMapper(JavaClass type) {
+        return type.isInterface()
+                && mapperPackages.get().stream().anyMatch(scanned -> scanned.matcher(type.getPackageName()).matches());
     }
 
     private static boolean isAnnotatedClient(JavaClass type) {

@@ -352,6 +352,56 @@ class LibraryClientsRuleTest {
     }
 
     @Test
+    void mapperInterfacesInThePackagesMyBatisScansQuery() {
+        String holder = """
+                package shop.%1$s;
+
+                public final class %2$s {
+                    private final %3$s source;
+                    private String last;
+
+                    public %2$s(%3$s source) {
+                        this.source = source;
+                    }
+
+                    public String find(long id) {
+                        last = source.find(id);
+                        return last;
+                    }
+                }
+                """;
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("MapperScan", """
+                        package org.mybatis.spring.annotation;
+
+                        @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+                        public @interface MapperScan {
+                            String[] value() default {};
+
+                            String[] basePackages() default {};
+
+                            Class<?>[] basePackageClasses() default {};
+                        }
+                        """)
+                .add("MapperConfig", "package shop.config;\n\n@org.mybatis.spring.annotation.MapperScan(\"shop.**.mapper\")\n"
+                        + "public class MapperConfig {\n}\n")
+                .add("DaoConfig", "package shop.config;\n\n"
+                        + "@org.mybatis.spring.annotation.MapperScan(basePackageClasses = shop.billing.dao.InvoiceDao.class)\n"
+                        + "public class DaoConfig {\n}\n")
+                .add("OrderMapper", "package shop.orders.mapper;\n\npublic interface OrderMapper {\n    String find(long id);\n}\n")
+                .add("InvoiceDao", "package shop.billing.dao;\n\npublic interface InvoiceDao {\n    String find(long id);\n}\n")
+                .add("OrderView", "package shop.orders.view;\n\npublic interface OrderView {\n    String find(long id);\n}\n")
+                .add("Orders", holder.formatted("orders", "Orders", "shop.orders.mapper.OrderMapper"))
+                .add("Invoices", holder.formatted("billing", "Invoices", "shop.billing.dao.InvoiceDao"))
+                .add("Views", holder.formatted("orders", "Views", "shop.orders.view.OrderView"))
+                .guard(SHOP);
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
+                "Invoices is service-like, but its field 'last' isn't final",
+                "Orders is service-like, but its field 'last' isn't final");
+    }
+
+    @Test
     void aLibraryTypeTheProjectImplementsIsJudgedByThatCode() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("JdbcOperations", "package org.springframework.jdbc.core;\n\npublic interface JdbcOperations {\n"

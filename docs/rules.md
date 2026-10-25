@@ -13,13 +13,14 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   executors, processes, a library's database, HTTP, messaging or mail client, or a package given to
   `treatingAsImpure(...)`. The library clients are Spring Data repositories, including the ones a project declares,
   JPA's `EntityManager`, Hibernate sessions, Spring's `JdbcTemplate`, `JdbcClient`, R2DBC `DatabaseClient`, Mongo,
-  Redis, Elasticsearch and Cassandra templates and transaction templates, jOOQ's `DSLContext`, MyBatis `SqlSession`s
-  and `@Mapper`s, `RestTemplate`, `RestClient`, `WebClient`, OkHttp, Apache HttpClient, OpenFeign `@FeignClient`s and
+  Redis, Elasticsearch and Cassandra templates and transaction templates, jOOQ's `DSLContext`, MyBatis `SqlSession`s, `@Mapper`s and the interfaces in the packages a `@MapperScan` names, `RestTemplate`, `RestClient`, `WebClient`, OkHttp, Apache HttpClient, OpenFeign `@FeignClient`s and
   Spring HTTP interfaces, MicroProfile `@RegisterRestClient`s, Kafka, AMQP and JMS templates and clients, reactive messaging `Emitter`s, `MailSender` and Quarkus mailers, and from Quarkus: Panache repositories, including the ones a project class implements, the persistence methods an active-record entity inherits from `PanacheEntityBase`, such as `listAll()` and `persist()`, Vert.x SQL and web clients, and Redis data sources, and from Micronaut: Data repositories, the `HttpClient`, declarative `@Client`, `@KafkaClient` and `@RabbitClient` interfaces and `EmailSender`, plus the Lettuce and Jedis Redis clients, Elasticsearch's Java client and AWS SDK clients; a class that is such a client is service-like; creating one or its builder, as `new RestTemplate()`, `WebClient.builder()` or `S3Client.builder()` do, isn't an effect, calling it is. Code is effectful directly,
   through a field holding such a resource, or by calling effectful project code; a call through an interface is
   effectful if any implementation is, except a call on a parameter, which runs whatever implementation the caller
   passed, so `count(Storage storage)` calling `storage.load()` isn't effectful itself, and a call through an interface
-  annotated `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do. Creating
+  annotated `@FunctionalInterface`, which passes behaviour as data like `java.util.function`'s interfaces do, or a call
+  of a JDK collection, map or iterator method, as `iterator().next()` on a project collection, which reads the
+  collection it's called on, whatever other classes implementing the interface do. Creating
   a clock or a random source, as `Clock.systemUTC()`, `new SecureRandom()` and `ThreadLocalRandom.current()` do, isn't
   an effect; reading the time or a number from it is. The clock includes `new Date()` and `Calendar.getInstance()`,
   and the environment includes `System.getProperties()` and `Integer.getInteger(...)`. Using `Path`, `URI`, `File`, an
