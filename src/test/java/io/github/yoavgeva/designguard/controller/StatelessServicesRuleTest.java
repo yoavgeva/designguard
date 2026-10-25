@@ -101,4 +101,44 @@ class StatelessServicesRuleTest {
                 "Archive is service-like, but its field 'written' isn't final");
         assertThat(guard.types().valueTypesAreImmutable().evaluate()).isEmpty();
     }
+
+    @Test
+    void fieldsOnlyTheirSettersSetAreSettingsToTakeInTheConstructor() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Notifier", """
+                        package shop;
+
+                        public class Notifier {
+                            private final java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
+                            private String webhook = "https://hooks.example.com";
+                            private int sent;
+                            private String last;
+
+                            public void setWebhook(String webhook) {
+                                this.webhook = webhook;
+                            }
+
+                            public void setLast(String last) {
+                                this.last = last;
+                            }
+
+                            public void send(String text) throws Exception {
+                                sent++;
+                                last = text;
+                                http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(webhook)).build(),
+                                        java.net.http.HttpResponse.BodyHandlers.discarding());
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message, Violation::fix)
+                .containsExactly(
+                        tuple("Notifier is service-like, but its field 'last' isn't final", "keep state out of services:"
+                                + " pass it in and return it as values, or keep it in a store the service calls"),
+                        tuple("Notifier is service-like, but its field 'sent' isn't final", "keep state out of services:"
+                                + " pass it in and return it as values, or keep it in a store the service calls"),
+                        tuple("Notifier is service-like, but its field 'webhook' is a setting its setter sets",
+                                "take it as a constructor parameter and make the field final"));
+    }
 }

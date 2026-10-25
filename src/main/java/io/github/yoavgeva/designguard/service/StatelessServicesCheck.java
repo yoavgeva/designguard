@@ -2,6 +2,7 @@ package io.github.yoavgeva.designguard.service;
 
 import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaConstructor;
 import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.domain.JavaFieldAccess;
@@ -18,8 +19,9 @@ import java.util.stream.Stream;
  * collection, atomic or string builder, by its type or by what a constructor assigns it. A service is shared by its
  * callers, so its state leaks between them and races under concurrency. A non-final field a container injects, as
  * {@code @Autowired}, {@code @Value}, {@code @Inject}, {@code @Resource} and {@code @PersistenceContext} do, holds a
- * collaborator or setting rather than state, so it is reported as one to take in the constructor. Wiring code, enums,
- * records and what a framework creates for each use, as a command for each run, are skipped.
+ * collaborator or setting rather than state, so it is reported as one to take in the constructor, and so is a field
+ * only its setter sets, a setting a container binds. Wiring code, enums, records and what a framework creates for
+ * each use, as a command for each run, are skipped.
  */
 public final class StatelessServicesCheck {
 
@@ -70,7 +72,25 @@ public final class StatelessServicesCheck {
             return Optional.of(new Finding("injected field '" + field.getName() + "' isn't final",
                     WiringCode.INJECT_IN_CONSTRUCTOR));
         }
+        if (!field.getModifiers().contains(JavaModifier.FINAL) && isSetting(field)) {
+            return Optional.of(new Finding("field '" + field.getName() + "' is a setting its setter sets",
+                    WiringCode.INJECT_IN_CONSTRUCTOR));
+        }
         return state(field).map(state -> new Finding("field '" + field.getName() + "' " + state, KEEP_STATE_OUT));
+    }
+
+    /**
+     * Whether only the field's setter, as {@code setWebhook(...)} for {@code webhook}, sets it after construction: a
+     * setting a container binds, as Spring binds configuration properties, rather than state the service changes.
+     */
+    private static boolean isSetting(JavaField field) {
+        String setter = "set" + Character.toUpperCase(field.getName().charAt(0)) + field.getName().substring(1);
+        List<JavaCodeUnit> writers = field.getAccessesToSelf().stream()
+                .filter(access -> access.getAccessType() == JavaFieldAccess.AccessType.SET)
+                .map(JavaAccess::getOrigin)
+                .toList();
+        return writers.stream().anyMatch(writer -> setter.equals(writer.getName()))
+                && writers.stream().allMatch(writer -> writer.isConstructor() || setter.equals(writer.getName()));
     }
 
     /** What makes the field changing state, if anything. */

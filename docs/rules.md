@@ -700,9 +700,10 @@ Fix: `record Tally(int total) { Tally add(int amount) { return new Tally(total +
 Service-like classes that hold changing state are reported: a non-final instance field, or a final one holding a
 mutable collection, an atomic or a string builder. A non-final field a container injects, with `@Autowired`,
 `@Value`, `@Inject`, `@Resource` or `@PersistenceContext`, holds a collaborator or a setting, not state, so it is
-reported as one to take as a constructor parameter. Wiring code, enums and records are skipped, and so is what a
-framework creates for each use, which holds the state of that use: an aesh or picocli command, a WebSocket endpoint,
-and a request- or session-scoped bean.
+reported as one to take as a constructor parameter, and so is a field only its setter sets, as `setWebhook(...)` sets
+`webhook`: a setting a container binds, as Spring binds configuration properties. Wiring code, enums and records are
+skipped, and so is what a framework creates for each use, which holds the state of that use: an aesh or picocli
+command, a WebSocket endpoint, and a request- or session-scoped bean.
 
 Why: a service is shared by its callers, so its state leaks between them and races under concurrency.
 
