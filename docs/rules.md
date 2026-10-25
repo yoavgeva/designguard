@@ -453,17 +453,18 @@ Fix: add a batch query to the collaborator, such as `prices.pricesOf(items)`, an
 `dependencies().constructorsDoNoWork()` · **recommended**
 
 Constructors and static initializers that do work are reported: I/O, printing, threads, or a collaborator that does.
-Reading the clock, randomness, environment variables or system properties is cheap and can't fail, so it isn't work
-here; `inject-clock`, `inject-randomness` and `inject-configuration` report those reads. Field initializers run in
-every constructor, and are reported once. A call to a collaborator counts only if every implementation it may run
-touches the outside world, and calls to JDK interfaces such as `Iterator.hasNext()` don't count. Reading a stream the
-constructor is given, wrapping it, or creating an in-memory one such as `StringWriter`, isn't I/O, and neither is
-creating a client or a clock, as `new RestTemplate()` and `Clock.systemUTC()` do, or configuring a client with a
-setter or a fluent method such as `withTableName(...)`. Neither is preparing what does nothing yet: creating or
-configuring a thread it doesn't start, as a `Thread` subclass's `super(name)` and `setDaemon(true)` do, calling an
-abstract class's constructor, as a `super()` into `FileChannel` does, or setting up a `URLConnection` before it
-connects, as `getURL()` and `setConnectTimeout(...)` do. Creating objects is left to `inject-services`, and wiring
-code is exempt.
+Reading the clock, randomness, environment variables, system properties or how many processors and how much memory
+the machine has, as `Runtime.getRuntime().availableProcessors()` does to size a pool, is cheap and can't fail, so it
+isn't work here; `inject-clock`, `inject-randomness` and `inject-configuration` report those reads. Field
+initializers run in every constructor, and are reported once. A call to a collaborator counts only if every
+implementation it may run touches the outside world, and calls to JDK interfaces such as `Iterator.hasNext()` don't
+count. Reading a stream the constructor is given, wrapping it, or creating an in-memory one such as `StringWriter`,
+isn't I/O, and neither is creating a client or a clock, as `new RestTemplate()` and `Clock.systemUTC()` do, or
+configuring a client with a setter or a fluent method such as `withTableName(...)`. Neither is preparing what does
+nothing yet: creating or configuring a thread it doesn't start, as a `Thread` subclass's `super(name)` and
+`setDaemon(true)` do, calling an abstract class's constructor, as a `super()` into `FileChannel` does, or setting up
+a `URLConnection` before it connects, as `getURL()` and `setConnectTimeout(...)` do. Creating objects is left to
+`inject-services`, and wiring code is exempt.
 
 Why: a class whose constructor does work can't be created without it, so tests can't create it cheaply, and a
 failure there leaves no object to recover with.
@@ -939,7 +940,9 @@ package shop.application;
 `Optional` used against its design is reported: as a field, as a parameter, or returned as `null`. A static method
 that only converts an `Optional` into something else, such as `Streams.stream(Optional)` or `orElseNull(Optional)`,
 may take one, and so may a request handler whose parameter a web framework binds from the request, as
-`@QueryParam("name") Optional<String>` in JAX-RS or `@RequestParam` in Spring: no caller passes it.
+`@QueryParam("name") Optional<String>` in JAX-RS or `@RequestParam` in Spring: no caller passes it. So may a method
+whose signature a supertype sets, as a serializer of `Optional` values implements `serialize(T value)`. A `static
+final` `Optional` is a result kept to return, as `Optional.of(true)` is, not a field's state.
 
 Why: `Optional` is meant only as a return type saying "there may be no result". As a field or parameter it adds a
 third state, a null `Optional`, and an allocation.
@@ -1079,18 +1082,18 @@ assign a field, change the collection or atomic it holds (`items.add(item)`, `co
 method of the class that does. Writing the fields of another object, such as a copy the method builds, is fine.
 
 Lazy initialization is fine too: a change made only while a field is still `null`, a flag still `false` or a value
-still equal to a sentinel, that sets it. That covers `if (name == null) { name = load(); }`, `if (!loaded) { ...;
-loaded = true; }`, `if (cached != null) return cached;` followed by the load, `d != null ? d : (d = load())`, double-
-checked locking, caching in a map the method checks first or fills with `computeIfAbsent`, and caching in an atomic
-reference whose `updateAndGet` keeps the value or replaces it with one made without it, as `ref.updateAndGet(pair ->
-pair != null && pair.key().equals(key) ? pair : load(key))` does. An update built on the old value, as `count ->
-count + 1`, is a change. A field set only while the method runs is fine: a flag it sets both `true` and `false`, or a
-field it both sets and clears to `null`, as a query's `before()` and `after()` do with the mode they save, itself or
-through the methods it calls. So are `getAnd...` methods, whose names say they change something, a cursor's
-`hasNext()`, which may read ahead, and so may `isEmpty()` or `hasRemaining()` on a class that reads a reader, stream
-or channel, void methods, a builder's setters, which take a value and return the builder, as Lombok's
-`isBound(boolean)` does, and methods implementing an interface from outside the project, such as JDBC's
-`Statement.getResultSet()`, whose name the interface dictates.
+still equal to a sentinel or still negative, that sets it. That covers `if (name == null) { name = load(); }`, `if
+(!loaded) { ...; loaded = true; }`, `if (cached != null) return cached;` followed by the load, `d != null ? d : (d =
+load())`, double- checked locking, caching in a map the method checks first or fills with `computeIfAbsent`, and
+caching in an atomic reference whose `updateAndGet` keeps the value or replaces it with one made without it, as
+`ref.updateAndGet(pair -> pair != null && pair.key().equals(key) ? pair : load(key))` does. An update built on the
+old value, as `count -> count + 1`, is a change. A field set only while the method runs is fine: a flag it sets both
+`true` and `false`, or a field it both sets and clears to `null`, as a query's `before()` and `after()` do with the
+mode they save, itself or through the methods it calls. So are `getAnd...` methods, whose names say they change
+something, a cursor's `hasNext()` or `hasNextValue()`, which may read ahead, and so may `isEmpty()` or
+`hasRemaining()` on a class that reads a reader, stream or channel, void methods, a builder's setters, which take a
+value and return the builder, as Lombok's `isBound(boolean)` does, and methods implementing an interface from outside
+the project, such as JDBC's `Statement.getResultSet()`, whose name the interface dictates.
 
 Why: callers read accessors as queries and call them freely, so a hidden change surprises them (command-query
 separation).

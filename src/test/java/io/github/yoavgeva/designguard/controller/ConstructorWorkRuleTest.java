@@ -651,9 +651,11 @@ class ConstructorWorkRuleTest {
                             private static final boolean ANSI = System.console() != null && !"dumb".equals(System.getenv("TERM"));
                             private final long stamp = System.currentTimeMillis();
                             private final String id = java.util.UUID.randomUUID().toString();
+                            private static final int SEGMENTS = Runtime.getRuntime().availableProcessors() * 4;
+                            private static final long HEAP = Runtime.getRuntime().maxMemory();
 
                             public String describe() {
-                                return STARTED + " " + NATIVE + ANSI + stamp + id;
+                                return STARTED + " " + NATIVE + ANSI + stamp + id + SEGMENTS + HEAP;
                             }
                         }
                         """)

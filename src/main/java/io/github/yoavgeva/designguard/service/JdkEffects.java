@@ -41,6 +41,10 @@ final class JdkEffects {
     private static final Set<String> CONFIGURATION_CALLS = Set.of("java.lang.System.getenv",
             "java.lang.System.getProperty", "java.lang.System.getProperties", "java.lang.Integer.getInteger",
             "java.lang.Long.getLong", "java.lang.Boolean.getBoolean", "java.lang.System.console");
+    /** Calls that read the size of the machine the process runs on: its processors and memory. */
+    private static final Set<String> MACHINE_CALLS = Set.of("java.lang.Runtime.getRuntime",
+            "java.lang.Runtime.availableProcessors", "java.lang.Runtime.maxMemory", "java.lang.Runtime.totalMemory",
+            "java.lang.Runtime.freeMemory", "java.lang.Runtime.version");
     private static final Set<String> IMPURE_CALLS = union(union(TIME_AND_CHANCE_CALLS, CONFIGURATION_CALLS), Set.of(
             "java.lang.Class.getResourceAsStream", "java.lang.ClassLoader.getResourceAsStream",
             "java.lang.ClassLoader.getSystemResourceAsStream", "java.lang.Module.getResourceAsStream"));
@@ -162,12 +166,13 @@ final class JdkEffects {
 
     /**
      * Whether calling the target only reads the process's state, which is cheap and can't fail: the clock, randomness,
-     * environment variables, system properties or whether there is a console.
+     * environment variables, system properties, whether there is a console, or how many processors and how much memory
+     * the machine has, as {@code Runtime.getRuntime().availableProcessors()} reads to size a pool.
      */
     static boolean readsProcessState(CodeUnitAccessTarget target) {
-        return readsTimeOrChance(target) || CONFIGURATION_CALLS.contains(target.getOwner().getName() + "." + target.getName());
+        String call = target.getOwner().getName() + "." + target.getName();
+        return readsTimeOrChance(target) || CONFIGURATION_CALLS.contains(call) || MACHINE_CALLS.contains(call);
     }
-
 
     /**
      * Whether the call on a clock or random type creates one rather than reading it, as {@code Clock.systemUTC()},

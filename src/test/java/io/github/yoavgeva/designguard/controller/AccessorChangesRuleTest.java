@@ -139,4 +139,44 @@ class AccessorChangesRuleTest {
         assertThat(guard.api().accessorsChangeNothing().evaluate()).extracting(Violation::message)
                 .containsExactly("Basket.isEmpty() changes the field 'checks'");
     }
+
+    @Test
+    void aSentinelTestedByItsSignIsLazyAndHasNextAnythingReadsAhead() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Ctor", """
+                        package shop;
+
+                        public class Ctor {
+                            private final String[] parameters = {"a", "b"};
+                            private int count = -1;
+                            private int reads;
+                            private int position;
+
+                            public int getCount() {
+                                int c = count;
+                                if (c < 0) {
+                                    c = parameters.length;
+                                    count = c;
+                                }
+                                return c;
+                            }
+
+                            public int getReads() {
+                                if (reads >= 0) {
+                                    reads++;
+                                }
+                                return reads;
+                            }
+
+                            public boolean hasNextValue() {
+                                position++;
+                                return position < parameters.length;
+                            }
+                        }
+                        """)
+                .guard("shop");
+
+        assertThat(guard.api().accessorsChangeNothing().evaluate()).extracting(Violation::message)
+                .containsExactly("Ctor.getReads() changes the field 'reads'");
+    }
 }

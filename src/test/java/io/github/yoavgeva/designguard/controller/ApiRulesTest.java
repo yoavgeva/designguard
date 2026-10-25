@@ -86,6 +86,21 @@ class ApiRulesTest {
                 .add("QueryParam", "package jakarta.ws.rs;\n\n" + RUNTIME + "public @interface QueryParam {\n    String value();\n}\n")
                 .add("RequestParam", SPRING_WEB + RUNTIME
                         + "public @interface RequestParam {\n    String value() default \"\";\n}\n")
+                .add("Formatter", "package shop;\n\npublic abstract class Formatter<T> {\n    public abstract String format(T value);\n}\n")
+                .add("OptionalFormatter", """
+                        package shop;
+
+                        import java.util.Optional;
+
+                        public class OptionalFormatter extends Formatter<Optional<String>> {
+                            private static final Optional<String> NONE = Optional.empty();
+
+                            @Override
+                            public String format(Optional<String> value) {
+                                return value.or(() -> NONE).orElse("-");
+                            }
+                        }
+                        """)
                 .add("Greetings", """
                         package shop;
 

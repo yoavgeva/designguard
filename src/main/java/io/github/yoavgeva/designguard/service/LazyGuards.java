@@ -17,19 +17,22 @@ import org.objectweb.asm.tree.VarInsnNode;
 
 /**
  * The code of a method that runs only while some fields of its class are unset, as lazy initialization does: the
- * then-block of {@code if (name == null)}, {@code if (!loaded)} or {@code if (index == UNSET)}, the rest of the method
- * after {@code if (name != null) return name;}, or the else branch of {@code name != null ? name : (name = load())}.
- * A comparison, with a sentinel or with a remembered size, guards either branch, and so does an {@code isEmpty()}
- * check, as in {@code if (cache.isEmpty()) { fill(); }}. The tested value may be read from the field directly, through a local, from
- * a call on the field, as {@code cache.get(key)} is, or from a method of the class that reads it, as {@code hasName()}
- * may.
+ * then-block of {@code if (name == null)}, {@code if (!loaded)}, {@code if (index == UNSET)} or {@code if (count < 0)},
+ * the rest of the method after {@code if (name != null) return name;}, or the else branch of
+ * {@code name != null ? name : (name = load())}. A comparison, with a sentinel or with a remembered size, guards either
+ * branch, and so does an {@code isEmpty()} check, as in {@code if (cache.isEmpty()) { fill(); }}. The tested value may
+ * be read from the field directly, through a local, from a call on the field, as {@code cache.get(key)} is, or from a
+ * method of the class that reads it, as {@code hasName()} may.
  */
 final class LazyGuards {
 
     /** How many values back the field a guard tests is looked for. */
     private static final int MAX_DEPTH = 6;
-    /** Jumps past the code below when the value is set. A comparison, with a sentinel or a remembered size, guards both ways. */
-    private static final Set<Integer> SKIPS_WHEN_SET = Set.of(Opcodes.IFNONNULL, Opcodes.IFNE);
+    /**
+     * Jumps past the code below when the value is set: not null, true, or not negative, as {@code if (count < 0)} tests
+     * a sentinel by its sign. A comparison, with a sentinel or a remembered size, guards both ways.
+     */
+    private static final Set<Integer> SKIPS_WHEN_SET = Set.of(Opcodes.IFNONNULL, Opcodes.IFNE, Opcodes.IFGE, Opcodes.IFGT);
     private static final Set<Integer> EQUALITY_COMPARISONS = Set.of(Opcodes.IF_ICMPEQ, Opcodes.IF_ICMPNE,
             Opcodes.IF_ACMPEQ, Opcodes.IF_ACMPNE);
     /** Jumps to the code at the target when the value is unset. */

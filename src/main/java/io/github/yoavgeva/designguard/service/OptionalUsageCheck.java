@@ -8,6 +8,7 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaConstructor;
+import com.tngtech.archunit.core.domain.JavaField;
 import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.domain.JavaParameter;
 import io.github.yoavgeva.designguard.model.ClassFilter;
@@ -20,7 +21,9 @@ import java.util.stream.Stream;
  * Finds {@code Optional} used against its design: as a field, as a parameter, or returned as {@code null}.
  * {@code Optional} is meant only as a return type saying "there may be no result". A static method that only converts
  * an Optional into something else, as {@code Streams.stream(Optional)} does, may take one, and so may a request
- * handler a web framework binds the parameter of from the request, as {@code @QueryParam("name") Optional<String>}.
+ * handler a web framework binds the parameter of from the request, as {@code @QueryParam("name") Optional<String>},
+ * and a method whose signature a supertype sets, as a serializer of Optionals implements {@code format(T value)}. A
+ * {@code static final} Optional is a cached result, not state.
  */
 public final class OptionalUsageCheck {
 
@@ -56,7 +59,8 @@ public final class OptionalUsageCheck {
 
     private static Stream<Violation> fields(ProjectClasses classes, ClassFilter filter, JavaClass type) {
         return type.getFields().stream()
-                .filter(field -> OPTIONALS.contains(field.getRawType().getName()) && classes.selected(filter, field))
+                .filter(field -> OPTIONALS.contains(field.getRawType().getName()) && classes.selected(filter, field)
+                        && !isConstant(field))
                 .map(field -> classes.violation(RULE, type, 0,
                         ProjectClasses.nameOf(type) + " has a field '" + field.getName() + "' of type Optional",
                         "store the value itself, or null, and return an Optional from its accessor instead"));
@@ -67,10 +71,15 @@ public final class OptionalUsageCheck {
                 .filter(unit -> !unit.getModifiers().contains(JavaModifier.SYNTHETIC) && classes.selected(filter, unit)
                         && unit.getParameters().stream().anyMatch(parameter -> OPTIONALS.contains(parameter.getRawType().getName())
                                 && !isBoundFromRequest(parameter))
-                        && !isConverter(unit))
+                        && !isConverter(unit) && !Hierarchy.isInherited(type, unit))
                 .map(unit -> classes.violation(RULE, type, unit.getSourceCodeLocation().getLineNumber(),
                         describe(type, unit) + " takes an Optional parameter",
                         "take the value itself, or offer an overload without it"));
+    }
+
+    /** A {@code static final} Optional is a cached result, as {@code Optional.of(true)} kept to return, not state. */
+    private static boolean isConstant(JavaField field) {
+        return field.getModifiers().contains(JavaModifier.STATIC) && field.getModifiers().contains(JavaModifier.FINAL);
     }
 
     /**

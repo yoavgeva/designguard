@@ -13,18 +13,19 @@ import java.util.regex.Pattern;
  * Finds accessors that change state: {@code get}, {@code is} and {@code has} methods that assign a field of their
  * class, change the collection or atomic it holds, or call a method of the class that does. Callers read accessors as
  * queries, so a hidden change surprises them (command-query separation). Lazy initialization, a change made only while
- * a field is still {@code null} or a flag still {@code false} that sets it, double-checked locking included, is fine,
- * and so is a flag set only while the method runs. So are {@code getAnd...} methods, which say they change something,
- * a cursor's {@code hasNext()}, which may read ahead, void methods, which are commands whatever their name, a
- * builder's setters, which take a value and return the builder, and methods implementing an interface from outside the
- * project, which dictates their name.
+ * a field is still {@code null}, a flag still {@code false} or a count still negative that sets it, double-checked
+ * locking included, is fine, and so is a flag set only while the method runs. So are {@code getAnd...} methods, which
+ * say they change something, a cursor's {@code hasNext()} or {@code hasNextValue()}, which may read ahead, void
+ * methods, which are commands whatever their name, a builder's setters, which take a value and return the builder, and
+ * methods implementing an interface from outside the project, which dictates their name.
  */
 public final class AccessorSideEffectsCheck {
 
     private static final String RULE = "accessors-change-nothing";
     private static final Pattern ACCESSOR = Pattern.compile("(get|is|has)[A-Z].*");
     private static final String CHANGING_GETTER = "getAnd";
-    private static final Set<String> READS_AHEAD = Set.of("hasNext", "hasPrevious", "hasMoreElements", "hasMoreTokens");
+    /** A cursor's checks for what comes next, as {@code hasNext()} and {@code hasNextValue()} are, which read ahead. */
+    private static final Pattern READS_AHEAD = Pattern.compile("hasNext.*|hasPrevious|hasMoreElements|hasMoreTokens");
     /** What a reader of input answers by reading ahead from the input it holds, as a buffered reader does. */
     private static final Set<String> INPUT_LEFT = Set.of("isEmpty", "hasRemaining");
     private static final List<String> INPUTS = List.of("java.io.Reader", "java.io.InputStream",
@@ -58,7 +59,8 @@ public final class AccessorSideEffectsCheck {
     private static boolean isAccessor(ProjectClasses classes, JavaClass type, JavaMethod method) {
         Set<JavaModifier> modifiers = method.getModifiers();
         return ACCESSOR.matcher(method.getName()).matches() && !method.getName().startsWith(CHANGING_GETTER)
-                && !READS_AHEAD.contains(method.getName()) && !(INPUT_LEFT.contains(method.getName()) && readsInput(type))
+                && !READS_AHEAD.matcher(method.getName()).matches()
+                && !(INPUT_LEFT.contains(method.getName()) && readsInput(type))
                 && !method.getRawReturnType().isEquivalentTo(void.class)
                 && !modifiers.contains(JavaModifier.STATIC) && !modifiers.contains(JavaModifier.SYNTHETIC)
                 && !isFluentSetter(type, method) && !Hierarchy.isDeclaredOutside(type, method, classes::isProject);
