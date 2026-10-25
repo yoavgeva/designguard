@@ -682,7 +682,12 @@ class TestSubjectRuleTest {
     void theAPublicApiReachesAndNestedTypesAreTheirOuterClasss() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Node", "package shop.html;\n\npublic abstract class Node {\n    public String outerHtml() {\n"
-                        + "        return Printer.printerFor(this).print();\n    }\n}\n")
+                        + "        return Printer.printerFor(this).print();\n    }\n\n"
+                        + "    public boolean hasAttributes() {\n        return true;\n    }\n}\n")
+                .add("LeafNode", "package shop.html;\n\npublic abstract class LeafNode extends Node {\n"
+                        + "    @Override\n    public boolean hasAttributes() {\n        return false;\n    }\n}\n")
+                .add("CommentNode", "package shop.html;\n\npublic class CommentNode extends Node {\n"
+                        + "    public String text() {\n        return \"\";\n    }\n}\n")
                 .add("Printer", "package shop.html;\n\npublic final class Printer {\n"
                         + "    static Printer printerFor(Node node) {\n        return new Printer();\n    }\n\n"
                         + "    String print() {\n        return \"<html>\";\n    }\n}\n")
@@ -703,6 +708,30 @@ class TestSubjectRuleTest {
                 .add("Files", "package shop.html;\n\npublic final class Files {\n    private Files() {\n    }\n\n"
                         + "    public static void delete(String path) {\n    }\n\n"
                         + "    public static String resolved(Resolver resolver) {\n        return resolver.resolve();\n    }\n}\n")
+                .addTest("LeafNodeTest", """
+                        package shop.html;
+
+                        class LeafNodeTest {
+                            @org.junit.jupiter.api.Test
+                            void leavesHaveNoAttributes() {
+                                org.assertj.core.api.Assertions.assertThat(hasAny(new Document())).isTrue();
+                            }
+
+                            private boolean hasAny(Node node) {
+                                return node.hasAttributes();
+                            }
+                        }
+                        """)
+                .addTest("CommentNodeTest", """
+                        package shop.html;
+
+                        class CommentNodeTest {
+                            @org.junit.jupiter.api.Test
+                            void printsTheDocument() {
+                                org.assertj.core.api.Assertions.assertThat(new Document().outerHtml()).isNotEmpty();
+                            }
+                        }
+                        """)
                 .addTest("ResolverTest", """
                         package shop.html;
 
@@ -762,6 +791,7 @@ class TestSubjectRuleTest {
                 .guard(SHOP);
 
         assertThat(guard.tests().testsUseTheirSubject().evaluate()).extracting(Violation::message).containsExactly(
+                "CommentNodeTest never uses CommentNode, the class it's named after",
                 "PricingTest never uses Pricing, the class it's named after",
                 "ResolverTest never uses Resolver, the class it's named after");
     }

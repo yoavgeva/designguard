@@ -132,8 +132,9 @@ final class IndirectUses {
      * Whether a project class the test uses, other than through a mock, reaches the subject: creates it, as a dialect
      * creates its processors, calls it from a method the test calls, as a document's {@code select(...)} calls the
      * selector, or registers it by its
-     * class, as a Jackson module registers a mixin with {@code setMixInAnnotation(Money.class, MoneyMixin.class)}. A
-     * used class's superclasses count, since their code runs, and a mocked class runs none of its own.
+     * class, as a Jackson module registers a mixin with {@code setMixInAnnotation(Money.class, MoneyMixin.class)}, or
+     * the test calls a method the subject overrides on a supertype it names. A used class's superclasses count, since
+     * their code runs, and a mocked class runs none of its own.
      */
     boolean isCreatedByAUsedClass(ParsedFile file, TypeDeclaration<?> test, JavaClass subject) {
         Set<String> mocked = MockSites.in(file.unit()).filter(mock -> !mock.spy()).map(MockSites.MockSite::typeName)
@@ -142,20 +143,33 @@ final class IndirectUses {
         Stream<String> scopes = test.findAll(MethodCallExpr.class).stream()
                 .flatMap(call -> call.getScope().filter(Expression::isNameExpr).stream())
                 .map(scope -> scope.asNameExpr().getNameAsString());
-        Set<JavaClass> used = Stream.concat(typeNames, scopes)
+        Set<JavaClass> named = Stream.concat(typeNames, scopes)
                 .filter(name -> !mocked.contains(name.substring(name.lastIndexOf('.') + 1)))
                 .flatMap(name -> types.resolve(file.unit(), name).stream())
                 .filter(type -> !type.equals(subject))
+                .collect(Collectors.toSet());
+        Set<JavaClass> used = named.stream()
                 .flatMap(type -> Stream.concat(Stream.of(type), type.getAllRawSuperclasses().stream()))
                 .collect(Collectors.toSet());
         Set<String> called = test.findAll(MethodCallExpr.class).stream().map(MethodCallExpr::getNameAsString)
                 .collect(Collectors.toSet());
-        return isCreatedBy(subject, used::contains)
+        return isCreatedBy(subject, used::contains) || runsAnOverride(subject, named, called)
                 || subject.getMethodCallsToSelf().stream().anyMatch(call -> used.contains(call.getOriginOwner())
                         && called.contains(call.getOrigin().getName()))
                 || used.stream()
                         .flatMap(type -> type.getReferencedClassObjects().stream())
                         .anyMatch(reference -> reference.getRawType().equals(subject));
+    }
+
+    /**
+     * Whether the test calls, on a supertype of the subject it names, a method the subject overrides, as
+     * {@code node.hasAttributes()} runs a leaf node's own: on the subject's instances, its code runs.
+     */
+    private static boolean runsAnOverride(JavaClass subject, Set<JavaClass> named, Set<String> called) {
+        return Stream.concat(subject.getAllRawSuperclasses().stream(), subject.getAllRawInterfaces().stream())
+                        .anyMatch(named::contains)
+                && subject.getMethods().stream()
+                        .anyMatch(method -> called.contains(method.getName()) && Hierarchy.isInherited(subject, method));
     }
 
     private static boolean isCreatedBy(JavaClass subject, Predicate<JavaClass> creators) {
