@@ -17,6 +17,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 @MethodSource("io.github.yoavgeva.designguard.CompiledProject#releases")
 class MockedValuesRuleTest {
 
+    private static final String SHOP = "shop";
+
     @Parameter
     private int release;
 
@@ -94,7 +96,7 @@ class MockedValuesRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsDontMockValues().evaluate()).extracting(Violation::line, Violation::message)
                 .containsExactly(
@@ -134,7 +136,7 @@ class MockedValuesRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsDontMockValues().evaluate()).isEmpty();
     }
@@ -205,9 +207,89 @@ class MockedValuesRuleTest {
                             }
                         }
                         """)
-                .guard("shop");
+                .guard(SHOP);
 
         assertThat(guard.tests().testsDontMockValues().evaluate()).extracting(Violation::message)
                 .containsExactly("ShopTest mocks User, which is a value");
+    }
+
+    @Test
+    void aValueMockedOnlyToSeeItCalledObservesTheCode() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Buffer", """
+                        package shop;
+
+                        public class Buffer {
+                            private final StringBuilder text = new StringBuilder();
+
+                            public void append(String more) {
+                                text.append(more);
+                            }
+
+                            public void close() {
+                                // nothing to release
+                            }
+
+                            public int length() {
+                                return text.length();
+                            }
+                        }
+                        """)
+                .add("Tee", """
+                        package shop;
+
+                        public class Tee {
+                            private final Buffer first;
+                            private final Buffer second;
+
+                            public Tee(Buffer first, Buffer second) {
+                                this.first = first;
+                                this.second = second;
+                            }
+
+                            public void close() {
+                                first.close();
+                                second.close();
+                            }
+
+                            public int length() {
+                                return first.length() + second.length();
+                            }
+                        }
+                        """)
+                .addTest("TeeTest", """
+                        package shop;
+
+                        import static org.mockito.Mockito.mock;
+                        import static org.mockito.Mockito.spy;
+                        import static org.mockito.Mockito.verify;
+                        import static org.mockito.Mockito.when;
+
+                        class TeeTest {
+                            private final Buffer spied = spy(new Buffer());
+
+                            @org.junit.jupiter.api.Test
+                            void closesBoth() {
+                                Buffer closed = mock(Buffer.class);
+                                new Tee(closed, spied).close();
+                                verify(closed).close();
+                                verify(spied).close();
+                            }
+
+                            @org.junit.jupiter.api.Test
+                            void addsLengths() {
+                                Buffer stubbed = mock(Buffer.class);
+                                when(stubbed.length()).thenReturn(3);
+                                Buffer dummy = mock(Buffer.class);
+                                org.assertj.core.api.Assertions.assertThat(new Tee(stubbed, dummy).length()).isEqualTo(3);
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.tests().testsDontMockValues().evaluate()).extracting(Violation::line, Violation::message)
+                .containsExactly(
+                        tuple(21, "TeeTest mocks Buffer, which is a value"),
+                        tuple(23, "TeeTest mocks Buffer, which is a value"));
     }
 }

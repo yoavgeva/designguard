@@ -13,7 +13,8 @@ import java.util.List;
  * does. A value is cheap and safe to create, so a test should use a real one; a mock of it tests the mock. Mocks come
  * from Mockito's or EasyMock's {@code mock(Type.class)}, {@code spy(Type.class)}, {@code spy(new Type(...))} and
  * {@code createMock(Type.class)}, and from fields and parameters annotated {@code @Mock}, {@code @Spy} or Spring's
- * mock-bean annotations.
+ * mock-bean annotations. A mock the test only verifies calls on, and never stubs, watches what the code does with
+ * the value, as a check that a stream is closed does, and is fine.
  */
 public final class MockedValuesCheck {
 
@@ -34,7 +35,7 @@ public final class MockedValuesCheck {
         SourceTypes types = new SourceTypes(classes);
         return code.testSources().files().stream()
                 .flatMap(file -> MockSites.in(file.unit())
-                        .filter(mock -> Scopes.selected(filter, file, mock.site()))
+                        .filter(mock -> Scopes.selected(filter, file, mock.site()) && !MockSites.isOnlyVerified(file.unit(), mock))
                         .flatMap(mock -> types.resolve(file.unit(), mock.typeName()).stream()
                                 .filter(type -> isValue(classes, serviceLike, visible, type) && !wiring.contains(type))
                                 .map(type -> violation(file, mock.site(), type))))
