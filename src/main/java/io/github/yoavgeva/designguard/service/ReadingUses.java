@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -40,6 +41,7 @@ final class ReadingUses {
             "addLast", "addAndGet", "getAndAdd", "accumulateAndGet", "getAndAccumulate", "lazySet", "getAndSet");
     /** What a collection, array or string tells of its size, which the values in it don't decide. */
     private static final Set<String> SIZES = Set.of("size", "isEmpty", "length");
+    private static final Pattern CONSTANT = Pattern.compile("[A-Z][A-Z0-9_]*");
 
     private ReadingUses() {
     }
@@ -63,6 +65,11 @@ final class ReadingUses {
     /** Whether the call stores its arguments in the object it is called on, as {@code times.add(time)} does. */
     static boolean isStore(MethodCallExpr call) {
         return STORES.contains(call.getNameAsString());
+    }
+
+    /** Whether the field's name is a constant's, as {@code Calendar.DECEMBER} is, which no call fills. */
+    static boolean isConstant(String name) {
+        return CONSTANT.matcher(name).matches();
     }
 
     /** Whether the method or field, as {@code size()} and {@code length} are, tells only how many values there are. */

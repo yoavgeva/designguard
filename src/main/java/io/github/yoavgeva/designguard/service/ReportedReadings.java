@@ -133,7 +133,7 @@ final class ReportedReadings {
     /**
      * Follows what a call on a value may give its argument: the data it fills a local array or collection with, as
      * {@code random.nextBytes(bytes)} does, or the values it passes a lambda, as {@code times.forEach(...)} does.
-     * Fields, elements and method references it may fill or run can't be followed.
+     * Fields but constants, elements and method references it may fill or run can't be followed.
      */
     private boolean intoArgument(Expression argument) {
         if (argument instanceof NameExpr name) {
@@ -143,7 +143,8 @@ final class ReportedReadings {
             return lambda.getParameters().stream()
                     .allMatch(parameter -> followOnce(parameter, ReadingUses.usesOf(parameter), false));
         }
-        return !(argument instanceof FieldAccessExpr || argument instanceof ArrayAccessExpr
+        boolean constant = argument instanceof FieldAccessExpr field && ReadingUses.isConstant(field.getNameAsString());
+        return constant || !(argument instanceof FieldAccessExpr || argument instanceof ArrayAccessExpr
                 || argument instanceof MethodReferenceExpr);
     }
 

@@ -303,6 +303,13 @@ class DeterministicTestsRuleTest {
                                 org.assertj.core.api.Assertions.assertThat(byCart.get("cart").get(0) + cart.total()).isPositive();
                             }
 
+                            @Test
+                            void totalsOnTheLastDay() {
+                                java.util.Calendar day = java.util.Calendar.getInstance();
+                                day.set(2026, java.util.Calendar.DECEMBER, 31);
+                                org.assertj.core.api.Assertions.assertThat(cart.total()).isEqualTo(3);
+                            }
+
                             private AtomicLongArray measure() {
                                 AtomicLongArray total = new AtomicLongArray(1);
                                 Runnable run = () -> {
