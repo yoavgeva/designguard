@@ -928,7 +928,8 @@ package shop.application;
 
 `Optional` used against its design is reported: as a field, as a parameter, or returned as `null`. A static method
 that only converts an `Optional` into something else, such as `Streams.stream(Optional)` or `orElseNull(Optional)`,
-may take one.
+may take one, and so may a request handler whose parameter a web framework binds from the request, as
+`@QueryParam("name") Optional<String>` in JAX-RS or `@RequestParam` in Spring: no caller passes it.
 
 Why: `Optional` is meant only as a return type saying "there may be no result". As a field or parameter it adds a
 third state, a null `Optional`, and an allocation.

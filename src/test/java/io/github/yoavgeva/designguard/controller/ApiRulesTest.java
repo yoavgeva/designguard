@@ -20,6 +20,7 @@ class ApiRulesTest {
     private static final String SHOP = "shop";
     private static final String ORDER = "Order";
     private static final String ORDERS = "Orders";
+    private static final String SPRING_WEB = "package org.springframework.web.bind.annotation;\n\n";
     private static final String RUNTIME = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n";
 
     @Parameter
@@ -82,9 +83,34 @@ class ApiRulesTest {
                             }
                         }
                         """)
+                .add("QueryParam", "package jakarta.ws.rs;\n\n" + RUNTIME + "public @interface QueryParam {\n    String value();\n}\n")
+                .add("RequestParam", SPRING_WEB + RUNTIME
+                        + "public @interface RequestParam {\n    String value() default \"\";\n}\n")
+                .add("Greetings", """
+                        package shop;
+
+                        import java.util.Optional;
+                        import java.util.OptionalLong;
+
+                        public class Greetings {
+                            public String hello(@jakarta.ws.rs.QueryParam("name") Optional<String> name) {
+                                return "hello " + name.orElse("you");
+                            }
+
+                            public String page(@org.springframework.web.bind.annotation.RequestParam("page") OptionalLong page) {
+                                return "page " + page.orElse(1);
+                            }
+
+                            public String render(Optional<String> name) {
+                                return "hi " + name.orElse("you");
+                            }
+                        }
+                        """)
                 .guard(SHOP);
 
         assertThat(guard.api().optionalUsage().evaluate()).extracting(Violation::message, Violation::fix).containsExactly(
+                tuple("Greetings.render() takes an Optional parameter",
+                        "take the value itself, or offer an overload without it"),
                 tuple("Order has a field 'note' of type Optional",
                         "store the value itself, or null, and return an Optional from its accessor instead"),
                 tuple("Order's constructor takes an Optional parameter",
@@ -169,13 +195,13 @@ class ApiRulesTest {
                             }
                         }
                         """)
-                .add("RequestMapping", "package org.springframework.web.bind.annotation;\n\n"
+                .add("RequestMapping", SPRING_WEB
                         + RUNTIME
                         + "public @interface RequestMapping {\n    String[] value() default {};\n}\n")
-                .add("GetMapping", "package org.springframework.web.bind.annotation;\n\n"
+                .add("GetMapping", SPRING_WEB
                         + RUNTIME
                         + "@RequestMapping\npublic @interface GetMapping {\n    String[] value() default {};\n}\n")
-                .add("RequestBody", "package org.springframework.web.bind.annotation;\n\n"
+                .add("RequestBody", SPRING_WEB
                         + RUNTIME
                         + "public @interface RequestBody {\n}\n")
                 .add("JsonAnyGetter", "package com.fasterxml.jackson.annotation;\n\n"

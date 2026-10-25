@@ -9,6 +9,7 @@ import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaCodeUnit;
 import com.tngtech.archunit.core.domain.JavaConstructor;
 import com.tngtech.archunit.core.domain.JavaModifier;
+import com.tngtech.archunit.core.domain.JavaParameter;
 import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
@@ -18,13 +19,17 @@ import java.util.stream.Stream;
 /**
  * Finds {@code Optional} used against its design: as a field, as a parameter, or returned as {@code null}.
  * {@code Optional} is meant only as a return type saying "there may be no result". A static method that only converts
- * an Optional into something else, as {@code Streams.stream(Optional)} does, may take one.
+ * an Optional into something else, as {@code Streams.stream(Optional)} does, may take one, and so may a request
+ * handler a web framework binds the parameter of from the request, as {@code @QueryParam("name") Optional<String>}.
  */
 public final class OptionalUsageCheck {
 
     private static final String RULE = "optional-usage";
     private static final Set<String> OPTIONALS = Set.of("java.util.Optional", "java.util.OptionalInt",
             "java.util.OptionalLong", "java.util.OptionalDouble");
+    /** Packages of the annotations that bind a handler's parameters from the request. */
+    private static final Set<String> REQUEST_BINDINGS = Set.of("jakarta.ws.rs", "javax.ws.rs",
+            "org.springframework.web.bind.annotation", "io.micronaut.http.annotation", "org.jboss.resteasy.reactive");
     private static final Set<String> OPTIONAL_NAMES = Set.of("Optional", "OptionalInt", "OptionalLong", "OptionalDouble");
 
     /**
@@ -60,11 +65,21 @@ public final class OptionalUsageCheck {
     private static Stream<Violation> parameters(ProjectClasses classes, ClassFilter filter, JavaClass type) {
         return type.getCodeUnits().stream()
                 .filter(unit -> !unit.getModifiers().contains(JavaModifier.SYNTHETIC) && classes.selected(filter, unit)
-                        && unit.getRawParameterTypes().stream().anyMatch(parameter -> OPTIONALS.contains(parameter.getName()))
+                        && unit.getParameters().stream().anyMatch(parameter -> OPTIONALS.contains(parameter.getRawType().getName())
+                                && !isBoundFromRequest(parameter))
                         && !isConverter(unit))
                 .map(unit -> classes.violation(RULE, type, unit.getSourceCodeLocation().getLineNumber(),
                         describe(type, unit) + " takes an Optional parameter",
                         "take the value itself, or offer an overload without it"));
+    }
+
+    /**
+     * Whether a web framework binds the parameter from the request, as JAX-RS's {@code @QueryParam} and Spring's
+     * {@code @RequestParam} do: an absent value arrives as an empty Optional, and no caller passes one.
+     */
+    private static boolean isBoundFromRequest(JavaParameter parameter) {
+        return parameter.getAnnotations().stream()
+                .anyMatch(annotation -> REQUEST_BINDINGS.contains(annotation.getRawType().getPackageName()));
     }
 
     /**
