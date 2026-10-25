@@ -674,7 +674,7 @@ Values with a non-final instance field are reported. A field a container injects
 like, is reported as one to take as a constructor parameter. Enums, records, exceptions, wiring code, persistence
 entities and builders are skipped, and so are the other fields of components a container manages, which aren't
 values: Spring beans, including stereotypes such as `@RestController`, CDI and `@Singleton` beans, Micronaut
-controllers, JAX-RS resources and providers, AspectJ aspects, WebSocket endpoints, servlets and filters, and
+controllers, JAX-RS resources and providers, AspectJ aspects, WebSocket endpoints, servlets and filters, EJBs, and
 command-line commands. A builder changes on purpose, and what it builds is the value: it has a `build()` that returns
 something else, or fluent setters that return the builder and either a name ending in `Builder` or a `build...` or
 `create...` method that returns something else.
@@ -706,7 +706,8 @@ mutable collection, an atomic or a string builder. A non-final field a container
 reported as one to take as a constructor parameter, and so is a field only its setter sets, as `setWebhook(...)` sets
 `webhook`: a setting a container binds, as Spring binds configuration properties. Wiring code, enums and records are
 skipped, and so is what a framework creates for each use, which holds the state of that use: an aesh or picocli
-command, a WebSocket endpoint, and a request- or session-scoped bean.
+command, a WebSocket endpoint, a request-, session-, view-, flow- or conversation-scoped bean, a stateful EJB, and a
+batch job's readers, writers and listeners.
 
 Why: a service is shared by its callers, so its state leaks between them and races under concurrency.
 

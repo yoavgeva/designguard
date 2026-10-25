@@ -93,12 +93,35 @@ class StatelessServicesRuleTest {
                 .add("Export", command.formatted("picocli.CommandLine.Command(name = \"export\")", "Export"))
                 .add("Socket", command.formatted("jakarta.websocket.server.ServerEndpoint(name = \"/ws\")", "Socket"))
                 .add("Cart", command.formatted("jakarta.enterprise.context.RequestScoped", "Cart"))
+                .add("ViewScoped", annotation.formatted("jakarta.faces.view", "ViewScoped"))
+                .add("ChangeDestination", command.formatted("jakarta.faces.view.ViewScoped", "ChangeDestination"))
+                .add("MessageDriven", annotation.formatted("jakarta.ejb", "MessageDriven"))
+                .add("CargoConsumer", command.formatted("jakarta.ejb.MessageDriven", "CargoConsumer"))
+                .add("ItemReader", "package jakarta.batch.api.chunk;\n\npublic interface ItemReader {\n    Object readItem();\n}\n")
+                .add("EventReader", """
+                        package shop;
+
+                        public class EventReader implements jakarta.batch.api.chunk.ItemReader {
+                            private int read;
+
+                            public Object readItem() {
+                                read++;
+                                try {
+                                    return java.nio.file.Files.readString(java.nio.file.Path.of("events" + read));
+                                } catch (java.io.IOException e) {
+                                    throw new java.io.UncheckedIOException(e);
+                                }
+                            }
+                        }
+                        """)
                 .add("Archive", command.formatted("Deprecated", "Archive"))
                 .guard("shop");
 
         assertThat(guard.types().servicesAreStateless().evaluate()).extracting(Violation::message).containsExactly(
                 "Archive is service-like, but its field 'name' isn't final",
-                "Archive is service-like, but its field 'written' isn't final");
+                "Archive is service-like, but its field 'written' isn't final",
+                "CargoConsumer is service-like, but its field 'name' isn't final",
+                "CargoConsumer is service-like, but its field 'written' isn't final");
         assertThat(guard.types().valueTypesAreImmutable().evaluate()).isEmpty();
     }
 
