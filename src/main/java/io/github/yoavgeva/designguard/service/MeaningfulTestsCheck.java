@@ -4,6 +4,7 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.LiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.nodeTypes.NodeWithSimpleName;
 import com.github.javaparser.ast.stmt.AssertStmt;
 import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.stmt.ThrowStmt;
@@ -11,6 +12,7 @@ import io.github.yoavgeva.designguard.model.ClassFilter;
 import io.github.yoavgeva.designguard.model.Violation;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -28,6 +30,10 @@ public final class MeaningfulTestsCheck {
 
     private static final String RULE = "meaningful-tests";
     private static final String NEVER_FAILS = ", which can never fail";
+    /** The classes of JUnit's, AssertJ's, Hamcrest's, Truth's and JSONAssert's assertions, which a call may name. */
+    private static final Set<String> ASSERTION_CLASSES = Set.of("Assertions", "Assert", "Assume", "Assumptions",
+            "AssertionsForClassTypes", "AssertionsForInterfaceTypes", "BDDAssertions", "SoftAssertions", "MatcherAssert",
+            "Truth", "Truth8", "JSONAssert", "TestCase");
     private static final String ASSERT_RESULT = "assert on the result of the code under test";
     /** Tests of equals, hashCode or compareTo compare a value with itself on purpose: reflexivity can fail. */
     private static final Pattern EQUALITY_TEST = Pattern.compile("(?i)equal|hash|compar");
@@ -107,11 +113,23 @@ public final class MeaningfulTestsCheck {
      * is, can fail.
      */
     private static Optional<Violation> onConstants(ParsedFile file, String name, MethodCallExpr call) {
-        if (call.getNameAsString().startsWith("assert") && !call.getArguments().isEmpty()
+        if (call.getNameAsString().startsWith("assert") && !call.getArguments().isEmpty() && !isOnAnotherClass(call)
                 && chainFrom(call).allMatch(link -> link.getArguments().stream().allMatch(LiteralExpr.class::isInstance))) {
             return Optional.of(Scopes.violation(RULE, file, call, name + " asserts on constants" + NEVER_FAILS, ASSERT_RESULT));
         }
         return Optional.empty();
+    }
+
+    /**
+     * Whether the call names a class that isn't an assertion library's, as {@code Validate.assertFail(...)} does: the
+     * code under test, which may be named like an assertion.
+     */
+    private static boolean isOnAnotherClass(MethodCallExpr call) {
+        return call.getScope()
+                .filter(scope -> scope instanceof NodeWithSimpleName<?> named
+                        && Character.isUpperCase(named.getNameAsString().charAt(0))
+                        && !ASSERTION_CLASSES.contains(named.getNameAsString()))
+                .isPresent();
     }
 
     /** The call and the calls chained onto it, as {@code isEqualTo} is onto {@code assertThat(total)}. */

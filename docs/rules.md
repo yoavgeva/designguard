@@ -1247,7 +1247,7 @@ Fix: delete it.
 Tests that prove nothing are reported:
 
 - tests without any assertion;
-- assertions on constants, like `assertTrue(true)` or `assertThat(1).isEqualTo(1)`;
+- assertions on constants, like `assertTrue(true)` or `assertThat(1).isEqualTo(1)`; a call named like an assertion on a class that isn't an assertion library's, as `Validate.assertFail("...")`, is the code under test;
 - assertions comparing a value with itself, like `assertEquals(total, total)` on a number or string, or
   `assertSame(range, range)`;
 - assertions that a new object isn't null, like `assertNotNull(new Cart())`;

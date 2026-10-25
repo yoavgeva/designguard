@@ -35,12 +35,25 @@ class NeverFailingAssertionsTest {
                         assertEquals(total, total);
                         assertThat(total).isEqualTo(total);
                     }
+
+                    @Test
+                    void validateFails() {
+                        boolean threw = false;
+                        try {
+                            Validate.assertFail("This should fail");
+                        } catch (IllegalStateException e) {
+                            threw = true;
+                        }
+                        org.junit.jupiter.api.Assertions.assertTrue(true);
+                        Assertions.assertTrue(threw);
+                    }
                 }
                 """)).extracting(Violation::message).containsExactly(
                         "test CartTest.total() asserts on constants, which can never fail",
                         "test CartTest.total() asserts on constants, which can never fail",
                         "test CartTest.same() compares total with itself, which can never fail",
-                        "test CartTest.same() compares total with itself, which can never fail");
+                        "test CartTest.same() compares total with itself, which can never fail",
+                        "test CartTest.validateFails() asserts on constants, which can never fail");
     }
 
     @Test
