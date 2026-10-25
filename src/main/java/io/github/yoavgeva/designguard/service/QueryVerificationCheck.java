@@ -24,8 +24,8 @@ import java.util.stream.Stream;
  * returns a value. Stub queries and assert on the result; verify only commands: methods that return nothing, or only a
  * {@code Void} publisher or future such as {@code Mono<Void>}, and methods named for a change, as {@code update} or
  * {@code sendCode} are, which may return what they stored, as reactive clients and repositories do. A verification
- * with a mode, such as {@code times(1)} or {@code never()}, counts calls on purpose and is fine, and so is verifying a
- * query the test stubs, whose result it controls and can check.
+ * with a mode, such as {@code times(1)} or {@code never()}, counts calls on purpose and is fine. Verifying a query the
+ * test stubs only repeats the stub, as Mockito's documentation says, and is reported as such.
  */
 public final class QueryVerificationCheck {
 
@@ -46,10 +46,10 @@ public final class QueryVerificationCheck {
         return code.testSources().files().stream()
                 .flatMap(file -> file.unit().findAll(MethodCallExpr.class).stream()
                         .filter(call -> Scopes.selected(filter, file, call))
-                        .flatMap(call -> verifiedMock(call).filter(mock -> !isStubbedThere(call, mock)).stream()
-                                .flatMap(mock -> mockType(file.unit(), mock, types).stream())
-                                .filter(type -> isQuery(type, call))
-                                .map(type -> violation(file, call, type))))
+                        .flatMap(call -> verifiedMock(call).stream()
+                                .flatMap(mock -> mockType(file.unit(), mock, types).stream()
+                                        .filter(type -> isQuery(type, call))
+                                        .map(type -> violation(file, call, type, isStubbedThere(call, mock))))))
                 .sorted(Scopes.BY_LOCATION)
                 .toList();
     }
@@ -64,8 +64,7 @@ public final class QueryVerificationCheck {
 
     /**
      * Whether the test stubs the verified method of the mock, as {@code when(rates.rateOf("EUR"))} and
-     * {@code doReturn(2L).when(rates).rateOf("EUR")} do: it controls the result and can check what the code makes of
-     * it, so the verification only repeats the stub.
+     * {@code doReturn(2L).when(rates).rateOf("EUR")} do: it controls the result, so a verification only repeats the stub.
      */
     private static boolean isStubbedThere(MethodCallExpr verified, NameExpr mock) {
         String method = verified.getNameAsString();
@@ -129,10 +128,15 @@ public final class QueryVerificationCheck {
         return !candidates.isEmpty() && candidates.stream().noneMatch(CommandMethods::isCommand);
     }
 
-    private static Violation violation(ParsedFile file, MethodCallExpr call, JavaClass type) {
+    /** The violation; a query the test stubs is one it already controls, so the verification only repeats the stub. */
+    private static Violation violation(ParsedFile file, MethodCallExpr call, JavaClass type, boolean stubbed) {
         String test = Scopes.enclosingCallable(call).map(Scopes::describe).orElse("a test");
-        return Scopes.violation(RULE, file, call, "test " + test + " verifies " + ProjectClasses.nameOf(type) + "."
-                        + call.getNameAsString() + "(), a query that returns a value",
+        String verified = "test " + test + " verifies " + ProjectClasses.nameOf(type) + "." + call.getNameAsString() + "()";
+        if (stubbed) {
+            return Scopes.violation(RULE, file, call, verified + ", a query it stubs, so the verification only repeats"
+                            + " the stub", "drop the verification, and assert on what the code under test returns");
+        }
+        return Scopes.violation(RULE, file, call, verified + ", a query that returns a value",
                 "stub it with when(...).thenReturn(...) and assert on what the code under test returns; verify only"
                         + " commands");
     }

@@ -18,6 +18,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class QueryVerificationRuleTest {
 
     private static final String SHOP = "shop";
+    private static final String REPEATS_STUB = "drop the verification, and assert on what the code under test returns";
 
     @Parameter
     private int release;
@@ -175,7 +176,7 @@ class QueryVerificationRuleTest {
     }
 
     @Test
-    void aQueryTheTestStubsIsOneItChecksTheResultOf() {
+    void verifyingAQueryTheTestStubsOnlyRepeatsTheStub() {
         DesignGuard guard = new CompiledProject(directory).release(release)
                 .add("Rates", "package shop;\n\npublic interface Rates {\n    long rateOf(String currency);\n}\n")
                 .add("Converter", """
@@ -227,8 +228,14 @@ class QueryVerificationRuleTest {
                         """)
                 .guard(SHOP);
 
-        assertThat(guard.tests().testsCheckResults().evaluate()).extracting(Violation::line, Violation::message)
-                .containsExactly(tuple(28, "test ConverterTest.convertsWithoutAStub() verifies Rates.rateOf(), a query that"
-                        + " returns a value"));
+        assertThat(guard.tests().testsCheckResults().evaluate()).extracting(Violation::line, Violation::message, Violation::fix)
+                .containsExactly(
+                        tuple(15, "test ConverterTest.convertsWithTheStubbedRate() verifies Rates.rateOf(), a query it stubs,"
+                                + " so the verification only repeats the stub", REPEATS_STUB),
+                        tuple(22, "test ConverterTest.convertsWithARateStubbedFirst() verifies Rates.rateOf(), a query it"
+                                + " stubs, so the verification only repeats the stub", REPEATS_STUB),
+                        tuple(28, "test ConverterTest.convertsWithoutAStub() verifies Rates.rateOf(), a query that returns a"
+                                + " value", "stub it with when(...).thenReturn(...) and assert on what the code under test"
+                                + " returns; verify only commands"));
     }
 }
