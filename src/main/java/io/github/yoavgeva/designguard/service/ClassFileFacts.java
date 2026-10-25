@@ -121,7 +121,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         return new ClassFileFacts(release, creations, switchLabels, namedClasses(reader),
                 byMethod(node, ClassFileFacts::directCalls), byMethod(node, ClassFileFacts::superCalls),
                 byMethod(node, ClassFileFacts::restoredInterrupts),
-                byMethod(node, method -> ConsoleCalls.in(method, analyses.get(method))),
+                byMethod(node, method -> ConsoleCalls.in(node.name, method, analyses.get(method))),
                 byMethod(node, method -> ParameterCalls.in(method, analyses.get(method))),
                 new Loops(byMethod(node, method -> Loops.callsInLoops(method, analyses.get(method))),
                         byMethod(node, Loops::iteratedLambdas),
@@ -425,11 +425,13 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
 
     /**
      * The calls a method makes on {@code System.out}, {@code System.err} or {@code System.in}, directly or through a
-     * local that holds one: they write to or read from the console, unlike the same calls on a stream it is given.
+     * local that holds one: they write to or read from the console, unlike the same calls on a stream it is given. A
+     * catch block's report of the error on {@code System.err} logs it, as a logger would, so it isn't one.
      */
     static final class ConsoleCalls {
 
         private static final Set<String> CONSOLE_STREAMS = Set.of("out", "err", "in");
+        private static final Set<String> STANDARD_ERROR = Set.of("err");
 
         private ConsoleCalls() {
         }
@@ -437,33 +439,45 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         /**
          * The method's calls on a console stream, keyed with their line.
          *
+         * @param owner    the internal name of the method's class
          * @param method   the method
          * @param analysis the method's data flow, computed when first needed
          * @return the {@link #callKey(String, String, int) calls}; none if it never reads a console stream
          */
-        static Set<String> in(MethodNode method, Memo<Receivers> analysis) {
+        static Set<String> in(String owner, MethodNode method, Memo<Receivers> analysis) {
             if (StreamSupport.stream(method.instructions.spliterator(), false).noneMatch(ConsoleCalls::isConsole)) {
                 return Set.of();
             }
             Receivers receivers = analysis.get();
+            Memo<Set<AbstractInsnNode>> catchBlocks = new Memo<>(() -> CatchBlocks.in(owner, method));
             Set<String> calls = new LinkedHashSet<>();
             int line = 0;
             for (AbstractInsnNode instruction : method.instructions) {
                 if (instruction instanceof LineNumberNode number) {
                     line = number.line;
                 }
-                if (instruction instanceof MethodInsnNode call && call.getOpcode() != Opcodes.INVOKESTATIC
-                        && receivers.stackAt(call, Type.getArgumentTypes(call.desc).length).stream()
-                                .anyMatch(source -> isConsole(source) || holdsConsole(receivers, source))) {
-                    calls.add(callKey(Type.getObjectType(call.owner).getClassName(), call.name, line));
+                if (instruction instanceof MethodInsnNode call && call.getOpcode() != Opcodes.INVOKESTATIC) {
+                    Set<String> streams = receivers.stackAt(call, Type.getArgumentTypes(call.desc).length).stream()
+                            .flatMap(source -> streamsOf(receivers, source).stream())
+                            .collect(Collectors.toSet());
+                    if (!streams.isEmpty() && !(STANDARD_ERROR.equals(streams) && catchBlocks.get().contains(call))) {
+                        calls.add(callKey(Type.getObjectType(call.owner).getClassName(), call.name, line));
+                    }
                 }
             }
             return Set.copyOf(calls);
         }
 
-        private static boolean holdsConsole(Receivers receivers, AbstractInsnNode source) {
-            return source instanceof VarInsnNode load && receivers.storesOf(load).stream()
-                    .anyMatch(store -> receivers.stackAt(store, 0).stream().anyMatch(ConsoleCalls::isConsole));
+        /** The console streams the value is: {@code System.out}, {@code err} or {@code in}, or a local holding one. */
+        private static Set<String> streamsOf(Receivers receivers, AbstractInsnNode source) {
+            if (isConsole(source)) {
+                return Set.of(((FieldInsnNode) source).name);
+            }
+            return source instanceof VarInsnNode load ? receivers.storesOf(load).stream()
+                    .flatMap(store -> receivers.stackAt(store, 0).stream())
+                    .filter(ConsoleCalls::isConsole)
+                    .map(stream -> ((FieldInsnNode) stream).name)
+                    .collect(Collectors.toSet()) : Set.of();
         }
 
         private static boolean isConsole(AbstractInsnNode instruction) {

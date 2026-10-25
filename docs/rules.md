@@ -32,7 +32,7 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
   current thread, and restoring its interrupt flag with `Thread.currentThread().interrupt()` aren't effects; resolving
   a host name, as `new InetSocketAddress(host, port)` does, or interrupting another thread is. A stream touches the
   outside world where it is opened: on a file name, as `new FileReader("prices.txt")` and `new Scanner(file)` are,
-  from a classpath resource, or as the console (`System.out`, `System.err`, `System.in`). Holding, wrapping, reading
+  from a classpath resource, or as the console (`System.out`, `System.err`, `System.in`). A catch block that reports the error on `System.err` logs it, as a logger would, so that print isn't an effect. Holding, wrapping, reading
   or writing a stream someone else opened only processes its data, so a parser over a `Reader` or a writer of JSON to
   a `Writer` is a value.
 - **Service-like**: a class that is effectful, holds a service, extends a class that is effectful itself or holds one,

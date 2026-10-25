@@ -842,4 +842,64 @@ class ConstructorWorkRuleTest {
 
         assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).isEmpty();
     }
+
+    @Test
+    void reportingACaughtErrorOnStandardErrorIsNotWork() {
+        DesignGuard guard = new CompiledProject(directory).release(release)
+                .add("Version", """
+                        package shop;
+
+                        public final class Version {
+                            private static final boolean MODERN = isModern();
+
+                            private Version() {
+                            }
+
+                            static boolean isModern() {
+                                try {
+                                    return Integer.parseInt(System.getProperty("java.specification.version")) >= 17;
+                                } catch (NumberFormatException e) {
+                                    if (e.getMessage() != null) {
+                                        System.err.println("can't tell the Java version: " + e.getMessage());
+                                    }
+                                    return false;
+                                }
+                            }
+
+                            public static boolean modern() {
+                                return MODERN;
+                            }
+                        }
+                        """)
+                .add("Banner", """
+                        package shop;
+
+                        public final class Banner {
+                            private static final int WIDTH = width();
+
+                            private Banner() {
+                            }
+
+                            static int width() {
+                                int width;
+                                try {
+                                    width = Integer.parseInt(System.getenv("COLUMNS"));
+                                } catch (NumberFormatException e) {
+                                    System.out.println("no width: " + e.getMessage());
+                                    width = 80;
+                                }
+                                System.err.println("width " + width);
+                                return width;
+                            }
+
+                            public static int columns() {
+                                return WIDTH;
+                            }
+                        }
+                        """)
+                .guard(SHOP);
+
+        assertThat(guard.dependencies().constructorsDoNoWork().evaluate()).extracting(Violation::message)
+                .containsExactly("Banner does work in its static initializer through Banner.width()");
+    }
 }
