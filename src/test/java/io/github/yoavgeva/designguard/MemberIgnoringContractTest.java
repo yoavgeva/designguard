@@ -35,7 +35,7 @@ class MemberIgnoringContractTest {
             + "public interface Repository<T, ID> {\n}\n";
     private static final String CRUD_REPOSITORY = "package org.springframework.data.repository;\n\n"
             + "public interface CrudRepository<T, ID> extends Repository<T, ID> {\n    Iterable<T> findAll();\n\n"
-            + "    java.util.Optional<T> findById(ID id);\n}\n";
+            + "    java.util.Optional<T> findById(ID id);\n\n    <S extends T> S save(S entity);\n}\n";
     private static final String STRIPE_CLIENT = """
             package shop;
 
@@ -115,11 +115,15 @@ class MemberIgnoringContractTest {
                 member("noMassAssignment", g -> g.data().noMassAssignment(), List.of(
                         web("RestController"), web("PutMapping"),
                         web("RequestBody"),
+                        REPOSITORY, CRUD_REPOSITORY,
                         PACKAGE + "public record AccountForm(String email, String role) {\n}\n",
+                        PACKAGE + "public interface Forms extends org.springframework.data.repository.CrudRepository<"
+                                + "AccountForm, Long> {\n}\n",
                         PACKAGE + "@org.springframework.web.bind.annotation.RestController\npublic class AccountController {\n"
+                                + "    private final Forms forms = null;\n\n"
                                 + "    @Legacy\n    @org.springframework.web.bind.annotation.PutMapping\n"
-                                + "    public String update(@org.springframework.web.bind.annotation.RequestBody AccountForm form) {\n"
-                                + "        return form.email();\n    }\n}\n"), List.of()),
+                                + "    public AccountForm update(@org.springframework.web.bind.annotation.RequestBody AccountForm form) {\n"
+                                + "        return forms.save(form);\n    }\n}\n"), List.of()),
                 member("noLostUpdates", g -> g.data().noLostUpdates(), List.of(
                         "package jakarta.persistence;\n\n" + RUNTIME + "public @interface Entity {\n}\n",
                         "package org.springframework.transaction.annotation;\n\n" + RUNTIME

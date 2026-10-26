@@ -59,21 +59,19 @@ import org.objectweb.asm.tree.VarInsnNode;
  *                         name and descriptor, the {@link AccessorChanges changes} it makes, lazy initialization aside
  * @param threadFactoryCalls for each method that creates thread factories for executors, the
  *                         {@link ThreadFactoryCalls calls} made in them
- * @param derivedWrites    for each method that writes a property from its own old value, by name and descriptor, the
- *                         {@link DerivedWrites writes}
- * @param parameterFlows   for each method whose parameters flow into calls, by name and descriptor, the
- *                         {@link ParameterFlows flows}
+ * @param dataFlows        the {@link DataFlows data flows} of its methods, read from the class file when a rule first
+ *                         asks: most runs need none
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
         List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> superCalls,
         Map<String, Set<String>> restoredInterrupts, Map<String, Set<String>> consoleCalls,
         Map<String, Set<String>> parameterCalls, Loops loops,
         Map<String, List<AccessorChanges.FieldChange>> accessorChanges, Map<String, Set<String>> threadFactoryCalls,
-        Map<String, List<DerivedWrites.DerivedWrite>> derivedWrites, Map<String, List<ParameterFlows.Flow>> parameterFlows) {
+        Memo<DataFlows> dataFlows) {
 
     /** For a class without a class file to read. */
     static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of(),
-            Map.of(), Map.of(), Map.of(), new Loops(Map.of(), Map.of(), Map.of()), Map.of(), Map.of(), Map.of(), Map.of());
+            Map.of(), Map.of(), Map.of(), new Loops(Map.of(), Map.of(), Map.of()), Map.of(), Map.of(), new Memo<>(() -> DataFlows.NONE));
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
@@ -94,8 +92,6 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         parameterCalls = Map.copyOf(parameterCalls);
         accessorChanges = Map.copyOf(accessorChanges);
         threadFactoryCalls = Map.copyOf(threadFactoryCalls);
-        derivedWrites = Map.copyOf(derivedWrites);
-        parameterFlows = Map.copyOf(parameterFlows);
     }
 
     /**
@@ -133,15 +129,7 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                 new Loops(byMethod(node, method -> Loops.callsInLoops(method, analyses.get(method))),
                         byMethod(node, Loops::iteratedLambdas),
                         byMethod(node, method -> Loops.lambdaBodyCalls(method, captured, analyses.get(method)))),
-                AccessorChanges.of(node), ThreadFactoryCalls.in(node),
-                node.methods.stream()
-                        .map(method -> Map.entry(method.name + method.desc, DerivedWrites.in(method, analyses.get(method))))
-                        .filter(entry -> !entry.getValue().isEmpty())
-                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (first, second) -> first)),
-                node.methods.stream()
-                        .map(method -> Map.entry(method.name + method.desc, ParameterFlows.in(node.name, method)))
-                        .filter(entry -> !entry.getValue().isEmpty())
-                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (first, second) -> first)));
+                AccessorChanges.of(node), ThreadFactoryCalls.in(node), new Memo<>(() -> DataFlows.of(classFile)));
     }
 
     /** The non-virtual calls of methods the method makes, keyed with their line: {@code super.m()} and private methods. */
@@ -498,6 +486,41 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         private static boolean isConsole(AbstractInsnNode instruction) {
             return instruction instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETSTATIC
                     && "java/lang/System".equals(field.owner) && CONSOLE_STREAMS.contains(field.name);
+        }
+    }
+
+    /**
+     * Where a class's methods write a property from its old value, and which of their parameters flow into which calls.
+     *
+     * @param derivedWrites  for each method that writes a property from its own old value, by name and descriptor, the
+     *                       {@link DerivedWrites writes}
+     * @param parameterFlows for each method whose parameters flow into calls, by name and descriptor, the
+     *                       {@link ParameterFlows flows}
+     */
+    record DataFlows(Map<String, List<DerivedWrites.DerivedWrite>> derivedWrites,
+            Map<String, List<ParameterFlows.Flow>> parameterFlows) {
+
+        static final DataFlows NONE = new DataFlows(Map.of(), Map.of());
+
+        DataFlows {
+            derivedWrites = Map.copyOf(derivedWrites);
+            parameterFlows = Map.copyOf(parameterFlows);
+        }
+
+        /** Reads a class file's data flows. */
+        static DataFlows of(byte[] classFile) {
+            ClassNode node = new ClassNode();
+            new ClassReader(classFile).accept(node, ClassReader.SKIP_FRAMES);
+            Map<String, List<DerivedWrites.DerivedWrite>> writes = node.methods.stream()
+                    .map(method -> Map.entry(method.name + method.desc,
+                            DerivedWrites.in(method, new Memo<>(() -> Receivers.of(node.name, method)))))
+                    .filter(entry -> !entry.getValue().isEmpty())
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (first, second) -> first));
+            Map<String, List<ParameterFlows.Flow>> flows = node.methods.stream()
+                    .map(method -> Map.entry(method.name + method.desc, ParameterFlows.in(node.name, method)))
+                    .filter(entry -> !entry.getValue().isEmpty())
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (first, second) -> first));
+            return new DataFlows(writes, flows);
         }
     }
 

@@ -16,8 +16,8 @@ import org.objectweb.asm.tree.MethodNode;
 /**
  * Where a method writes a property from its own old value: {@code product.setStock(product.getStock() - quantity)},
  * {@code this.balance = this.balance.subtract(amount)} or {@code count++}. The value written must be computed, with
- * arithmetic, {@code BigDecimal} or {@code BigInteger} arithmetic or string concatenation, from what the getter or the
- * field read on the same object returned ({@link ValueSources}). Copying the value back as it was isn't a change.
+ * arithmetic or {@code BigDecimal} or {@code BigInteger} arithmetic, from what the getter or the field read on the
+ * same object returned ({@link ValueSources}). Copying the value back as it was isn't a change.
  */
 final class DerivedWrites {
 

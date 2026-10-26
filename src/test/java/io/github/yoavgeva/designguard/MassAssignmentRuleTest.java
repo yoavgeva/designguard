@@ -88,6 +88,42 @@ class MassAssignmentRuleTest {
                         }
                         """)
                 .add("OrderRequest", "package shop;\n\npublic record OrderRequest(String item, long ownerId) {\n}\n")
+                .add("Order", "package shop;\n\npublic class Order {\n    private long ownerId;\n\n"
+                        + "    public void setOwnerId(long ownerId) {\n        this.ownerId = ownerId;\n    }\n}\n")
+                .add("Repository", "package org.springframework.data.repository;\n\npublic interface Repository<T, ID> {\n}\n")
+                .add("CrudRepository", "package org.springframework.data.repository;\n\n"
+                        + "public interface CrudRepository<T, ID> extends Repository<T, ID> {\n    <S extends T> S save(S entity);\n}\n")
+                .add("BeanUtils", "package org.springframework.beans;\n\npublic final class BeanUtils {\n"
+                        + "    private BeanUtils() {\n    }\n\n    public static void copyProperties(Object source, Object target) {\n"
+                        + "    }\n}\n")
+                .add("MailConfig", "package shop;\n\npublic class MailConfig {\n    private String user;\n\n"
+                        + "    public void setUser(String user) {\n        this.user = user;\n    }\n}\n")
+                .add("Member", "package shop;\n\npublic class Member {\n}\n")
+                .add("Comment", "package shop;\n\npublic class Comment {\n    private String text;\n    private Member user;\n\n"
+                        + "    public void setText(String text) {\n        this.text = text;\n    }\n\n"
+                        + "    public void setUser(Member user) {\n        this.user = user;\n    }\n}\n")
+                .add("Forms", "package shop;\n\npublic interface Forms extends org.springframework.data.repository.CrudRepository<Object, Long> {\n}\n")
+                .add("Accounts", """
+                        package shop;
+
+                        public class Accounts {
+                            private final Forms forms;
+
+                            public Accounts(Forms forms) {
+                                this.forms = forms;
+                            }
+
+                            public Object update(UserForm form) {
+                                return forms.save(form);
+                            }
+
+                            public Object updateEmail(UserForm form) {
+                                UserForm copy = new UserForm();
+                                copy.setEmail(form.getEmail());
+                                return forms.save(copy);
+                            }
+                        }
+                        """)
                 .add("AccountController", """
                         package shop;
 
@@ -100,24 +136,61 @@ class MassAssignmentRuleTest {
 
                         @RestController
                         public class AccountController {
+                            private final Accounts accounts;
+                            private final Forms forms;
+
+                            public AccountController(Accounts accounts, Forms forms) {
+                                this.accounts = accounts;
+                                this.forms = forms;
+                            }
+
                             @PutMapping("/account")
-                            public String update(@RequestBody UserForm form) {
-                                return form.getEmail();
+                            public Object update(@RequestBody UserForm form) {
+                                return accounts.update(form);
+                            }
+
+                            @PutMapping("/account/email")
+                            public Object email(@RequestBody UserForm form) {
+                                return accounts.updateEmail(form);
+                            }
+
+                            @PutMapping("/account/mine")
+                            public Object mine(@RequestBody UserForm form) {
+                                form.setRole("USER");
+                                form.setUserId(1L);
+                                return accounts.update(form);
                             }
 
                             @PutMapping("/profile")
-                            public String profile(@RequestBody ProfileForm form) {
-                                return form.toString();
+                            public Object profile(@RequestBody ProfileForm form) {
+                                return forms.save(form);
                             }
 
                             @PostMapping("/orders")
-                            public String order(OrderRequest request) {
-                                return request.item();
+                            public Object order(OrderRequest request) {
+                                Order order = new Order();
+                                org.springframework.beans.BeanUtils.copyProperties(request, order);
+                                return forms.save(order);
                             }
 
                             @PutMapping("/admin/users/{id}")
                             @PreAuthorize("hasRole('ADMIN')")
-                            public String setRole(@PathVariable Long id, @RequestBody UserForm form) {
+                            public Object setRole(@PathVariable Long id, @RequestBody UserForm form) {
+                                return accounts.update(form);
+                            }
+
+                            @PostMapping("/comments")
+                            public Object comment(@RequestBody Comment comment) {
+                                return forms.save(comment);
+                            }
+
+                            @PutMapping("/mail")
+                            public Object mail(@RequestBody MailConfig config) {
+                                return forms.save(config);
+                            }
+
+                            @PutMapping("/account/preview")
+                            public String preview(@RequestBody UserForm form) {
                                 return form.getRole();
                             }
                         }
@@ -127,9 +200,12 @@ class MassAssignmentRuleTest {
         assertThat(guard.data().noMassAssignment().evaluate())
                 .extracting(Violation::line, Violation::message)
                 .containsExactly(
-                        tuple(14, "AccountController.update() binds the request to UserForm, which lets it set role and "
-                                + "userId"),
-                        tuple(24, "AccountController.order() binds the request to OrderRequest, which lets it set ownerId"));
+                        tuple(22, "AccountController.update() saves the request's UserForm through Accounts.update(), "
+                                + "which calls Forms.save(), so the request can set role and userId"),
+                        tuple(45, "AccountController.order() saves the request's OrderRequest through "
+                                + "BeanUtils.copyProperties(), so the request can set ownerId"),
+                        tuple(57, "AccountController.comment() saves the request's Comment through Forms.save(), so the "
+                                + "request can set user"));
         assertThat(guard.data().noMassAssignment().evaluate().get(0).fix())
                 .isEqualTo("leave role and userId out of UserForm, or mark them @JsonIgnore, and set them from the current "
                         + "user, or in a handler that checks permissions with @PreAuthorize");

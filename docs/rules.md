@@ -1415,30 +1415,41 @@ Fix: pass a timeout, and decide what happens when it passes.
 
 `data().noMassAssignment()`
 
-Request handlers that bind the request to a type with a privileged property are reported: one that grants access, as
-`role`, `roles`, `admin`, `isAdmin`, `superuser`, `staff`, `permissions` and `authorities` do, names an owner, as
-`userId`, `ownerId`, `accountId`, `organizationId`, `teamId` and `tenantId` do, or records a check the server makes, as
-`verified`, `emailVerified`, `confirmedAt`, `approved` and `passwordHash` do. A handler parameter binds the request
-when it's `@RequestBody`, `@ModelAttribute` or `@BeanParam`, or a project type with no annotation naming another
-source, as Spring binds a form and JAX-RS a body. A property binds when a public setter, Lombok's included, a public
-field or a record component sets it, and it isn't `@JsonIgnore`d. A handler that method security guards, or that calls
-code checking permissions, passes, as [`writes-are-authorized`](#writes-are-authorized) reads one: an admin may set
-roles. Taking the current user doesn't: a user changing their own account is the case this rule is about.
+Request handlers that save the object they bind the request to as it is, when it has a privileged property, are
+reported: one that grants access, as `role`, `roles`, `admin`, `isAdmin`, `superuser`, `staff`, `permissions` and
+`authorities` do, names an owner, as `userId`, `ownerId`, `accountId`, `organizationId`, `teamId` and `tenantId` do,
+or a `user`, `owner` or `tenant` relation does, or
+records a check the server makes, as `verified`, `emailVerified`, `confirmedAt`, `approved` and `passwordHash` do.
 
-FindSecBugs' `ENTITY_MASS_ASSIGNMENT` flags a JPA entity bound from a request, whatever its fields. This rule looks at
-every request type, DTOs included, and only at the properties a request shouldn't set.
+- A handler parameter binds the request when it's `@RequestBody`, `@ModelAttribute` or `@BeanParam`, or a project
+  type with no annotation naming another source, as Spring binds a form and JAX-RS a body.
+- A property binds when a public setter, Lombok's included, a public field or a record component sets it, and it isn't
+  `@JsonIgnore`d.
+- The object is saved when it, not values copied from it one by one, reaches a database client's write, as a
+  repository's `save`, an `EntityManager`'s `persist` or `merge`, or a mapper's `insert` or `update` is, or a copy of
+  all its properties, as `BeanUtils.copyProperties(form, entity)` makes, directly or through the project methods it is
+  passed to. Properties the code sets on it on the way, as `form.setRole("USER")` does, are the code's.
 
-Why: a form that binds `role` lets any user who adds `role=ADMIN` to the request make themselves an admin.
+A handler that method security guards, or that calls code checking permissions, passes, as
+[`writes-are-authorized`](#writes-are-authorized) reads one: an admin may set roles. Taking the current user doesn't:
+a user changing their own account is the case this rule is about.
+
+FindSecBugs' `ENTITY_MASS_ASSIGNMENT` flags a JPA entity bound from a request, whatever its fields and whatever
+happens to it. This rule looks at every request type, DTOs included, but only at properties a request shouldn't set,
+and only when the object is saved.
+
+Why: a handler that saves the user it binds lets any user who adds `role=ADMIN` to the request make themselves an
+admin.
 
 ```java
 @PutMapping("/account")
-public User update(@RequestBody UserForm form) {
-    return users.update(form);
+public User update(@RequestBody User user) {
+    return users.save(user);
 }
 ```
 
-> AccountController.update() binds the request to UserForm, which lets it set role
-> -> fix: leave role out of UserForm, or mark it @JsonIgnore, and set it from the current user, or in a handler that checks permissions with @PreAuthorize
+> UserController.update() saves the request's User through UserRepository.save(), so the request can set role
+> -> fix: leave role out of User, or mark it @JsonIgnore, and set it from the current user, or in a handler that checks permissions with @PreAuthorize
 
 ### `no-lost-updates`
 
@@ -1447,8 +1458,8 @@ public User update(@RequestBody UserForm form) {
 JPA entities updated from a value read before are reported: a method that sets an `@Entity`'s property from its own old
 value, as `product.setStock(product.getStock() - quantity)` and `account.setBalance(account.getBalance().add(amount))`
 do, or that calls the entity's method that does, as `product.decreaseStock(quantity)` doing `stock -= quantity` does.
-The value must be computed from the old one, with arithmetic, `BigDecimal` or `BigInteger` arithmetic or string
-concatenation, read on the same object. It's reported when the method, or one that calls it, is `@Transactional`, so
+The value must be computed from the old one, with arithmetic or `BigDecimal` or `BigInteger` arithmetic, read on the
+same object; formatting a string, as `"ROLE_" + name` does, isn't counting. It's reported when the method, or one that calls it, is `@Transactional`, so
 the change is flushed, or surely writes to the database, and passes when the entity has a `@Version` field, which makes
 the second write fail, or when the method or its caller reads the row with a lock: a repository method annotated
 `@Lock`, or an `EntityManager` call given a `LockModeType`.

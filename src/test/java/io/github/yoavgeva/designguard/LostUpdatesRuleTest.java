@@ -61,6 +61,14 @@ class LostUpdatesRuleTest {
                             public void rename(String name) {
                                 this.name = name;
                             }
+
+                            public String getName() {
+                                return name;
+                            }
+
+                            public void setName(String name) {
+                                this.name = name;
+                            }
                         }
                         """)
                 .add("Account", """
@@ -133,6 +141,11 @@ class LostUpdatesRuleTest {
                             @Transactional
                             public void credit(Account account, java.math.BigDecimal amount) {
                                 account.setBalance(account.getBalance().add(amount));
+                            }
+
+                            @Transactional
+                            public void label(Product product) {
+                                product.setName("New " + product.getName());
                             }
 
                             public int preview(Product product) {

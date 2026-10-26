@@ -225,7 +225,7 @@ The rules use a few terms:
 | | [`writesAreAuthorized`](#writesareauthorized) | request handlers that write with no permission check or current user | |
 | | [`readsAreAuthorized`](#readsareauthorized) | request handlers that read a record by the request's id with no check | |
 | | [`noUnboundedWaits`](#nounboundedwaits) | `Future.get()`, `block()` and HTTP clients without a timeout | ✓ |
-| **Data** | [`noMassAssignment`](#nomassassignment) | request types that let a request set `role`, `userId` and other privileged fields | ✓ |
+| **Data** | [`noMassAssignment`](#nomassassignment) | handlers that save the request's object with its `role`, `userId` or other privileged field | ✓ |
 | | [`noLostUpdates`](#nolostupdates) | entities set from their old values with no `@Version` or lock | ✓ |
 | | [`noFloatingPointMoney`](#nofloatingpointmoney) | `double` and `float` fields named for money | ✓ |
 | | [`noUnboundedQueries`](#nounboundedqueries) | request handlers that reach `findAll()` on a whole table | |
@@ -2485,8 +2485,8 @@ public class Reports {
 
 `GUARD.data().noMassAssignment()` · `no-mass-assignment` · recommended
 
-A request type with a `role` lets any user who adds `"role": "ADMIN"` to the request make themselves an admin, though
-the handler only changes their own account.
+A handler that saves the object it binds the request to lets any user who adds `"role": "ADMIN"` to the request make
+themselves an admin, though the handler only changes their own account.
 
 ```java
 import org.springframework.web.bind.annotation.PutMapping;
@@ -2494,25 +2494,83 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-public class AccountController {
+public class UserController {
+    private final UserRepository users;
+
+    public UserController(UserRepository users) {
+        this.users = users;
+    }
+
     @PutMapping
-    public String update(@RequestBody AccountForm form) {   // ✗ the request can set role
-        return form.email();
+    public User update(@RequestBody User user) {
+        return users.save(user);   // ✗ saves the role the request sent
     }
 }
 ```
 
 ```java
-public record AccountForm(String email, String role) {
+import jakarta.persistence.Entity;
+
+@Entity
+public class User {
+    private Long id;
+    private String email;
+    private String role;
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+}
+```
+
+```java
+import org.springframework.data.repository.CrudRepository;
+
+public interface UserRepository extends CrudRepository<User, Long> {
 }
 ```
 
 <details><summary>Fixed</summary>
 
-The form leaves the role out; an admin's handler, which `@PreAuthorize` guards, sets it.
+The handler binds a form without the role, and copies what it may change onto the user it loaded; an admin's handler,
+which `@PreAuthorize` guards, sets roles.
 
 ```java
-public record AccountForm(String email) {
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class UserController {
+    private final UserRepository users;
+
+    public UserController(UserRepository users) {
+        this.users = users;
+    }
+
+    @PutMapping
+    public User update(@AuthenticationPrincipal User current, @RequestBody EmailForm form) {
+        current.setEmail(form.email());
+        return users.save(current);
+    }
+}
+```
+
+```java
+public record EmailForm(String email) {
 }
 ```
 

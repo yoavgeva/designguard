@@ -125,7 +125,7 @@ public final class LostUpdatesCheck {
     }
 
     private static List<DerivedWrites.DerivedWrite> derivedWrites(Bytecode bytecode, JavaCodeUnit unit) {
-        return bytecode.factsOf(unit.getOwner()).derivedWrites().getOrDefault(unit.getName() + unit.getDescriptor(), List.of());
+        return bytecode.factsOf(unit.getOwner()).dataFlows().get().derivedWrites().getOrDefault(unit.getName() + unit.getDescriptor(), List.of());
     }
 
     /** An entity's method that writes one of its properties from its old value. */

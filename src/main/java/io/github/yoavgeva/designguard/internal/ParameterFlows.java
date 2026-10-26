@@ -23,7 +23,9 @@ import org.objectweb.asm.tree.analysis.Value;
 /**
  * Which of a method's parameters flow into which arguments of the calls it makes: a parameter, and every value made
  * from it, by arithmetic, a conversion such as {@code Long.valueOf(id)}, a call given it, a field or array element of
- * it, or a local it's stored in. The receiver, {@code this}, isn't a parameter.
+ * it, or a local it's stored in. A flow is {@code whole} when the argument is the parameter's object itself, passed on
+ * or cast, rather than a value made from it. A call made on the parameter's object, as {@code form.setRole(role)} is,
+ * flows into its receiver, at position -1. The method's own receiver, {@code this}, isn't a parameter.
  */
 final class ParameterFlows {
 
@@ -40,10 +42,11 @@ final class ParameterFlows {
      * @param owner      the called method's class, as an internal name such as {@code shop/OrderRepository}
      * @param name       the called method's name
      * @param descriptor the called method's descriptor
-     * @param to         the argument's position, from 0
+     * @param to         the argument's position, from 0, or -1 for the receiver
      * @param line       the call's line
+     * @param whole      whether the argument is the parameter's object itself
      */
-    record Flow(int from, String owner, String name, String descriptor, int to, int line) {
+    record Flow(int from, String owner, String name, String descriptor, int to, int line, boolean whole) {
     }
 
     /**
@@ -78,20 +81,22 @@ final class ParameterFlows {
         return List.copyOf(flows);
     }
 
-    /** The parameters that flow into a call's arguments, from the frame just before it. */
+    /** The parameters that flow into a call's receiver and arguments, from the frame just before it. */
     private static List<Flow> into(MethodInsnNode call, Frame<Held> frame, int line) {
         int arguments = Type.getArgumentTypes(call.desc).length;
-        return IntStream.range(0, arguments).boxed()
+        int first = call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : -1;
+        return IntStream.range(first, arguments).boxed()
                 .flatMap(to -> {
-                    long bits = frame.getStack(frame.getStackSize() - arguments + to).bits();
-                    return IntStream.range(0, MOST).filter(from -> (bits & 1L << from) != 0)
-                            .mapToObj(from -> new Flow(from, call.owner, call.name, call.desc, to, line));
+                    Held value = frame.getStack(frame.getStackSize() - arguments + to);
+                    return IntStream.range(0, MOST).filter(from -> (value.bits() & 1L << from) != 0)
+                            .mapToObj(from -> new Flow(from, call.owner, call.name, call.desc, to, line,
+                                    (value.whole() & 1L << from) != 0));
                 })
                 .toList();
     }
 
     private static @Nullable Held held(@Nullable BasicValue value, long bits) {
-        return value == null ? null : new Held(value.getSize(), bits);
+        return value == null ? null : new Held(value.getSize(), bits, 0);
     }
 
     /** A stand-in of the value's size: the basic interpreter only reads sizes and the instruction. */
@@ -99,8 +104,8 @@ final class ParameterFlows {
         return value.size() == 2 ? BasicValue.LONG_VALUE : BasicValue.REFERENCE_VALUE;
     }
 
-    /** A value's size in slots, and the parameters it's made from, one bit each. */
-    private record Held(int size, long bits) implements Value {
+    /** A value's size in slots, the parameters it's made from, one bit each, and those it is the object of. */
+    private record Held(int size, long bits, long whole) implements Value {
 
         @Override
         public int getSize() {
@@ -108,7 +113,7 @@ final class ParameterFlows {
         }
 
         Held union(Held other) {
-            return new Held(size, bits | other.bits());
+            return new Held(size, bits | other.bits(), whole | other.whole());
         }
     }
 
@@ -139,13 +144,14 @@ final class ParameterFlows {
             if (type == Type.VOID_TYPE) {
                 return null;
             }
-            return new Held(type == null ? 1 : type.getSize(), 0);
+            return new Held(type == null ? 1 : type.getSize(), 0, 0);
         }
 
         @Override
         public Held newParameterValue(boolean isInstanceMethod, int local, Type type) {
             int position = local < positions.length ? positions[local] : -1;
-            return new Held(type.getSize(), position < 0 ? 0 : 1L << position);
+            long bit = position < 0 ? 0 : 1L << position;
+            return new Held(type.getSize(), bit, bit);
         }
 
         @Override
@@ -160,7 +166,8 @@ final class ParameterFlows {
 
         @Override
         public @Nullable Held unaryOperation(AbstractInsnNode instruction, Held value) throws AnalyzerException {
-            return held(sizes.unaryOperation(instruction, basic(value)), value.bits());
+            Held made = held(sizes.unaryOperation(instruction, basic(value)), value.bits());
+            return made != null && instruction.getOpcode() == Opcodes.CHECKCAST ? value : made;
         }
 
         @Override

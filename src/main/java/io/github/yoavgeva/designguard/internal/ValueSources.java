@@ -10,14 +10,13 @@ import java.util.stream.Stream;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
-import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
- * Walks back from a value to what it was made of, through a method's data flow: the operands of arithmetic,
- * {@code BigDecimal} and {@code BigInteger} arithmetic and string concatenation, conversions and casts, and the stores
- * into the locals it was loaded from.
+ * Walks back from a value to what it was made of, through a method's data flow: the operands of arithmetic and of
+ * {@code BigDecimal} and {@code BigInteger} arithmetic, conversions and casts, and the stores into the locals it was
+ * loaded from. Concatenating strings formats a value, as {@code "ROLE_" + name} does, rather than counting with it.
  */
 final class ValueSources {
 
@@ -77,13 +76,11 @@ final class ValueSources {
         return origin;
     }
 
-    /** Whether the instruction makes a new value from its operands: arithmetic, or concatenation. */
+    /** Whether the instruction makes a new number from its operands. */
     private static boolean computes(AbstractInsnNode instruction) {
         return isArithmetic(instruction.getOpcode())
-                || instruction instanceof MethodInsnNode call && (NUMBERS.contains(call.owner)
-                        && NUMBER_ARITHMETIC.contains(call.name)
-                        || "java/lang/String".equals(call.owner) && "concat".equals(call.name))
-                || instruction instanceof InvokeDynamicInsnNode dynamic && "makeConcatWithConstants".equals(dynamic.name);
+                || instruction instanceof MethodInsnNode call && NUMBERS.contains(call.owner)
+                        && NUMBER_ARITHMETIC.contains(call.name);
     }
 
     private static boolean isArithmetic(int opcode) {
@@ -111,9 +108,6 @@ final class ValueSources {
         }
         if (instruction instanceof MethodInsnNode call && (computes(call) || CONVERSIONS.contains(call.name))) {
             return Type.getArgumentTypes(call.desc).length + (call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : 1);
-        }
-        if (instruction instanceof InvokeDynamicInsnNode dynamic && computes(dynamic)) {
-            return Type.getArgumentTypes(dynamic.desc).length;
         }
         return 0;
     }

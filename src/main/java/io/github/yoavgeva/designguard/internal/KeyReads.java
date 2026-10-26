@@ -124,6 +124,6 @@ final class KeyReads {
      * @return the flows, in code order
      */
     List<ParameterFlows.Flow> flowsOf(JavaCodeUnit unit) {
-        return bytecode.factsOf(unit.getOwner()).parameterFlows().getOrDefault(unit.getName() + unit.getDescriptor(), List.of());
+        return bytecode.factsOf(unit.getOwner()).dataFlows().get().parameterFlows().getOrDefault(unit.getName() + unit.getDescriptor(), List.of());
     }
 }

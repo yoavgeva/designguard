@@ -96,6 +96,8 @@ final class LegacyShop {
                 .add("StockRepository", "package shop.legacy.data;\n\npublic interface StockRepository extends "
                         + "org.springframework.data.repository.CrudRepository<Stock, Long> {\n}\n")
                 .add("AccountForm", "package shop.legacy.data;\n\npublic record AccountForm(String email, String role) {\n}\n")
+                .add("AccountForms", "package shop.legacy.data;\n\npublic interface AccountForms extends "
+                        + "org.springframework.data.repository.CrudRepository<AccountForm, Long> {\n}\n")
                 .add("StockController", """
                         package shop.legacy.data;
 
@@ -107,9 +109,11 @@ final class LegacyShop {
                         @org.springframework.web.bind.annotation.RestController
                         public class StockController {
                             private final StockRepository stocks;
+                            private final AccountForms forms;
 
-                            public StockController(StockRepository stocks) {
+                            public StockController(StockRepository stocks, AccountForms forms) {
                                 this.stocks = stocks;
+                                this.forms = forms;
                             }
 
                             @GetMapping
@@ -123,8 +127,8 @@ final class LegacyShop {
                             }
 
                             @PutMapping
-                            public String account(@RequestBody AccountForm form) {
-                                return form.email();
+                            public AccountForm account(@RequestBody AccountForm form) {
+                                return forms.save(form);
                             }
 
                             @PutMapping

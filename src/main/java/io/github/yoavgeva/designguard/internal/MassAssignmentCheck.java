@@ -17,14 +17,16 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Finds request handlers that bind the request to a type with a privileged property: one that grants access, as
- * {@code role} and {@code admin} do, names an owner, as {@code userId} and {@code tenantId} do, or records a check the
- * server makes, as {@code verified} and {@code confirmedAt} do. Whoever sends the request can set it on their own
- * account, so passing the current user doesn't help. A handler parameter binds the request when it's
- * {@code @RequestBody}, {@code @ModelAttribute} or {@code @BeanParam}, or a project type with no annotation naming
- * another source, as Spring binds a form and JAX-RS a body. A property binds when a public setter, a public field or a
- * record component sets it, and isn't {@code @JsonIgnore}d. A handler that method security or a permission check
- * guards passes: an admin may set roles.
+ * Finds request handlers that save the object they bind the request to as it is, when it has a privileged property:
+ * one that grants access, as {@code role} and {@code admin} do, names an owner, as {@code userId}, {@code tenantId} and
+ * a {@code user} or {@code owner} relation do, or records a check the server makes, as {@code verified} and {@code confirmedAt} do. Whoever
+ * sends the request can set it on their own account, so passing the current user doesn't help. A handler parameter
+ * binds the request when it's {@code @RequestBody}, {@code @ModelAttribute} or {@code @BeanParam}, or a project type
+ * with no annotation naming another source, as Spring binds a form and JAX-RS a body. A property binds when a public
+ * setter, a public field or a record component sets it, and isn't {@code @JsonIgnore}d. The object is saved when it,
+ * not values copied from it one by one, reaches a database client's write or a copy of all its properties
+ * ({@link SavedObjects}); properties the code sets on it on the way are the code's. A handler that method security or
+ * a permission check guards passes: an admin may set roles.
  */
 public final class MassAssignmentCheck {
 
@@ -40,6 +42,8 @@ public final class MassAssignmentCheck {
             "RequestAttribute", "SessionAttribute", "MatrixVariable", "RequestPart", "AuthenticationPrincipal",
             "CurrentSecurityContext", "PathParam", "QueryParam", "HeaderParam", "CookieParam", "FormParam", "MatrixParam",
             "Context", "Suspended");
+    /** Relations to an owner: privileged when they hold a record, as a {@code User}, not a name, as an SMTP user is. */
+    private static final Set<String> OWNERS = Set.of("user", "owner", "tenant");
     private static final String IGNORED = "JsonIgnore";
     private static final String SETTER = "set";
 
@@ -52,6 +56,7 @@ public final class MassAssignmentCheck {
      */
     public List<Violation> check(CodeBase code, ClassFilter filter) {
         ProjectClasses classes = code.projectClasses();
+        Memo<SavedObjects> saves = new Memo<>(() -> new SavedObjects(classes));
         Memo<Set<String>> checking = new Memo<>(() -> RequestHandlers.checkingPermissions(classes));
         return classes.stream()
                 .filter(type -> classes.selected(filter, type))
@@ -59,7 +64,7 @@ public final class MassAssignmentCheck {
                         .filter(method -> classes.selected(filter, method) && RequestHandlers.isHandler(type, method))
                         .flatMap(handler -> handler.getParameters().stream()
                                 .filter(parameter -> binds(parameter) && classes.isProject(parameter.getRawType()))
-                                .flatMap(parameter -> violation(classes, type, handler, parameter.getRawType()).stream())
+                                .flatMap(parameter -> violation(classes, type, handler, parameter, saves).stream())
                                 .filter(violation -> !RequestHandlers.isSecured(type, handler)
                                         && !checking.get().contains(handler.getFullName()))))
                 .sorted(Scopes.BY_LOCATION)
@@ -72,36 +77,49 @@ public final class MassAssignmentCheck {
         return annotations.stream().anyMatch(BINDING::contains) || annotations.stream().noneMatch(OTHER_SOURCES::contains);
     }
 
-    private static Optional<Violation> violation(ProjectClasses classes, JavaClass type, JavaMethod handler, JavaClass bound) {
-        List<String> properties = privilegedProperties(bound);
-        if (properties.isEmpty()) {
+    /** A violation when the handler saves the bound object as it is, with privileged properties the request set. */
+    private static Optional<Violation> violation(ProjectClasses classes, JavaClass type, JavaMethod handler,
+            JavaParameter parameter, Memo<SavedObjects> saves) {
+        JavaClass bound = parameter.getRawType();
+        List<String> privileged = privilegedProperties(bound);
+        if (privileged.isEmpty()) {
             return Optional.empty();
         }
-        String listed = list(properties);
-        String them = properties.size() == 1 ? "it" : "them";
-        return Optional.of(classes.violation(RULE, type, handler.getSourceCodeLocation().getLineNumber(),
-                ProjectClasses.nameOf(type) + "." + handler.getName() + "() binds the request to "
-                        + ProjectClasses.nameOf(bound) + ", which lets it set " + listed,
-                "leave " + listed + " out of " + ProjectClasses.nameOf(bound) + ", or mark " + them + " @JsonIgnore, and set "
-                        + them + " from the current user, or in a handler that checks permissions with @PreAuthorize"));
+        return saves.get().of(handler, parameter.getIndex())
+                .flatMap(saved -> {
+                    List<String> properties = privileged.stream().filter(name -> !saved.set().contains(name)).toList();
+                    if (properties.isEmpty()) {
+                        return Optional.empty();
+                    }
+                    String listed = list(properties);
+                    String them = properties.size() == 1 ? "it" : "them";
+                    return Optional.of(classes.violation(RULE, type, saved.line(), ProjectClasses.nameOf(type) + "."
+                                    + handler.getName() + "() saves the request's " + ProjectClasses.nameOf(bound)
+                                    + " through " + saved.description() + ", so the request can set " + listed,
+                            "leave " + listed + " out of " + ProjectClasses.nameOf(bound) + ", or mark " + them
+                                    + " @JsonIgnore, and set " + them + " from the current user, or in a handler that "
+                                    + "checks permissions with @PreAuthorize"));
+                });
     }
 
     /** The privileged properties a request can set on the type, sorted by name. */
     private static List<String> privilegedProperties(JavaClass type) {
-        Stream<String> setters = type.getAllMethods().stream()
+        Stream<Property> setters = type.getAllMethods().stream()
                 .filter(method -> method.getName().length() > SETTER.length() && method.getName().startsWith(SETTER)
                         && method.getRawParameterTypes().size() == 1 && method.getModifiers().contains(JavaModifier.PUBLIC)
                         && !method.getModifiers().contains(JavaModifier.STATIC) && !isIgnored(method.getAnnotations()))
-                .map(method -> Introspector.decapitalize(method.getName().substring(SETTER.length())));
-        Stream<String> fields = type.getAllFields().stream()
+                .map(method -> new Property(Introspector.decapitalize(method.getName().substring(SETTER.length())),
+                        method.getRawParameterTypes().get(0)));
+        Stream<Property> fields = type.getAllFields().stream()
                 .filter(field -> !field.getModifiers().contains(JavaModifier.STATIC)
                         && (field.getModifiers().contains(JavaModifier.PUBLIC) && !field.getModifiers().contains(JavaModifier.FINAL)
                                 || isRecord(field.getOwner())))
-                .map(JavaField::getName);
+                .map(field -> new Property(field.getName(), field.getRawType()));
         Set<String> hidden = type.getAllFields().stream().filter(field -> isIgnored(field.getAnnotations()))
                 .map(JavaField::getName).collect(Collectors.toSet());
         return Stream.concat(setters, fields)
-                .filter(name -> PRIVILEGED.contains(name.replace("_", "").toLowerCase(Locale.ROOT)) && !hidden.contains(name))
+                .filter(property -> property.isPrivileged() && !hidden.contains(property.name()))
+                .map(Property::name)
                 .distinct()
                 .sorted()
                 .toList();
@@ -118,5 +136,15 @@ public final class MassAssignmentCheck {
     private static String list(List<String> names) {
         return names.size() == 1 ? names.get(0)
                 : String.join(", ", names.subList(0, names.size() - 1)) + " and " + names.get(names.size() - 1);
+    }
+
+    /** A property a request can set, by its name and type. */
+    private record Property(String name, JavaClass type) {
+
+        boolean isPrivileged() {
+            String normalized = name.replace("_", "").toLowerCase(Locale.ROOT);
+            return PRIVILEGED.contains(normalized)
+                    || OWNERS.contains(normalized) && !type.isPrimitive() && !type.getPackageName().startsWith("java.");
+        }
     }
 }

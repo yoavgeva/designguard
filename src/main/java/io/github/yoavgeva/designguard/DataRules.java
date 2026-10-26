@@ -19,14 +19,16 @@ public final class DataRules {
     }
 
     /**
-     * Fails on request handlers that bind the request to a type with a privileged property: one that grants access, as
-     * {@code role}, {@code admin} and {@code authorities} do, names an owner, as {@code userId}, {@code ownerId} and
-     * {@code tenantId} do, or records a check the server makes, as {@code verified}, {@code confirmedAt} and
-     * {@code approved} do. Whoever sends the request can set it on their own account. A parameter binds the request
-     * when it's {@code @RequestBody}, {@code @ModelAttribute}, {@code @BeanParam}, or a project type without an
-     * annotation naming another source; a property binds when a public setter, a public field or a record component sets
-     * it, and isn't {@code @JsonIgnore}d. A handler that method security or a permission check guards passes, as
-     * {@link GuardrailRules#writesAreAuthorized()} reads one: an admin may set roles.
+     * Fails on request handlers that save the object they bind the request to as it is, when it has a privileged
+     * property: one that grants access, as {@code role}, {@code admin} and {@code authorities} do, names an owner, as
+     * {@code userId}, {@code ownerId} and {@code tenantId} do, or records a check the server makes, as
+     * {@code verified}, {@code confirmedAt} and {@code approved} do. Whoever sends the request can set it on their own
+     * account. A parameter binds the request when it's {@code @RequestBody}, {@code @ModelAttribute},
+     * {@code @BeanParam}, or a project type without an annotation naming another source; it's saved when it, not values
+     * copied from it one by one, reaches a repository's {@code save}, an {@code EntityManager}'s {@code merge}, a
+     * mapper's {@code insert} or {@code update}, or {@code BeanUtils.copyProperties}. Properties the code sets on it on
+     * the way, and {@code @JsonIgnore}d ones, are the code's. A handler that method security or a permission check
+     * guards passes, as {@link GuardrailRules#writesAreAuthorized()} reads one: an admin may set roles.
      *
      * @return the rule
      */
