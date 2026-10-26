@@ -366,9 +366,11 @@
             <extensions>true</extensions>
             <configuration>
               <publishingServerId>central</publishingServerId>
-              <!-- Uploads and validates; the release is published by hand in the Central Portal. -->
-              <autoPublish>false</autoPublish>
-              <waitUntil>validated</waitUntil>
+              <!-- Publishes once Central has validated the upload, and waits until Maven Central has it, which can
+                   take half an hour or more. -->
+              <autoPublish>true</autoPublish>
+              <waitUntil>published</waitUntil>
+              <waitMaxTime>3600</waitMaxTime>
             </configuration>
           </plugin>
         </plugins>

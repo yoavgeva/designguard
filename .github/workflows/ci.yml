@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The release workflow runs CI on its commits before main takes them.
+  workflow_dispatch:
 
 permissions:
   contents: read
