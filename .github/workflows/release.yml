@@ -1,45 +1,114 @@
 name: Release
 
-# Publishes a version to Maven Central when its tag is pushed, e.g. v0.1.0. See docs/releasing.md.
+# Releases to Maven Central in one run, from the Actions tab (Release, then Run workflow) or with
+# `gh workflow run release.yml`. See docs/releasing.md.
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to release, such as 1.0.0. Empty releases the one in pom.xml, without -SNAPSHOT.
+        required: false
 
 permissions:
-  contents: read
+  contents: write # push the release tag, and main
+  actions: write # run CI on the new commits
+
+concurrency:
+  group: release
 
 jobs:
-  publish:
-    name: Publish to Maven Central
+  release:
+    name: Release to Maven Central
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     # Holds the secrets; add required reviewers to it to approve each release.
     environment: maven-central
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
 
       # Java and Maven versions come from mise.toml, the same as CI and a local build.
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
 
-      - name: Check that the tag names the project's version
+      - name: Choose the version
+        env:
+          REQUESTED: ${{ inputs.version }}
         run: |
-          version=$(mvn -B -q -ntp org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate \
+          current=$(mvn -B -q -ntp org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate \
             -Dexpression=project.version -DforceStdout)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tag $GITHUB_REF_NAME doesn't match the version in pom.xml, $version"
+          version=${REQUESTED:-${current%-SNAPSHOT}}
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$version isn't a version like 1.2.3"
             exit 1
           fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+            echo "::error::v$version is already released"
+            exit 1
+          fi
+          IFS=. read -r major minor _ <<< "$version"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "NEXT=$major.$((minor + 1)).0-SNAPSHOT" >> "$GITHUB_ENV"
+
+      # The release commit sets the version in pom.xml and the README's install snippets, and the next commit
+      # starts the next snapshot.
+      - name: Commit the release and the next snapshot
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mvn -B -q -ntp versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+          sed -i -E -e "s/(io\.github\.yoavgeva:designguard:)[^\"]+/\1$VERSION/" \
+            -e "/<artifactId>designguard<\/artifactId>/{n;s#<version>[^<]*</version>#<version>$VERSION</version>#}" \
+            README.md
+          if [ "$(grep -c -e "designguard:$VERSION\"" -e "<version>$VERSION</version>" README.md)" -ne 2 ]; then
+            echo "::error::the README's install snippets didn't take version $VERSION"
+            exit 1
+          fi
+          git commit -q -am "Release $VERSION"
+          git tag -a "v$VERSION" -m "designguard $VERSION"
+          mvn -B -q -ntp versions:set -DnewVersion="$NEXT" -DgenerateBackupPoms=false
+          git commit -q -am "Start $NEXT"
+
+      # main requires CI to pass, on Java 17, 21, 25 and 27, before it takes a commit. CI runs on the next
+      # snapshot, whose code is the release's, so nothing is published if it fails.
+      - name: Run CI on the new commits
+        run: |
+          branch="release/v$VERSION"
+          head=$(git rev-parse HEAD)
+          echo "HEAD_COMMIT=$head" >> "$GITHUB_ENV"
+          git push --force origin "HEAD:refs/heads/$branch"
+          gh workflow run ci.yml --ref "$branch"
+          for attempt in $(seq 30); do
+            run=$(gh run list --workflow ci.yml --branch "$branch" --json databaseId,headSha \
+              --jq ".[] | select(.headSha == \"$head\") | .databaseId" | head -1)
+            [ -n "$run" ] && break
+            sleep 5
+          done
+          gh run watch "$run" --exit-status --interval 30 > /dev/null
 
       - name: Import the signing key
         run: printf '%s\n' "$MAVEN_GPG_PRIVATE_KEY" | gpg --batch --import
         env:
           MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
 
-      # Runs the whole build, tests and checks included, then signs and uploads. The upload waits until Central has
-      # validated it; publishing it is a click in the Central Portal.
-      - name: Build, sign and upload
-        run: mvn -B -ntp -P release -s .github/release-settings.xml deploy
+      # Runs the whole build again, tests and checks included, on the release commit, then signs, uploads and
+      # publishes it, and waits until Maven Central has it.
+      - name: Build, sign and publish
+        run: |
+          git checkout -q "v$VERSION"
+          mvn -B -ntp -P release -s .github/release-settings.xml deploy
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
           CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
           CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+
+      - name: Push the tag, and move main to the new commits
+        run: |
+          git push origin "v$VERSION"
+          if ! git push origin "$HEAD_COMMIT:refs/heads/main"; then
+            echo "::error::$VERSION is published and tagged, but main moved during the release: merge release/v$VERSION into main"
+            exit 1
+          fi
+          git push origin --delete "release/v$VERSION"

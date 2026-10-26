@@ -1,9 +1,7 @@
 # Releasing designguard
 
-Releases go to Maven Central as `io.github.yoavgeva:designguard`, through the Sonatype Central Portal. Pushing a tag
-like `v0.1.0` runs [the release workflow](../.github/workflows/release.yml). It runs the whole build, signs the jar,
-sources and javadoc, and uploads them. The upload waits until Central has validated it; publishing it is a click in
-the portal.
+Releases go to Maven Central as `io.github.yoavgeva:designguard`, through the Sonatype Central Portal. One run of
+[the release workflow](../.github/workflows/release.yml) does a whole release, with nothing to do by hand.
 
 ## One-time setup
 
@@ -13,10 +11,12 @@ the portal.
 3. **Signing key.** Create a key with a passphrase, and publish its public half so Central can check signatures:
 
    ```sh
-   gpg --quick-generate-key "Yoav Geva <address>" ed25519 sign 3y
+   gpg --quick-generate-key "designguard Releases" rsa4096 sign 3y
    gpg --keyserver keyserver.ubuntu.com --send-keys <key id>
    gpg --armor --export-secret-keys <key id>     # the value of MAVEN_GPG_PRIVATE_KEY
    ```
+
+   The key's name is public on the keyserver, so it names no email address.
 
 4. **Secrets.** In the GitHub repository, create the environment `maven-central`, under *Settings* → *Environments*.
    Optionally add yourself as a required reviewer, to approve each release. Give it four secrets:
@@ -30,21 +30,23 @@ the portal.
 
 ## Each release
 
-1. Set the version, without `-SNAPSHOT`, and update the README's install snippet:
+Run the release workflow: in GitHub, *Actions* → *Release* → *Run workflow*, or
 
-   ```sh
-   mise exec -- mvn versions:set -DnewVersion=0.1.0 -DgenerateBackupPoms=false
-   ```
+```sh
+gh workflow run release.yml
+```
 
-2. Merge that through a pull request, then tag the merge commit and push the tag:
+It releases the version in `pom.xml` without `-SNAPSHOT`, such as `0.2.0` from `0.2.0-SNAPSHOT`.
+`gh workflow run release.yml -f version=1.0.0` releases another. In one run, it:
 
-   ```sh
-   git tag v0.1.0 && git push origin v0.1.0
-   ```
+1. commits the release, which sets the version in `pom.xml` and the README's install snippets, and tags it `v0.2.0`;
+2. commits the next snapshot, `0.3.0-SNAPSHOT`, and runs CI on it on Java 17, 21, 25 and 27, since `main` takes
+   only commits CI has passed;
+3. builds the release commit again, tests and checks included, signs it, publishes it to Maven Central and waits
+   until Central has it, which can take half an hour or more;
+4. pushes the tag, and moves `main` to the two commits.
 
-   The workflow fails if the tag doesn't match the version in `pom.xml`.
-3. When the workflow is green, open *Deployments* in the portal and publish the validated upload. It reaches Maven
-   Central within about half an hour.
-4. Set the next snapshot version, e.g. `0.2.0-SNAPSHOT`, in another pull request.
+Nothing is published if the version is already released, CI fails or Central rejects the upload. If `main` moved
+during the run, the release is out and tagged, and the run says to merge its `release/v…` branch into `main`.
 
 To build the release artifacts locally without signing: `mise exec -- mvn -P release -Dgpg.skip verify`.
