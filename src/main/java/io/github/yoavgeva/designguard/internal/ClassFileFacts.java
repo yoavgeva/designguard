@@ -59,16 +59,21 @@ import org.objectweb.asm.tree.VarInsnNode;
  *                         name and descriptor, the {@link AccessorChanges changes} it makes, lazy initialization aside
  * @param threadFactoryCalls for each method that creates thread factories for executors, the
  *                         {@link ThreadFactoryCalls calls} made in them
+ * @param derivedWrites    for each method that writes a property from its own old value, by name and descriptor, the
+ *                         {@link DerivedWrites writes}
+ * @param parameterFlows   for each method whose parameters flow into calls, by name and descriptor, the
+ *                         {@link ParameterFlows flows}
  */
 record ClassFileFacts(int release, List<Reference> creations, List<Reference> switchLabels,
         List<Reference> namedClasses, Map<String, Set<String>> directCalls, Map<String, Set<String>> superCalls,
         Map<String, Set<String>> restoredInterrupts, Map<String, Set<String>> consoleCalls,
         Map<String, Set<String>> parameterCalls, Loops loops,
-        Map<String, List<AccessorChanges.FieldChange>> accessorChanges, Map<String, Set<String>> threadFactoryCalls) {
+        Map<String, List<AccessorChanges.FieldChange>> accessorChanges, Map<String, Set<String>> threadFactoryCalls,
+        Map<String, List<DerivedWrites.DerivedWrite>> derivedWrites, Map<String, List<ParameterFlows.Flow>> parameterFlows) {
 
     /** For a class without a class file to read. */
     static final ClassFileFacts UNREAD = new ClassFileFacts(0, List.of(), List.of(), List.of(), Map.of(), Map.of(),
-            Map.of(), Map.of(), Map.of(), new Loops(Map.of(), Map.of(), Map.of()), Map.of(), Map.of());
+            Map.of(), Map.of(), Map.of(), new Loops(Map.of(), Map.of(), Map.of()), Map.of(), Map.of(), Map.of(), Map.of());
 
     /** Java N writes class files of major version N + 44. */
     private static final int CLASS_FILE_VERSION_OFFSET = 44;
@@ -89,6 +94,8 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
         parameterCalls = Map.copyOf(parameterCalls);
         accessorChanges = Map.copyOf(accessorChanges);
         threadFactoryCalls = Map.copyOf(threadFactoryCalls);
+        derivedWrites = Map.copyOf(derivedWrites);
+        parameterFlows = Map.copyOf(parameterFlows);
     }
 
     /**
@@ -126,7 +133,15 @@ record ClassFileFacts(int release, List<Reference> creations, List<Reference> sw
                 new Loops(byMethod(node, method -> Loops.callsInLoops(method, analyses.get(method))),
                         byMethod(node, Loops::iteratedLambdas),
                         byMethod(node, method -> Loops.lambdaBodyCalls(method, captured, analyses.get(method)))),
-                AccessorChanges.of(node), ThreadFactoryCalls.in(node));
+                AccessorChanges.of(node), ThreadFactoryCalls.in(node),
+                node.methods.stream()
+                        .map(method -> Map.entry(method.name + method.desc, DerivedWrites.in(method, analyses.get(method))))
+                        .filter(entry -> !entry.getValue().isEmpty())
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (first, second) -> first)),
+                node.methods.stream()
+                        .map(method -> Map.entry(method.name + method.desc, ParameterFlows.in(node.name, method)))
+                        .filter(entry -> !entry.getValue().isEmpty())
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (first, second) -> first)));
     }
 
     /** The non-virtual calls of methods the method makes, keyed with their line: {@code super.m()} and private methods. */

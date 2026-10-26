@@ -62,6 +62,14 @@ final class RequestHandlers {
                 || checking.contains(handler.getFullName());
     }
 
+    /**
+     * Whether the method itself checks who's asking: it carries method security, or takes or asks for the current user,
+     * as a helper that loads a record and then checks its owner does.
+     */
+    static boolean readsTheUser(JavaClass type, JavaMethod method) {
+        return isSecured(type, method) || takesTheCurrentUser(method) || asksForTheCurrentUser(type, method);
+    }
+
     /** Whether the handler or its class carries method security, such as {@code @PreAuthorize}. */
     static boolean isSecured(JavaClass type, JavaMethod method) {
         return Stream.concat(names(method.getAnnotations()).stream(), ProjectClasses.annotationNames(type).stream())

@@ -2,6 +2,7 @@ package io.github.yoavgeva.designguard;
 
 import io.github.yoavgeva.designguard.internal.CodeBase;
 import io.github.yoavgeva.designguard.internal.FloatingPointMoneyCheck;
+import io.github.yoavgeva.designguard.internal.LostUpdatesCheck;
 import io.github.yoavgeva.designguard.internal.MassAssignmentCheck;
 import io.github.yoavgeva.designguard.internal.UnboundedQueriesCheck;
 
@@ -31,6 +32,21 @@ public final class DataRules {
      */
     public BasicRule noMassAssignment() {
         return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new MassAssignmentCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on JPA entities updated from a value read before: a method that sets an {@code @Entity}'s property from its
+     * own old value, as {@code product.setStock(product.getStock() - quantity)} does, or calls the entity's method that
+     * does, as {@code product.decreaseStock(quantity)} doing {@code stock -= quantity} does. Two requests at once both
+     * read the same value, and the second write undoes the first. It's flagged when the method, or one that calls it,
+     * is {@code @Transactional} or surely writes, and passes when the entity has a {@code @Version} field or the row is
+     * read with a lock: a repository method annotated {@code @Lock}, or an {@code EntityManager} call given a
+     * {@code LockModeType}.
+     *
+     * @return the rule
+     */
+    public BasicRule noLostUpdates() {
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new LostUpdatesCheck().check(codeBase, filter));
     }
 
     /**

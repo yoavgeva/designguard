@@ -1,5 +1,6 @@
 package io.github.yoavgeva.designguard;
 
+import io.github.yoavgeva.designguard.internal.AuthorizedReadsCheck;
 import io.github.yoavgeva.designguard.internal.AuthorizedWritesCheck;
 import io.github.yoavgeva.designguard.internal.CodeBase;
 import io.github.yoavgeva.designguard.internal.ServiceTestsCheck;
@@ -85,6 +86,20 @@ public final class GuardrailRules {
      */
     public BasicRule writesAreAuthorized() {
         return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new AuthorizedWritesCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on request handlers that read a record by a key the request sends with nothing checking that the user
+     * asking may see it: what a {@code @PathVariable} or {@code @RequestParam} holds flows, through the project code it
+     * is passed to, into a repository's {@code findById}, an {@code EntityManager}'s {@code find} or MyBatis-Plus's
+     * {@code selectById}. A handler passes on the terms {@link #writesAreAuthorized()} reads, and a read made in a
+     * method that checks the user itself passes. Many records are public by design, so this rule isn't recommended:
+     * point it at the handlers that show private data.
+     *
+     * @return the rule
+     */
+    public BasicRule readsAreAuthorized() {
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new AuthorizedReadsCheck().check(codeBase, filter));
     }
 
     /**
