@@ -15,9 +15,8 @@ src/main/java/shop/Checkout.java:7: error [inject-services] Checkout creates ser
 
 ## Install
 
-designguard is a test dependency. It needs Java 17 or later to run, and checks code compiled for any Java version.
-The first release, 0.1.0, is on its way to Maven Central; until then, `mise exec -- mvn install` a clone of this
-repository and depend on `0.1.0-SNAPSHOT`.
+designguard is a test dependency on Maven Central. It needs Java 17 or later to run, and checks code compiled for
+any Java version.
 
 ```xml
 <dependency>
