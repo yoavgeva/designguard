@@ -52,6 +52,7 @@ class RuleFiltersContractTest {
             rule("noRawThreads", g -> g.dependencies().noRawThreads()),
             rule("constructorsDoNoWork", g -> g.dependencies().constructorsDoNoWork()),
             rule("noQueriesInLoops", g -> g.dependencies().noQueriesInLoops()),
+            rule("noIoInTransactions", g -> g.dependencies().noIoInTransactions()),
             rule("stableDependencies", g -> g.dependencies().stableDependencies()),
             rule("infrastructureExceptionsStayOutOf", g -> g.architecture().infrastructureExceptionsStayOutOf(DOMAIN)),
             rule("entitiesStayOutOf", g -> g.architecture().entitiesStayOutOf(WEB)),
@@ -88,7 +89,10 @@ class RuleFiltersContractTest {
             rule("testsDontSleep", g -> g.tests().testsDontSleep()),
             rule("testsUseTheirSubject", g -> g.tests().testsUseTheirSubject()),
             rule("testsDontMockValues", g -> g.tests().testsDontMockValues()),
-            rule("noUnusedPublicCode", g -> g.guardrails().noUnusedPublicCode()));
+            rule("noUnusedPublicCode", g -> g.guardrails().noUnusedPublicCode()),
+            rule("noSwallowedErrors", g -> g.guardrails().noSwallowedErrors()),
+            rule("writesAreAuthorized", g -> g.guardrails().writesAreAuthorized()),
+            rule("noUnboundedWaits", g -> g.guardrails().noUnboundedWaits()));
 
     @TempDir
     private static Path directory;

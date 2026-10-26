@@ -17,6 +17,9 @@ final class SureEffects {
     private final Memo<Set<String>> withBodies;
     private final Memo<Set<String>> workingWhenRun;
     private final Memo<Set<String>> remoteWhenRun;
+    private final Memo<Set<String>> outsideWhenRun;
+    private final Memo<Set<String>> writingWhenRun;
+    private final DatabaseBoundary boundary;
 
     SureEffects(ProjectClasses classes, Effects effects, Overrides overrides, List<JavaClass> candidates) {
         this.classes = classes;
@@ -26,6 +29,9 @@ final class SureEffects {
         this.workingWhenRun = new Memo<>(() -> effects.surelyWhenRun(classes, candidates,
                 call -> effects.doesWork(classes.bytecode(), call)));
         this.remoteWhenRun = new Memo<>(() -> effects.surelyWhenRun(classes, candidates, effects::queriesRemotely));
+        this.boundary = new DatabaseBoundary(effects, new LibraryEffects(classes));
+        this.outsideWhenRun = new Memo<>(() -> effects.surelyWhenRun(classes, candidates, boundary::leaves));
+        this.writingWhenRun = new Memo<>(() -> effects.surelyWhenRun(classes, candidates, boundary::writes));
     }
 
     /**
@@ -44,6 +50,22 @@ final class SureEffects {
      */
     boolean queriesRemotely(JavaCodeUnitAccess<?> call) {
         return effects.queriesRemotely(call) || surely(call, remoteWhenRun);
+    }
+
+    /**
+     * Whether making the call surely reaches another system than the database right away, directly or through project
+     * code whose every implementation does: HTTP, messaging, mail or the network ({@link DatabaseBoundary#leaves}).
+     */
+    boolean leavesTheDatabase(JavaCodeUnitAccess<?> call) {
+        return boundary.leaves(call) || surely(call, outsideWhenRun);
+    }
+
+    /**
+     * Whether making the call surely changes data in a database right away, directly or through project code whose
+     * every implementation does ({@link DatabaseBoundary#writes}).
+     */
+    boolean writesToTheDatabase(JavaCodeUnitAccess<?> call) {
+        return boundary.writes(call) || surely(call, writingWhenRun);
     }
 
     private boolean surely(JavaCodeUnitAccess<?> call, Memo<Set<String>> whenRun) {

@@ -91,6 +91,24 @@ final class LibraryEffects {
             "org.springframework.cloud.openfeign.FeignClient", "org.springframework.web.service.annotation.HttpExchange",
             "org.eclipse.microprofile.rest.client.inject.RegisterRestClient", "io.micronaut.http.client.annotation.Client",
             "io.micronaut.configuration.kafka.annotation.KafkaClient", "io.micronaut.rabbitmq.annotation.RabbitClient");
+    /**
+     * The clients among those above that leave the database: HTTP, messaging, mail and cloud services. A transaction
+     * can't take back what they send.
+     */
+    private static final Set<String> OUTSIDE_THE_DATABASE = Set.of(
+            "org.springframework.web.client.RestOperations", "org.springframework.web.client.RestClient",
+            "org.springframework.web.reactive.function.client.WebClient", "okhttp3.Call", "okhttp3.Call$Factory",
+            "org.apache.http.client.HttpClient", "org.apache.hc.client5.http.classic.HttpClient",
+            "org.apache.hc.client5.http.async.HttpAsyncClient", "io.vertx.ext.web.client.WebClient",
+            "io.vertx.mutiny.ext.web.client.WebClient", "io.micronaut.http.client.HttpClient",
+            "org.springframework.kafka.core.KafkaOperations", "org.apache.kafka.clients.producer.Producer",
+            "org.springframework.amqp.core.AmqpTemplate", "org.springframework.jms.core.JmsOperations",
+            "org.eclipse.microprofile.reactive.messaging.Emitter", "io.smallrye.reactive.messaging.MutinyEmitter",
+            "org.springframework.mail.MailSender", "jakarta.mail.Transport", "javax.mail.Transport",
+            "io.quarkus.mailer.Mailer", "io.quarkus.mailer.reactive.ReactiveMailer", "io.micronaut.email.EmailSender",
+            "software.amazon.awssdk.core.SdkClient", "com.amazonaws.AmazonWebServiceClient");
+    /** The annotations of clients a library implements against a database, rather than another system. */
+    private static final Set<String> DATABASE_CLIENT_ANNOTATIONS = Set.of("org.apache.ibatis.annotations.Mapper");
     /** Packages of the annotations on the methods of an HTTP interface, as {@code @GetExchange} and Retrofit's are. */
     private static final Set<String> CLIENT_METHOD_ANNOTATIONS = Set.of("org.springframework.web.service.annotation",
             "retrofit2.http");
@@ -158,6 +176,17 @@ final class LibraryEffects {
         return isClientType(access.getTargetOwner()) && !constructs && !createsClient(target) && !configures(target)
                 || !constructs && target.resolveMember()
                         .filter(member -> ACTIVE_RECORDS.contains(member.getOwner().getName())).isPresent();
+    }
+
+    /**
+     * Whether the access calls a client of another system than the database: an HTTP, messaging, mail or cloud
+     * service client, or an interface a library implements as one, as a {@code @FeignClient} is.
+     */
+    boolean leavesTheDatabase(JavaCodeUnitAccess<?> access) {
+        return isCall(access) && selfAndSupertypes(access.getTargetOwner())
+                .anyMatch(type -> OUTSIDE_THE_DATABASE.contains(type.getName()) || isAnnotatedClient(type)
+                        && type.getAnnotations().stream().noneMatch(annotation ->
+                                DATABASE_CLIENT_ANNOTATIONS.contains(annotation.getRawType().getName())));
     }
 
     /** Whether the call configures the client: a setter, or a fluent method returning it, as {@code withTableName} is. */

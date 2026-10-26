@@ -190,6 +190,7 @@ The rules use a few terms:
 | **Dependencies** | [`interfacePolicy`](#interfacepolicy) | concrete dependencies where an interface is required | |
 | | [`injectServices`](#injectservices) | services created with `new`, reached through a singleton or looked up, outside wiring code | |
 | | [`noQueriesInLoops`](#noqueriesinloops) | a query made once per item, in a loop or a stream: N+1 | ✓ |
+| | [`noIoInTransactions`](#noiointransactions) | HTTP, messaging or mail inside a `@Transactional` method | ✓ |
 | | [`constructorsDoNoWork`](#constructorsdonowork) | constructors doing I/O or calling effectful code | ✓ |
 | | [`clockIsInjected`](#clockisinjected) | `LocalDate.now()`, `System.currentTimeMillis()`... instead of an injected `Clock` | |
 | | [`randomnessIsInjected`](#randomnessisinjected) | `new Random()`, `UUID.randomUUID()`... | |
@@ -220,6 +221,9 @@ The rules use a few terms:
 | | [`noWidenedForTests`](#nowidenedfortests) | package-private or protected methods only tests call | ✓ |
 | | [`serviceLikeClassesHaveTests`](#servicelikeclasseshavetests) | service-like classes without a `<Name>Test` | |
 | | [`noUnusedPublicCode`](#nounusedpubliccode) | public types and methods nothing uses (applications) | |
+| | [`noSwallowedErrors`](#noswallowederrors) | catch-alls that log and return `null`, fallbacks for every error | ✓ |
+| | [`writesAreAuthorized`](#writesareauthorized) | request handlers that write with no permission check or current user | |
+| | [`noUnboundedWaits`](#nounboundedwaits) | `Future.get()`, `block()` and HTTP clients without a timeout | ✓ |
 | **Tests** | [`testsAssertMeaningfully`](#testsassertmeaningfully) | tests asserting nothing, on constants, or a value against itself | ✓ |
 | | [`noDisabledTests`](#nodisabledtests) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` | ✓ |
 | | [`testsCheckResults`](#testscheckresults) | `verify(mock).query()` on methods that return a value | ✓ |
@@ -945,6 +949,89 @@ public class Checkout {
 
 </details>
 
+
+#### `noIoInTransactions`
+
+`GUARD.dependencies().noIoInTransactions()` · `no-io-in-transactions` · recommended
+
+A call to another system inside a transaction can't be rolled back: the customer is charged for an order that never
+saved. And the transaction holds its database connection while the other side answers, so a slow API drains the pool.
+
+```java
+import org.springframework.transaction.annotation.Transactional;
+
+public class Orders {
+    private final Connection db;
+    private final HttpClient http;
+
+    public Orders(Connection db, HttpClient http) {
+        this.db = db;
+        this.http = http;
+    }
+
+    @Transactional
+    public void place(String order) throws SQLException, IOException, InterruptedException {
+        PreparedStatement insert = db.prepareStatement("insert into orders (id) values (?)");
+        insert.setString(1, order);
+        insert.executeUpdate();
+        http.send(charge(order), HttpResponse.BodyHandlers.discarding());   // ✗ charges before the order commits
+    }
+
+    private static HttpRequest charge(String order) {
+        return HttpRequest.newBuilder(URI.create("https://pay.example.com/charges/" + order))
+                .timeout(Duration.ofSeconds(5))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+    }
+}
+```
+
+<details><summary>Fixed</summary>
+
+The transaction saves the order; the charge goes out after it commits.
+
+```java
+import org.springframework.transaction.annotation.Transactional;
+
+public class OrderStore {
+    private final Connection db;
+
+    public OrderStore(Connection db) {
+        this.db = db;
+    }
+
+    @Transactional
+    public void save(String order) throws SQLException {
+        PreparedStatement insert = db.prepareStatement("insert into orders (id) values (?)");
+        insert.setString(1, order);
+        insert.executeUpdate();
+    }
+}
+
+public class Orders {
+    private final OrderStore store;
+    private final HttpClient http;
+
+    public Orders(OrderStore store, HttpClient http) {
+        this.store = store;
+        this.http = http;
+    }
+
+    public void place(String order) throws SQLException, IOException, InterruptedException {
+        store.save(order);
+        http.send(charge(order), HttpResponse.BodyHandlers.discarding());
+    }
+
+    private static HttpRequest charge(String order) {
+        return HttpRequest.newBuilder(URI.create("https://pay.example.com/charges/" + order))
+                .timeout(Duration.ofSeconds(5))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+    }
+}
+```
+
+</details>
 #### `constructorsDoNoWork`
 
 `GUARD.dependencies().constructorsDoNoWork()` · `constructors-do-no-work` · recommended
@@ -2148,6 +2235,165 @@ public class Biller {
 public class Biller {
     public long total(long cents) {
         return cents + cents / 5;
+    }
+}
+```
+
+</details>
+
+
+#### `noSwallowedErrors`
+
+`GUARD.guardrails().noSwallowedErrors()` · `no-swallowed-errors` · recommended
+
+A handler that catches everything, logs, and returns `null` turns a failure into an answer: a rate service that's
+down reads as a currency with no rate, and nothing upstream knows to retry or report it.
+
+```java
+public class Rates {
+    private static final System.Logger LOG = System.getLogger("rates");
+
+    private final HttpClient http;
+
+    public Rates(HttpClient http) {
+        this.http = http;
+    }
+
+    public String rate(String currency) {
+        try {
+            return http.send(request(currency), HttpResponse.BodyHandlers.ofString()).body();
+        } catch (Exception e) {   // ✗ a failure reads as a missing rate
+            LOG.log(System.Logger.Level.WARNING, "no rate for " + currency, e);
+            return null;
+        }
+    }
+
+    private static HttpRequest request(String currency) {
+        return HttpRequest.newBuilder(URI.create("https://rates.example.com/" + currency))
+                .timeout(Duration.ofSeconds(5))
+                .build();
+    }
+}
+```
+
+<details><summary>Fixed</summary>
+
+The failure reaches the caller, which knows whether to retry, fall back or report it.
+
+```java
+public class Rates {
+    private final HttpClient http;
+
+    public Rates(HttpClient http) {
+        this.http = http;
+    }
+
+    public String rate(String currency) throws IOException, InterruptedException {
+        return http.send(request(currency), HttpResponse.BodyHandlers.ofString()).body();
+    }
+
+    private static HttpRequest request(String currency) {
+        return HttpRequest.newBuilder(URI.create("https://rates.example.com/" + currency))
+                .timeout(Duration.ofSeconds(5))
+                .build();
+    }
+}
+```
+
+</details>
+
+#### `writesAreAuthorized`
+
+`GUARD.guardrails().writesAreAuthorized()` · `writes-are-authorized`
+
+A request handler that changes a record by the id it's sent lets anyone change anyone's record. Endpoints that are
+public by design, such as sign-up and log-in, and ones a security filter chain authorizes by URL, belong in
+`excluding(...)`.
+
+```java
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class OrderController {
+    private final Connection db;
+
+    public OrderController(Connection db) {
+        this.db = db;
+    }
+
+    @PostMapping
+    public void cancel(String order) throws SQLException {
+        PreparedStatement update = db.prepareStatement("update orders set status = 'cancelled' where id = ?");
+        update.setString(1, order);
+        update.executeUpdate();   // ✗ cancels whichever order the id names, whoever asks
+    }
+}
+```
+
+<details><summary>Fixed</summary>
+
+The handler takes the current user, and the update only finds that user's orders.
+
+```java
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class OrderController {
+    private final Connection db;
+
+    public OrderController(Connection db) {
+        this.db = db;
+    }
+
+    @PostMapping
+    public void cancel(@AuthenticationPrincipal String user, String order) throws SQLException {
+        PreparedStatement update = db.prepareStatement(
+                "update orders set status = 'cancelled' where id = ? and owner = ?");
+        update.setString(1, order);
+        update.setString(2, user);
+        update.executeUpdate();
+    }
+}
+```
+
+</details>
+
+#### `noUnboundedWaits`
+
+`GUARD.guardrails().noUnboundedWaits()` · `no-unbounded-waits` · recommended
+
+A wait with no limit turns a hung report, server or peer into a hung thread, and every request waiting on that
+thread hangs too.
+
+```java
+public class Reports {
+    private final ExecutorService workers;
+
+    public Reports(ExecutorService workers) {
+        this.workers = workers;
+    }
+
+    public String build(Callable<String> report) throws InterruptedException, ExecutionException {
+        return workers.submit(report).get();   // ✗ waits forever if the report hangs
+    }
+}
+```
+
+<details><summary>Fixed</summary>
+
+```java
+public class Reports {
+    private final ExecutorService workers;
+
+    public Reports(ExecutorService workers) {
+        this.workers = workers;
+    }
+
+    public String build(Callable<String> report) throws InterruptedException, ExecutionException, TimeoutException {
+        return workers.submit(report).get(30, TimeUnit.SECONDS);
     }
 }
 ```

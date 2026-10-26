@@ -40,7 +40,8 @@ class RuleSetTest {
     void reportsWhatEachOfItsRulesReportsOrderedByLocation() {
         List<Violation> separately = Stream.<DesignRule<?>>of(
                         guard.guardrails().noStubs(), guard.guardrails().noSuppressions(),
-                        guard.guardrails().noWidenedForTests(),
+                        guard.guardrails().noWidenedForTests(), guard.guardrails().noSwallowedErrors(),
+                        guard.guardrails().noUnboundedWaits(), guard.dependencies().noIoInTransactions(),
                         guard.tests().testsAssertMeaningfully(), guard.tests().noDisabledTests(),
                         guard.tests().testsCheckResults(), guard.tests().testsUseTheirSubject(),
                         guard.tests().testsDontMockValues(), guard.tests().testsHaveNoLogic(),
@@ -63,7 +64,7 @@ class RuleSetTest {
     void namesEachRuleByTheIdItsViolationsCarry() {
         RuleSet recommended = guard.recommended();
 
-        assertThat(recommended.rules()).hasSize(24).doesNotHaveDuplicates();
+        assertThat(recommended.rules()).hasSize(27).doesNotHaveDuplicates();
         assertThat(recommended.evaluate().stream().map(Violation::rule).distinct())
                 .containsExactlyInAnyOrderElementsOf(recommended.rules());
     }
@@ -72,7 +73,7 @@ class RuleSetTest {
     void withoutLeavesOutRulesByTheirId() {
         RuleSet fewer = guard.recommended().without(NO_SUPPRESSIONS, NO_SLEEP);
 
-        assertThat(fewer.rules()).hasSize(22).doesNotContain(NO_SUPPRESSIONS, NO_SLEEP);
+        assertThat(fewer.rules()).hasSize(25).doesNotContain(NO_SUPPRESSIONS, NO_SLEEP);
         assertThat(fewer.evaluate()).isNotEmpty().extracting(Violation::rule).doesNotContain(NO_SUPPRESSIONS, NO_SLEEP);
     }
 
