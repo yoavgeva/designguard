@@ -44,7 +44,8 @@ It releases the version in `pom.xml` without `-SNAPSHOT`, such as `0.2.0` from `
    only commits CI has passed;
 3. builds the release commit again, tests and checks included, signs it, publishes it to Maven Central and waits
    until Central has it, which can take half an hour or more;
-4. pushes the tag, and moves `main` to the two commits.
+4. pushes the tag, creates its GitHub release with notes from the merged pull requests, and moves `main` to the two
+   commits.
 
 Nothing is published if the version is already released, CI fails or Central rejects the upload. If `main` moved
 during the run, the release is out and tagged, and the run says to merge its `release/v…` branch into `main`.
