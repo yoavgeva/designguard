@@ -57,7 +57,11 @@ record ReadmeExample(String id, boolean recommended, List<String> flagged, List<
     /** The framework annotations the examples use, which aren't on the test class path. */
     private static final Map<String, String> FRAMEWORK_STUBS = Map.of(
             "Service", stub("org.springframework.stereotype", "Service"),
-            "Entity", stub("jakarta.persistence", "Entity"));
+            "Entity", stub("jakarta.persistence", "Entity"),
+            "Transactional", stub("org.springframework.transaction.annotation", "Transactional"),
+            "RestController", stub("org.springframework.web.bind.annotation", "RestController"),
+            "PostMapping", stub("org.springframework.web.bind.annotation", "PostMapping"),
+            "AuthenticationPrincipal", stub("org.springframework.security.core.annotation", "AuthenticationPrincipal"));
 
     /**
      * Reads every rule's example from the README.

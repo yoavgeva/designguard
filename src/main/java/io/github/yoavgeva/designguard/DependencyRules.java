@@ -7,6 +7,7 @@ import io.github.yoavgeva.designguard.internal.InjectServicesCheck;
 import io.github.yoavgeva.designguard.internal.InterfacePolicyCheck;
 import io.github.yoavgeva.designguard.internal.QueriesInLoopsCheck;
 import io.github.yoavgeva.designguard.internal.StableDependenciesCheck;
+import io.github.yoavgeva.designguard.internal.TransactionIoCheck;
 import io.github.yoavgeva.designguard.model.InterfacePolicy;
 
 /**
@@ -88,6 +89,17 @@ public final class DependencyRules {
      */
     public BasicRule constructorsDoNoWork() {
         return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new ConstructorWorkCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on calls inside a transaction that leave the database: HTTP, messaging, mail or the network, made by a
+     * {@code @Transactional} method directly or through project code it calls. A rollback can't take them back, and
+     * the transaction holds its database connection while they wait.
+     *
+     * @return the rule
+     */
+    public BasicRule noIoInTransactions() {
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new TransactionIoCheck().check(codeBase, filter));
     }
 
     /**

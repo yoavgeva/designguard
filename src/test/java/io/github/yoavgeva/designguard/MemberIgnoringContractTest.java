@@ -28,6 +28,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class MemberIgnoringContractTest {
 
     private static final String PACKAGE = "package shop;\n\n";
+    private static final String RUNTIME = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n";
     private static final AnnotationName LEGACY = new AnnotationName("Legacy", "shop.Legacy");
     private static final Pattern TYPE_NAME = Pattern.compile("(?:class|interface|record|enum) (\\w+)");
     private static final String STRIPE_CLIENT = """
@@ -62,6 +63,35 @@ class MemberIgnoringContractTest {
                 member("configurationIsInjected", g -> g.dependencies().configurationIsInjected(), List.of(PACKAGE
                         + "public class Settings {\n    @Legacy\n    public String region() {\n"
                         + "        return System.getenv(\"REGION\");\n    }\n}\n"), List.of()),
+                member("noIoInTransactions", g -> g.dependencies().noIoInTransactions(), List.of(
+                        "package org.springframework.transaction.annotation;\n\n" + RUNTIME
+                                + "public @interface Transactional {\n}\n",
+                        PACKAGE + "public class Refunds {\n    @Legacy\n"
+                                + "    @org.springframework.transaction.annotation.Transactional\n"
+                                + "    public java.io.InputStream refund(java.net.URL bank) throws java.io.IOException {\n"
+                                + "        return bank.openStream();\n    }\n}\n"), List.of()),
+                member("noSwallowedErrors", g -> g.guardrails().noSwallowedErrors(), List.of(PACKAGE
+                        + "public class Rates {\n    @Legacy\n"
+                        + "    public String rate(java.util.function.Supplier<String> source) {\n        try {\n"
+                        + "            return source.get();\n        } catch (Exception e) {\n            return null;\n"
+                        + "        }\n    }\n}\n"), List.of()),
+                member("writesAreAuthorized", g -> g.guardrails().writesAreAuthorized(), List.of(
+                        "package org.springframework.web.bind.annotation;\n\n" + RUNTIME
+                                + "public @interface RestController {\n}\n",
+                        "package org.springframework.web.bind.annotation;\n\n" + RUNTIME
+                                + "public @interface PostMapping {\n}\n",
+                        "package org.springframework.data.repository;\n\npublic interface Repository<T, ID> {\n}\n",
+                        PACKAGE + "public interface Articles extends org.springframework.data.repository.Repository<String, "
+                                + "Long> {\n    String save(String article);\n}\n",
+                        PACKAGE + "@org.springframework.web.bind.annotation.RestController\npublic class ArticleController {\n"
+                                + "    private final Articles articles = null;\n\n    @Legacy\n"
+                                + "    @org.springframework.web.bind.annotation.PostMapping\n"
+                                + "    public String publish(String article) {\n        return articles.save(article);\n"
+                                + "    }\n}\n"), List.of()),
+                member("noUnboundedWaits", g -> g.guardrails().noUnboundedWaits(), List.of(PACKAGE
+                        + "public class Reports {\n    @Legacy\n"
+                        + "    public String result(java.util.concurrent.Future<String> future) throws Exception {\n"
+                        + "        return future.get();\n    }\n}\n"), List.of()),
                 member("noRawThreads", g -> g.dependencies().noRawThreads(), List.of(PACKAGE
                         + "public class Jobs {\n    @Legacy\n    public void run(Runnable job) {\n"
                         + "        new Thread(job).start();\n    }\n}\n"), List.of()),

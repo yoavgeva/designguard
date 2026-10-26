@@ -16,7 +16,7 @@ final class LegacyShop {
      * @return the project, for chaining
      */
     static CompiledProject write(CompiledProject project) {
-        return tests(misc(layers(project)));
+        return tests(reliability(misc(layers(project))));
     }
 
     /** Layers, MVC, hexagonal, onion, feature slices, stable dependencies and the boundaries. */
@@ -62,6 +62,51 @@ final class LegacyShop {
                 .add("Report", "package shop.legacy.reports;\n\npublic class Report {\n"
                         + "    public String render(shop.legacy.billing.Charge charge, shop.legacy.core.Money money) {\n"
                         + "        return charge.total(money) + \"\";\n    }\n}\n");
+    }
+
+    /** A transaction that calls a bank, an error swallowed, and a write nobody authorizes. */
+    private static CompiledProject reliability(CompiledProject project) {
+        String web = "package org.springframework.web.bind.annotation;\n\n" + RUNTIME;
+        return project
+                .add("Transactional", "package org.springframework.transaction.annotation;\n\n" + RUNTIME
+                        + "public @interface Transactional {\n}\n")
+                .add("RestController", web + "public @interface RestController {\n}\n")
+                .add("PostMapping", web + "public @interface PostMapping {\n}\n")
+                .add("Repository", "package org.springframework.data.repository;\n\npublic interface Repository<T, ID> {\n}\n")
+                .add("ArticleRepository", "package shop.legacy.web;\n\npublic interface ArticleRepository "
+                        + "extends org.springframework.data.repository.Repository<String, Long> {\n"
+                        + "    String save(String article);\n}\n")
+                .add("ArticleController", """
+                        package shop.legacy.web;
+
+                        @org.springframework.web.bind.annotation.RestController
+                        public class ArticleController {
+                            private final ArticleRepository articles;
+
+                            public ArticleController(ArticleRepository articles) {
+                                this.articles = articles;
+                            }
+
+                            @org.springframework.web.bind.annotation.PostMapping
+                            public String publish(String article) {
+                                return articles.save(article);
+                            }
+                        }
+                        """)
+                .add("Refunds", """
+                        package shop.legacy.pay;
+
+                        public class Refunds {
+                            @org.springframework.transaction.annotation.Transactional
+                            public String refund(java.net.URL bank) {
+                                try (java.io.InputStream answer = bank.openStream()) {
+                                    return new String(answer.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                                } catch (Exception e) {
+                                    return null;
+                                }
+                            }
+                        }
+                        """);
     }
 
     /** Services, values, effects, types and APIs that break the dependency, type, API and guardrail rules. */

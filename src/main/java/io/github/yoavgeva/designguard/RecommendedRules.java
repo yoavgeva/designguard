@@ -9,8 +9,8 @@ import java.util.List;
  * and Java version, and were rarely wrong on real projects. Left out are the architecture styles, which need
  * configuring; the functional-core and dependency-injection style rules; the sealed-type and record rules, which need
  * Java 17; the rules that public library APIs break by design, such as unused public code and minimal visibility;
- * and services-have-tests, which asks for one test class per service, a convention projects that test by feature
- * don't follow.
+ * services-have-tests, which asks for one test class per service, a convention projects that test by feature
+ * don't follow; and writes-are-authorized, which needs to know a project's public endpoints and URL security.
  */
 final class RecommendedRules {
 
@@ -27,6 +27,8 @@ final class RecommendedRules {
                 new RuleSet.Member("no-stubs", guardrails.noStubs()),
                 new RuleSet.Member("no-suppressions", guardrails.noSuppressions()),
                 new RuleSet.Member("no-widened-for-tests", guardrails.noWidenedForTests()),
+                new RuleSet.Member("no-swallowed-errors", guardrails.noSwallowedErrors()),
+                new RuleSet.Member("no-unbounded-waits", guardrails.noUnboundedWaits()),
                 new RuleSet.Member("meaningful-tests", tests.testsAssertMeaningfully()),
                 new RuleSet.Member("no-disabled-tests", tests.noDisabledTests()),
                 new RuleSet.Member("tests-check-results", tests.testsCheckResults()),
@@ -39,6 +41,7 @@ final class RecommendedRules {
                 new RuleSet.Member("tests-no-sleep", tests.testsDontSleep()),
                 new RuleSet.Member("class-cycles", new ArchitectureRules(code).classesHaveNoCycles()),
                 new RuleSet.Member("no-queries-in-loops", dependencies.noQueriesInLoops()),
+                new RuleSet.Member("no-io-in-transactions", dependencies.noIoInTransactions()),
                 new RuleSet.Member("constructors-do-no-work", dependencies.constructorsDoNoWork()),
                 new RuleSet.Member("no-raw-threads", dependencies.noRawThreads()),
                 new RuleSet.Member("accessors-change-nothing", api.accessorsChangeNothing()),

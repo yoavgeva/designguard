@@ -63,10 +63,10 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
 | Group | Rules |
 |---|---|
 | [Architecture](#architecture) | [`layered-architecture`](#layered-architecture), [`mvc-architecture`](#mvc-architecture), [`hexagonal-architecture`](#hexagonal-architecture), [`onion-architecture`](#onion-architecture), [`feature-slices`](#feature-slices), [`class-cycles`](#class-cycles), [`thin-adapters`](#thin-adapters), [`frameworks-stay-out`](#frameworks-stay-out), [`domain-exceptions`](#domain-exceptions), [`entities-stay-behind`](#entities-stay-behind) |
-| [Dependencies](#dependencies) | [`interface-policy`](#interface-policy), [`inject-services`](#inject-services), [`no-queries-in-loops`](#no-queries-in-loops), [`constructors-do-no-work`](#constructors-do-no-work), [`inject-clock`](#inject-clock), [`inject-randomness`](#inject-randomness), [`inject-configuration`](#inject-configuration), [`no-raw-threads`](#no-raw-threads), [`stable-dependencies`](#stable-dependencies) |
+| [Dependencies](#dependencies) | [`interface-policy`](#interface-policy), [`inject-services`](#inject-services), [`no-queries-in-loops`](#no-queries-in-loops), [`no-io-in-transactions`](#no-io-in-transactions), [`constructors-do-no-work`](#constructors-do-no-work), [`inject-clock`](#inject-clock), [`inject-randomness`](#inject-randomness), [`inject-configuration`](#inject-configuration), [`no-raw-threads`](#no-raw-threads), [`stable-dependencies`](#stable-dependencies) |
 | [Types](#types) | [`type-dispatch`](#type-dispatch), [`immutable-records`](#immutable-records), [`data-classes-are-records`](#data-classes-are-records), [`immutable-values`](#immutable-values), [`stateless-services`](#stateless-services), [`typed-identifiers`](#typed-identifiers), [`enums-over-constants`](#enums-over-constants), [`focused-interfaces`](#focused-interfaces), [`sealed-hierarchies`](#sealed-hierarchies), [`inheritance`](#inheritance) |
 | [API](#api) | [`no-flag-arguments`](#no-flag-arguments), [`null-marked`](#null-marked), [`optional-usage`](#optional-usage), [`no-checked-exceptions`](#no-checked-exceptions), [`no-effectful-static-methods`](#no-effectful-static-methods), [`typed-apis`](#typed-apis), [`no-stringly-typed-choices`](#no-stringly-typed-choices), [`accessors-change-nothing`](#accessors-change-nothing), [`minimal-visibility`](#minimal-visibility) |
-| [Guardrails](#guardrails) | [`no-stubs`](#no-stubs), [`no-suppressions`](#no-suppressions), [`no-widened-for-tests`](#no-widened-for-tests), [`services-have-tests`](#services-have-tests), [`no-unused-public-code`](#no-unused-public-code) |
+| [Guardrails](#guardrails) | [`no-stubs`](#no-stubs), [`no-suppressions`](#no-suppressions), [`no-widened-for-tests`](#no-widened-for-tests), [`services-have-tests`](#services-have-tests), [`no-unused-public-code`](#no-unused-public-code), [`no-swallowed-errors`](#no-swallowed-errors), [`writes-are-authorized`](#writes-are-authorized), [`no-unbounded-waits`](#no-unbounded-waits) |
 | [Tests](#tests) | [`meaningful-tests`](#meaningful-tests), [`no-disabled-tests`](#no-disabled-tests), [`tests-check-results`](#tests-check-results), [`tests-use-their-subject`](#tests-use-their-subject), [`tests-dont-mock-values`](#tests-dont-mock-values), [`tests-have-no-logic`](#tests-have-no-logic), [`tests-fixed-clock`](#tests-fixed-clock), [`tests-seeded-randomness`](#tests-seeded-randomness), [`tests-no-environment`](#tests-no-environment), [`tests-no-sleep`](#tests-no-sleep) |
 
 ## Architecture
@@ -448,6 +448,36 @@ public long total(List<String> items) {
 
 Fix: add a batch query to the collaborator, such as `prices.pricesOf(items)`, and call it once.
 
+
+### `no-io-in-transactions`
+
+`dependencies().noIoInTransactions()` · **recommended**
+
+Calls inside a transaction that leave the database are reported: a `@Transactional` method, Spring's or Jakarta's,
+or a public method of a `@Transactional` class, that calls HTTP, messaging, mail, a cloud service or the network,
+directly or through project code whose every implementation does. HTTP clients are Spring's `RestTemplate`,
+`RestClient` and `WebClient`, OkHttp, Apache HttpClient, Vert.x and Micronaut clients, the JDK's `java.net`, and the
+interfaces a library implements as one, as a `@FeignClient` or an `@HttpExchange` interface is; messaging is Kafka,
+AMQP, JMS and MicroProfile emitters; mail is Spring's `MailSender`, Jakarta Mail, Quarkus and Micronaut mailers; cloud
+services are the AWS SDKs. A method whose propagation suspends the transaction, `NOT_SUPPORTED` or `NEVER`, runs
+outside one. Each call is reported once per method. Transactions opened with `TransactionTemplate` aren't seen.
+
+Why: a rollback can't take back what went out, so a customer is charged or emailed for an order that never saved,
+and the transaction holds its connection while the other system answers, so a slow API drains the pool.
+
+```java
+@Transactional
+public void place(String order) throws Exception {
+    orders.save(order);
+    payments.charge(order);
+}
+```
+
+> OrderService.place() calls PaymentGateway.charge() inside a transaction, which leaves the database: a rollback can't take it back, and the transaction holds its connection while it waits
+> -> fix: make the call after the commit, as a @TransactionalEventListener(phase = AFTER_COMMIT) does, or record it in an outbox table in the transaction and send it after
+
+Fix: save in one transactional method, and make the call from its caller after it returns, or record the call in an
+outbox table and send it after the commit.
 ### `constructors-do-no-work`
 
 `dependencies().constructorsDoNoWork()` · **recommended**
@@ -1249,6 +1279,106 @@ Why: agents leave code behind that nothing uses, and it still has to be read and
 
 Fix: delete it.
 
+
+### `no-swallowed-errors`
+
+`guardrails().noSwallowedErrors()` · **recommended**
+
+Errors swallowed so callers can't tell a call failed are reported:
+- a `catch` of `Exception`, `RuntimeException` or `Throwable` whose block only logs, or prints the stack trace, then
+  returns a default, as `null`, a literal, a variable, an empty collection or `Optional.empty()`, or carries on. A
+  handler that does anything else with the failure, such as throwing, passing it to a call other than a log, or
+  returning something made from it, passes;
+- Reactor's `onErrorReturn(value)` and `onErrorComplete()`, and `onErrorResume` and `CompletableFuture.exceptionally`
+  with a lambda returning a default, which turn every error into a value. Their forms that take the error type pass.
+
+These handlers pass: in a loop or a lambda given to `forEach`, `map` and the like, which keeps one failing item from
+stopping the rest; around releasing a resource, as `close()` does, or in a method that releases one, as `dispose()`;
+in a method named for it, as `deleteQuietly` and `tryParse` are; in a predicate, as `isValid`, whose `false` answers;
+in a thread's `run()`, `main` or an initializer, with nobody to tell; and ones returning the default the caller passed,
+as a `defaultValue` parameter, or `false` where the method otherwise returns `true`.
+
+Why: a failure turned into `null` looks like an answer, and nothing upstream knows to retry, fall back or report it.
+
+```java
+public String rate(String currency) {
+    try {
+        return client.rate(currency);
+    } catch (Exception e) {
+        log.warn("no rate for {}", currency, e);
+        return null;
+    }
+}
+```
+
+> Rates.rate() catches every exception and returns null, so callers can't tell it failed
+> -> fix: catch only the exceptions you expect and let the rest propagate, or rethrow it wrapped in an unchecked exception
+
+Fix: let the exception reach the caller, or catch only the exceptions the code expects, such as a not-found.
+
+### `writes-are-authorized`
+
+`guardrails().writesAreAuthorized()`
+
+Request handlers that change data in a database with nothing checking that the user asking may are reported: a
+method of a Spring `@Controller` or `@RestController` with a `@RequestMapping` annotation, or a JAX-RS resource method,
+whose calls surely write, as a repository's `save` or `delete`, an `EntityManager`'s `persist`, or a JDBC update does,
+directly or through project code. A handler passes when it or its class has `@PreAuthorize`, `@PostAuthorize`,
+`@Secured`, `@RolesAllowed`, `@DenyAll` or `@PermitAll`; when it takes the current user, as an
+`@AuthenticationPrincipal` or `@CurrentSecurityContext` parameter, or one typed `Principal`, `Authentication` and the
+like, or calls a method named for it, as `getCurrentUsername()` or its base controller's `getUserId()`; or when it calls
+code that checks permissions, a method with one of those annotations or one that asks `SecurityContextHolder`, an
+`AuthorizationManager` or a `PermissionEvaluator`. Building a query, as `createNativeQuery(sql)` does, and binding a
+statement's parameters aren't writes.
+
+Endpoints that URL rules in a security filter chain authorize, and ones that are public by design, such as sign-up,
+log-in and webhooks verified by a signature, pass through no code designguard sees: leave them out with `excluding`.
+
+Why: an endpoint that changes a record by the id it's sent lets anyone change anyone's record, the hole AI-written and
+generated CRUD endpoints leave most.
+
+```java
+@PostMapping("/orders/{id}/cancel")
+public String cancel(@PathVariable String id) {
+    return orders.cancel(id);
+}
+```
+
+> OrderController.cancel() writes to the database through Orders.cancel() with nothing checking that the user asking may
+> -> fix: take the current user, as an @AuthenticationPrincipal parameter, and scope the change to it, or check permissions with @PreAuthorize
+
+Fix: pass the current user to the code that writes and scope the query to it, or add `@PreAuthorize`.
+
+### `no-unbounded-waits`
+
+`guardrails().noUnboundedWaits()` · **recommended**
+
+Waits with no limit are reported, once per class and kind of wait:
+- blocking calls without a timeout: `Future.get()`, `CompletableFuture.join()`, `CountDownLatch.await()`,
+  `CyclicBarrier.await()`, `Thread.join()`, and Reactor's `block()`, `blockFirst()` and `blockLast()`;
+- clients without one: `new RestTemplate()`, `HttpClient.newHttpClient()`, an `HttpClient` built without
+  `connectTimeout(...)`, an `HttpRequest` built without `timeout(...)`, and `URL.openStream()`, or
+  `URL.openConnection()` followed by `connect()` or `getInputStream()` with no read timeout, on a URL from outside the
+  code: one the method takes, or makes with `new URL(...)` or `URI.create(...)`.
+
+A limit the same method sets counts, as `orTimeout(...)` before `join()` and `timeout(...)` before `block()` do, and
+so do a class that sets read timeouts on its connections anywhere and a connection handed to a call that takes it,
+which may configure it. Some calls don't wait: `get()` after `isDone()`, and a URL to a classpath resource or a local
+file, made by `getResource(...)` or `path.toUri().toURL()`.
+
+Why: a wait with no limit turns a hung report, server or peer into a hung thread, and every request waiting on it
+hangs too.
+
+```java
+public String build(Callable<String> report) throws Exception {
+    return workers.submit(report).get();
+}
+```
+
+> Reports waits with no limit through Future.get()
+> -> fix: pass a timeout, as get(5, TimeUnit.SECONDS) does, and handle the TimeoutException
+
+Fix: pass a timeout, and decide what happens when it passes.
 ## Tests
 
 ### `meaningful-tests`

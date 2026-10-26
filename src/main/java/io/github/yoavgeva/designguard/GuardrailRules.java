@@ -1,8 +1,11 @@
 package io.github.yoavgeva.designguard;
 
+import io.github.yoavgeva.designguard.internal.AuthorizedWritesCheck;
 import io.github.yoavgeva.designguard.internal.CodeBase;
 import io.github.yoavgeva.designguard.internal.ServiceTestsCheck;
 import io.github.yoavgeva.designguard.internal.StubCheck;
+import io.github.yoavgeva.designguard.internal.SwallowedErrorsCheck;
+import io.github.yoavgeva.designguard.internal.UnboundedWaits;
 import io.github.yoavgeva.designguard.internal.UnusedPublicCodeCheck;
 import io.github.yoavgeva.designguard.internal.WidenedForTestsCheck;
 import java.util.Set;
@@ -54,6 +57,47 @@ public final class GuardrailRules {
      */
     public BasicRule noWidenedForTests() {
         return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new WidenedForTestsCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on errors swallowed: a {@code catch} of {@code Exception}, {@code RuntimeException} or {@code Throwable}
+     * that only logs, then returns a default such as {@code null} or carries on, and Reactor's {@code onErrorReturn},
+     * {@code onErrorResume} and {@code CompletableFuture.exceptionally} turning every error into a default. Callers
+     * can't tell the call failed. Handlers in a loop, around releasing a resource, of specific exceptions, or that
+     * pass the error on, are fine.
+     *
+     * @return the rule
+     */
+    public BasicRule noSwallowedErrors() {
+        return new BasicRule(code, RuleScope.DEFAULT,
+                (codeBase, filter) -> new SwallowedErrorsCheck().check(codeBase.sources(), filter));
+    }
+
+    /**
+     * Fails on request handlers that change data in a database with nothing checking that the user asking may: a
+     * Spring MVC or JAX-RS handler whose calls surely write, without {@code @PreAuthorize}, {@code @Secured} or
+     * {@code @RolesAllowed} on it or its class, without taking the current user, as an
+     * {@code @AuthenticationPrincipal} or {@code Principal} parameter, and without calling code that checks
+     * permissions. Handlers that URL rules in a security filter chain protect pass through no code designguard sees,
+     * so leave them out with {@code excluding} or {@code ignoring}.
+     *
+     * @return the rule
+     */
+    public BasicRule writesAreAuthorized() {
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new AuthorizedWritesCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on waits with no limit: blocking calls such as {@code Future.get()}, {@code CompletableFuture.join()},
+     * {@code CountDownLatch.await()} and Reactor's {@code block()} without a timeout, and HTTP clients and requests
+     * built without one, as {@code new RestTemplate()} and {@code HttpClient.newHttpClient()} are. A wait that never
+     * ends blocks its thread, and everything waiting on that thread. A limit the same method sets, such as
+     * {@code orTimeout(...)} before {@code join()}, counts.
+     *
+     * @return the rule
+     */
+    public BasicRule noUnboundedWaits() {
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> UnboundedWaits.check().check(codeBase, filter));
     }
 
     /**
