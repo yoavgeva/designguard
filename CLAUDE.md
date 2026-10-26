@@ -20,6 +20,9 @@ A library of deterministic design checks for AI-written Java code. See README.md
 - Every rule belongs in `RuleFiltersContractTest`, with code in `LegacyShop` that breaks it, so it honours `that()`,
   `excluding()` and `frozen()`. A rule that reports fields, methods, constructors or calls also belongs in
   `MemberIgnoringContractTest`, which checks that `ignoring()` skips an annotated member.
+- Every rule has an example in the README: code it flags, with `✗` on the flagged line, and under **Fixed** the
+  classes that change. `ReadmeExamplesTest` compiles both, runs the rule's `RuleFiltersContractTest` configuration on
+  them, and checks the rule's id and whether it's marked recommended.
 - `DesignGuardSelfTest` runs designguard's own rules on this repo. A new rule that passes here belongs in it. A rule
   change that breaks it is either a false positive to fix in the rule (with a regression test) or a real finding to
   fix in the code.

@@ -144,7 +144,8 @@ public final class CompiledProject {
 
     private void compile() {
         List<String> arguments = new ArrayList<>(List.of(
-                "-d", classesDirectory.toString(), "--release", Integer.toString(javaRelease), "-proc:none", "-Xlint:none"));
+                "-d", classesDirectory.toString(), "--release", Integer.toString(javaRelease), "-proc:none", "-Xlint:none",
+                "-encoding", StandardCharsets.UTF_8.name()));
         for (Path root : List.of(sourceRoot, generatedRoot)) {
             if (!Files.isDirectory(root)) {
                 continue;
