@@ -93,16 +93,6 @@ final class Bytecode {
                 .contains(ClassFileFacts.callKey(access.getTargetOwner().getName(), access.getName(), access.getLineNumber()));
     }
 
-    /** Which of a method's or constructor's parameters flow into which arguments of its calls, in code order. */
-    List<ParameterFlows.Flow> parameterFlowsOf(JavaCodeUnit unit) {
-        return factsOf(unit.getOwner()).parameterFlows().getOrDefault(unit.getName() + unit.getDescriptor(), List.of());
-    }
-
-    /** The properties a method or constructor writes from their own old values, in code order. */
-    List<DerivedWrites.DerivedWrite> derivedWritesOf(JavaCodeUnit unit) {
-        return factsOf(unit.getOwner()).derivedWrites().getOrDefault(unit.getName() + unit.getDescriptor(), List.of());
-    }
-
     /**
      * The fields an accessor changes on {@code this} or statically, itself or through methods of its class, lazy
      * initialization aside: the first change of each field, by line.
@@ -155,7 +145,8 @@ final class Bytecode {
                 .stream());
     }
 
-    private ClassFileFacts factsOf(JavaClass javaClass) {
+    /** What the class's class file says that ArchUnit doesn't: {@link ClassFileFacts}. */
+    ClassFileFacts factsOf(JavaClass javaClass) {
         return facts.getOrDefault(javaClass.getName(), ClassFileFacts.UNREAD);
     }
 

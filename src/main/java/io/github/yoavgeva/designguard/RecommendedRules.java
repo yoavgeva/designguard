@@ -10,7 +10,8 @@ import java.util.List;
  * configuring; the functional-core and dependency-injection style rules; the sealed-type and record rules, which need
  * Java 17; the rules that public library APIs break by design, such as unused public code and minimal visibility;
  * services-have-tests, which asks for one test class per service, a convention projects that test by feature
- * don't follow; and writes-are-authorized, which needs to know a project's public endpoints and URL security.
+ * don't follow; writes-are-authorized and reads-are-authorized, which need to know a project's public endpoints and
+ * URL security; and no-unbounded-queries, which needs to know which tables stay small.
  */
 final class RecommendedRules {
 
@@ -23,6 +24,7 @@ final class RecommendedRules {
         DependencyRules dependencies = new DependencyRules(code);
         ApiRules api = new ApiRules(code);
         TypeRules types = new TypeRules(code);
+        DataRules data = new DataRules(code);
         return new RuleSet(code, List.of(
                 new RuleSet.Member("no-stubs", guardrails.noStubs()),
                 new RuleSet.Member("no-suppressions", guardrails.noSuppressions()),
@@ -42,6 +44,9 @@ final class RecommendedRules {
                 new RuleSet.Member("class-cycles", new ArchitectureRules(code).classesHaveNoCycles()),
                 new RuleSet.Member("no-queries-in-loops", dependencies.noQueriesInLoops()),
                 new RuleSet.Member("no-io-in-transactions", dependencies.noIoInTransactions()),
+                new RuleSet.Member("no-mass-assignment", data.noMassAssignment()),
+                new RuleSet.Member("no-lost-updates", data.noLostUpdates()),
+                new RuleSet.Member("no-floating-point-money", data.noFloatingPointMoney()),
                 new RuleSet.Member("constructors-do-no-work", dependencies.constructorsDoNoWork()),
                 new RuleSet.Member("no-raw-threads", dependencies.noRawThreads()),
                 new RuleSet.Member("accessors-change-nothing", api.accessorsChangeNothing()),

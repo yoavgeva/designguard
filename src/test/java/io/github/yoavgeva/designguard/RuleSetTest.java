@@ -52,7 +52,8 @@ class RuleSetTest {
                         guard.api().accessorsChangeNothing(), guard.api().noFlagArguments(),
                         guard.api().noStringlyTypedChoices(), guard.api().optionalUsage(),
                         guard.types().enumsOverConstants(), guard.types().recordsAreImmutable(),
-                        guard.types().interfacesAreFocused())
+                        guard.types().interfacesAreFocused(), guard.data().noMassAssignment(),
+                        guard.data().noLostUpdates(), guard.data().noFloatingPointMoney())
                 .flatMap(rule -> rule.evaluate().stream())
                 .toList();
 
@@ -64,7 +65,7 @@ class RuleSetTest {
     void namesEachRuleByTheIdItsViolationsCarry() {
         RuleSet recommended = guard.recommended();
 
-        assertThat(recommended.rules()).hasSize(27).doesNotHaveDuplicates();
+        assertThat(recommended.rules()).hasSize(30).doesNotHaveDuplicates();
         assertThat(recommended.evaluate().stream().map(Violation::rule).distinct())
                 .containsExactlyInAnyOrderElementsOf(recommended.rules());
     }
@@ -73,7 +74,7 @@ class RuleSetTest {
     void withoutLeavesOutRulesByTheirId() {
         RuleSet fewer = guard.recommended().without(NO_SUPPRESSIONS, NO_SLEEP);
 
-        assertThat(fewer.rules()).hasSize(25).doesNotContain(NO_SUPPRESSIONS, NO_SLEEP);
+        assertThat(fewer.rules()).hasSize(28).doesNotContain(NO_SUPPRESSIONS, NO_SLEEP);
         assertThat(fewer.evaluate()).isNotEmpty().extracting(Violation::rule).doesNotContain(NO_SUPPRESSIONS, NO_SLEEP);
     }
 

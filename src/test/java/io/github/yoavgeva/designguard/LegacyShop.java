@@ -16,7 +16,7 @@ final class LegacyShop {
      * @return the project, for chaining
      */
     static CompiledProject write(CompiledProject project) {
-        return tests(reliability(misc(layers(project))));
+        return tests(data(reliability(misc(layers(project)))));
     }
 
     /** Layers, MVC, hexagonal, onion, feature slices, stable dependencies and the boundaries. */
@@ -62,6 +62,79 @@ final class LegacyShop {
                 .add("Report", "package shop.legacy.reports;\n\npublic class Report {\n"
                         + "    public String render(shop.legacy.billing.Charge charge, shop.legacy.core.Money money) {\n"
                         + "        return charge.total(money) + \"\";\n    }\n}\n");
+    }
+
+    /** A form that sets a role, a stock lost to a race, money as a double, a whole table listed, and an order anyone reads. */
+    private static CompiledProject data(CompiledProject project) {
+        String web = "package org.springframework.web.bind.annotation;\n\n" + RUNTIME;
+        return project
+                .add("GetMapping", web + "public @interface GetMapping {\n}\n")
+                .add("PutMapping", web + "public @interface PutMapping {\n}\n")
+                .add("RequestBody", web + "public @interface RequestBody {\n}\n")
+                .add("PathVariable", web + "public @interface PathVariable {\n}\n")
+                .add("Entity", "package jakarta.persistence;\n\n" + RUNTIME + "public @interface Entity {\n}\n")
+                .add("CrudRepository", "package org.springframework.data.repository;\n\n"
+                        + "public interface CrudRepository<T, ID> extends Repository<T, ID> {\n"
+                        + "    Iterable<T> findAll();\n\n    java.util.Optional<T> findById(ID id);\n\n    T save(T entity);\n}\n")
+                .add("Stock", """
+                        package shop.legacy.data;
+
+                        @jakarta.persistence.Entity
+                        public class Stock {
+                            private int count;
+                            private double price;
+
+                            public int getCount() {
+                                return count;
+                            }
+
+                            public void setCount(int count) {
+                                this.count = count;
+                            }
+                        }
+                        """)
+                .add("StockRepository", "package shop.legacy.data;\n\npublic interface StockRepository extends "
+                        + "org.springframework.data.repository.CrudRepository<Stock, Long> {\n}\n")
+                .add("AccountForm", "package shop.legacy.data;\n\npublic record AccountForm(String email, String role) {\n}\n")
+                .add("StockController", """
+                        package shop.legacy.data;
+
+                        import org.springframework.web.bind.annotation.GetMapping;
+                        import org.springframework.web.bind.annotation.PathVariable;
+                        import org.springframework.web.bind.annotation.PutMapping;
+                        import org.springframework.web.bind.annotation.RequestBody;
+
+                        @org.springframework.web.bind.annotation.RestController
+                        public class StockController {
+                            private final StockRepository stocks;
+
+                            public StockController(StockRepository stocks) {
+                                this.stocks = stocks;
+                            }
+
+                            @GetMapping
+                            public Iterable<Stock> all() {
+                                return stocks.findAll();
+                            }
+
+                            @GetMapping
+                            public Stock one(@PathVariable Long id) {
+                                return stocks.findById(id).orElseThrow();
+                            }
+
+                            @PutMapping
+                            public String account(@RequestBody AccountForm form) {
+                                return form.email();
+                            }
+
+                            @PutMapping
+                            public Stock sell(@PathVariable Long id) {
+                                Stock stock = stocks.findById(id).orElseThrow();
+                                stock.setCount(stock.getCount() - 1);
+                                return stocks.save(stock);
+                            }
+                        }
+                        """);
     }
 
     /** A transaction that calls a bank, an error swallowed, and a write nobody authorizes. */

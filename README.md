@@ -159,8 +159,8 @@ void recommended() {
 
 ## The rules
 
-Each rule is a method of a category: `GUARD.architecture()`, `dependencies()`, `types()`, `api()`, `guardrails()`
-and `tests()`. Every rule below shows code it flags, marked `✗`, and under **Fixed** the classes that change to fix
+Each rule is a method of a category: `GUARD.architecture()`, `dependencies()`, `types()`, `api()`, `guardrails()`,
+`data()` and `tests()`. Every rule below shows code it flags, marked `✗`, and under **Fixed** the classes that change to fix
 it. A test compiles every example and runs its rule on it, so the examples show what the rules really do. The
 examples are in package `shop` unless they say otherwise, leave out imports, and test with JUnit 5, AssertJ and
 Mockito.
@@ -223,7 +223,12 @@ The rules use a few terms:
 | | [`noUnusedPublicCode`](#nounusedpubliccode) | public types and methods nothing uses (applications) | |
 | | [`noSwallowedErrors`](#noswallowederrors) | catch-alls that log and return `null`, fallbacks for every error | ✓ |
 | | [`writesAreAuthorized`](#writesareauthorized) | request handlers that write with no permission check or current user | |
+| | [`readsAreAuthorized`](#readsareauthorized) | request handlers that read a record by the request's id with no check | |
 | | [`noUnboundedWaits`](#nounboundedwaits) | `Future.get()`, `block()` and HTTP clients without a timeout | ✓ |
+| **Data** | [`noMassAssignment`](#nomassassignment) | request types that let a request set `role`, `userId` and other privileged fields | ✓ |
+| | [`noLostUpdates`](#nolostupdates) | entities set from their old values with no `@Version` or lock | ✓ |
+| | [`noFloatingPointMoney`](#nofloatingpointmoney) | `double` and `float` fields named for money | ✓ |
+| | [`noUnboundedQueries`](#nounboundedqueries) | request handlers that reach `findAll()` on a whole table | |
 | **Tests** | [`testsAssertMeaningfully`](#testsassertmeaningfully) | tests asserting nothing, on constants, or a value against itself | ✓ |
 | | [`noDisabledTests`](#nodisabledtests) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` | ✓ |
 | | [`testsCheckResults`](#testscheckresults) | `verify(mock).query()` on methods that return a value | ✓ |
@@ -2361,6 +2366,80 @@ public class OrderController {
 
 </details>
 
+#### `readsAreAuthorized`
+
+`GUARD.guardrails().readsAreAuthorized()` · `reads-are-authorized`
+
+A request handler that loads a record by the id in the URL shows anyone's record to whoever changes the id. Records
+that are public by design, such as published products, belong in `excluding(...)`.
+
+```java
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class OrderController {
+    private final OrderRepository orders;
+
+    public OrderController(OrderRepository orders) {
+        this.orders = orders;
+    }
+
+    @GetMapping
+    public Order get(@PathVariable Long id) {
+        return orders.findById(id).orElseThrow();   // ✗ shows whichever order the id names, whoever asks
+    }
+}
+```
+
+```java
+import org.springframework.data.repository.CrudRepository;
+
+public interface OrderRepository extends CrudRepository<Order, Long> {
+}
+```
+
+```java
+public record Order(Long id, String owner) {
+}
+```
+
+<details><summary>Fixed</summary>
+
+The handler takes the current user, and the query only finds that user's orders.
+
+```java
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class OrderController {
+    private final OrderRepository orders;
+
+    public OrderController(OrderRepository orders) {
+        this.orders = orders;
+    }
+
+    @GetMapping
+    public Order get(@AuthenticationPrincipal String user, @PathVariable Long id) {
+        return orders.findByIdAndOwner(id, user).orElseThrow();
+    }
+}
+```
+
+```java
+import org.springframework.data.repository.CrudRepository;
+
+public interface OrderRepository extends CrudRepository<Order, Long> {
+    Optional<Order> findByIdAndOwner(Long id, String owner);
+}
+```
+
+</details>
+
 #### `noUnboundedWaits`
 
 `GUARD.guardrails().noUnboundedWaits()` · `no-unbounded-waits` · recommended
@@ -2395,6 +2474,213 @@ public class Reports {
     public String build(Callable<String> report) throws InterruptedException, ExecutionException, TimeoutException {
         return workers.submit(report).get(30, TimeUnit.SECONDS);
     }
+}
+```
+
+</details>
+
+### Data
+
+#### `noMassAssignment`
+
+`GUARD.data().noMassAssignment()` · `no-mass-assignment` · recommended
+
+A request type with a `role` lets any user who adds `"role": "ADMIN"` to the request make themselves an admin, though
+the handler only changes their own account.
+
+```java
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class AccountController {
+    @PutMapping
+    public String update(@RequestBody AccountForm form) {   // ✗ the request can set role
+        return form.email();
+    }
+}
+```
+
+```java
+public record AccountForm(String email, String role) {
+}
+```
+
+<details><summary>Fixed</summary>
+
+The form leaves the role out; an admin's handler, which `@PreAuthorize` guards, sets it.
+
+```java
+public record AccountForm(String email) {
+}
+```
+
+</details>
+
+#### `noLostUpdates`
+
+`GUARD.data().noLostUpdates()` · `no-lost-updates` · recommended
+
+Two orders at once both read the same stock, both write their own result, and one sale is lost.
+
+```java
+import jakarta.persistence.Entity;
+
+@Entity
+public class Product {
+    private int stock;
+
+    public int getStock() {
+        return stock;
+    }
+
+    public void setStock(int stock) {
+        this.stock = stock;
+    }
+}
+```
+
+```java
+import org.springframework.transaction.annotation.Transactional;
+
+public class Inventory {
+    @Transactional
+    public void sell(Product product, int quantity) {
+        product.setStock(product.getStock() - quantity);   // ✗ computed from the stock read before
+    }
+}
+```
+
+<details><summary>Fixed</summary>
+
+A version makes the second write fail instead of undoing the first, and the caller retries it.
+
+```java
+import jakarta.persistence.Entity;
+import jakarta.persistence.Version;
+
+@Entity
+public class Product {
+    @Version
+    private long version;
+    private int stock;
+
+    public int getStock() {
+        return stock;
+    }
+
+    public void setStock(int stock) {
+        this.stock = stock;
+    }
+}
+```
+
+</details>
+
+#### `noFloatingPointMoney`
+
+`GUARD.data().noFloatingPointMoney()` · `no-floating-point-money` · recommended
+
+`0.1 + 0.2` is `0.30000000000000004` in a `double`, so float totals drift by fractions of a cent.
+
+```java
+public class Invoice {
+    private final double totalPrice;   // ✗ a double can't hold most amounts exactly
+
+    public Invoice(double totalPrice) {
+        this.totalPrice = totalPrice;
+    }
+
+    public double totalPrice() {
+        return totalPrice;
+    }
+}
+```
+
+<details><summary>Fixed</summary>
+
+```java
+public class Invoice {
+    private final BigDecimal totalPrice;
+
+    public Invoice(BigDecimal totalPrice) {
+        this.totalPrice = totalPrice;
+    }
+
+    public BigDecimal totalPrice() {
+        return totalPrice;
+    }
+}
+```
+
+</details>
+
+#### `noUnboundedQueries`
+
+`GUARD.data().noUnboundedQueries()` · `no-unbounded-queries`
+
+A page that loads every row is fast with a hundred products and times out with a million. A table that stays small,
+such as a list of countries, belongs in `excluding(...)`.
+
+```java
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class ProductController {
+    private final ProductRepository products;
+
+    public ProductController(ProductRepository products) {
+        this.products = products;
+    }
+
+    @GetMapping
+    public Iterable<Product> list() {
+        return products.findAll();   // ✗ loads every product, on every request
+    }
+}
+```
+
+```java
+import org.springframework.data.repository.CrudRepository;
+
+public interface ProductRepository extends CrudRepository<Product, Long> {
+}
+```
+
+```java
+public record Product(Long id, String name) {
+}
+```
+
+<details><summary>Fixed</summary>
+
+```java
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class ProductController {
+    private final ProductRepository products;
+
+    public ProductController(ProductRepository products) {
+        this.products = products;
+    }
+
+    @GetMapping
+    public Page<Product> list(Pageable page) {
+        return products.findAll(page);
+    }
+}
+```
+
+```java
+import org.springframework.data.repository.PagingAndSortingRepository;
+
+public interface ProductRepository extends PagingAndSortingRepository<Product, Long> {
 }
 ```
 

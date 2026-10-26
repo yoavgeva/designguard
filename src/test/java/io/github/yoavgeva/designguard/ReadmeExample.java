@@ -54,14 +54,29 @@ record ReadmeExample(String id, boolean recommended, List<String> flagged, List<
             import org.junit.jupiter.params.ParameterizedTest;
             import org.junit.jupiter.params.provider.ValueSource;
             """;
-    /** The framework annotations the examples use, which aren't on the test class path. */
-    private static final Map<String, String> FRAMEWORK_STUBS = Map.of(
-            "Service", stub("org.springframework.stereotype", "Service"),
-            "Entity", stub("jakarta.persistence", "Entity"),
-            "Transactional", stub("org.springframework.transaction.annotation", "Transactional"),
-            "RestController", stub("org.springframework.web.bind.annotation", "RestController"),
-            "PostMapping", stub("org.springframework.web.bind.annotation", "PostMapping"),
-            "AuthenticationPrincipal", stub("org.springframework.security.core.annotation", "AuthenticationPrincipal"));
+    private static final String WEB_ANNOTATIONS = "org.springframework.web.bind.annotation";
+    private static final String DATA_REPOSITORY = "package org.springframework.data.repository;\n\n";
+    /** The framework types the examples use, which aren't on the test class path. */
+    private static final Map<String, String> FRAMEWORK_STUBS = Map.ofEntries(
+            Map.entry("Service", stub("org.springframework.stereotype", "Service")),
+            Map.entry("Entity", stub("jakarta.persistence", "Entity")),
+            Map.entry("Version", stub("jakarta.persistence", "Version")),
+            Map.entry("Transactional", stub("org.springframework.transaction.annotation", "Transactional")),
+            Map.entry("RestController", stub(WEB_ANNOTATIONS, "RestController")),
+            Map.entry("PostMapping", stub(WEB_ANNOTATIONS, "PostMapping")),
+            Map.entry("GetMapping", stub(WEB_ANNOTATIONS, "GetMapping")),
+            Map.entry("PutMapping", stub(WEB_ANNOTATIONS, "PutMapping")),
+            Map.entry("RequestBody", stub(WEB_ANNOTATIONS, "RequestBody")),
+            Map.entry("PathVariable", stub(WEB_ANNOTATIONS, "PathVariable")),
+            Map.entry("AuthenticationPrincipal", stub("org.springframework.security.core.annotation", "AuthenticationPrincipal")),
+            Map.entry("Pageable", "package org.springframework.data.domain;\n\npublic interface Pageable {\n}\n"),
+            Map.entry("Page", "package org.springframework.data.domain;\n\npublic interface Page<T> extends Iterable<T> {\n}\n"),
+            Map.entry("Repository", DATA_REPOSITORY + "public interface Repository<T, ID> {\n}\n"),
+            Map.entry("CrudRepository", DATA_REPOSITORY + "public interface CrudRepository<T, ID> extends Repository<T, ID> {\n"
+                    + "    Iterable<T> findAll();\n\n    java.util.Optional<T> findById(ID id);\n\n    <S extends T> S save(S entity);\n}\n"),
+            Map.entry("PagingAndSortingRepository", DATA_REPOSITORY
+                    + "public interface PagingAndSortingRepository<T, ID> extends Repository<T, ID> {\n"
+                    + "    org.springframework.data.domain.Page<T> findAll(org.springframework.data.domain.Pageable pageable);\n}\n"));
 
     /**
      * Reads every rule's example from the README.

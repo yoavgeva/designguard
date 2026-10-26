@@ -44,7 +44,8 @@ public final class FloatingPointMoneyCheck {
                 .flatMap(file -> file.unit().findAll(TypeDeclaration.class).stream()
                         .filter(type -> Scopes.selected(filter, file, type))
                         .flatMap(type -> stored(type)
-                                .filter(value -> FLOATING.contains(value.type().asString()) && isMoney(value.name()))
+                                .filter(value -> FLOATING.contains(value.type().asString()) && isMoney(value.name())
+                                        && Scopes.selected(filter, file, value.node()))
                                 .map(value -> Scopes.violation(RULE, file, value.node(), type.getNameAsString()
                                                 + " stores " + value.name() + " as a floating-point number, which can't hold "
                                                 + "most decimal amounts exactly, so sums and comparisons drift by fractions "

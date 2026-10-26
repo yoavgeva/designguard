@@ -55,7 +55,7 @@ public final class LostUpdatesCheck {
         Function<String, Optional<JavaClass>> unversioned = owner -> Optional.ofNullable(byName.get(owner.replace('/', '.')))
                 .filter(LostUpdatesCheck::isUnversionedEntity);
         Map<String, Mutator> mutators = units.stream()
-                .flatMap(unit -> bytecode.derivedWritesOf(unit).stream()
+                .flatMap(unit -> derivedWrites(bytecode, unit).stream()
                         .filter(write -> write.ofThis() && unversioned.apply(write.owner()).isPresent())
                         .limit(1)
                         .map(write -> Map.entry(unit.getFullName(), new Mutator(unit, write.property()))))
@@ -77,7 +77,7 @@ public final class LostUpdatesCheck {
     /** Where a method updates an entity from its old value: itself, or by calling the entity's method that does. */
     private static Stream<Site> sites(JavaCodeUnit unit, Bytecode bytecode, Function<String, Optional<JavaClass>> unversioned,
             Map<String, Mutator> mutators) {
-        Stream<Site> own = bytecode.derivedWritesOf(unit).stream()
+        Stream<Site> own = derivedWrites(bytecode, unit).stream()
                 .filter(write -> !write.ofThis())
                 .flatMap(write -> unversioned.apply(write.owner()).stream()
                         .map(entity -> new Site(unit, write.line(), entity, "sets " + ProjectClasses.nameOf(entity) + "."
@@ -122,6 +122,10 @@ public final class LostUpdatesCheck {
     private static boolean isTransactional(JavaCodeUnit unit) {
         return Stream.concat(unit.getAnnotations().stream(), unit.getOwner().getAnnotations().stream())
                 .anyMatch(annotation -> TRANSACTIONAL.contains(annotation.getRawType().getName()));
+    }
+
+    private static List<DerivedWrites.DerivedWrite> derivedWrites(Bytecode bytecode, JavaCodeUnit unit) {
+        return bytecode.factsOf(unit.getOwner()).derivedWrites().getOrDefault(unit.getName() + unit.getDescriptor(), List.of());
     }
 
     /** An entity's method that writes one of its properties from its old value. */

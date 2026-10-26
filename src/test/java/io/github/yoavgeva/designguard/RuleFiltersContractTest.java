@@ -92,7 +92,12 @@ class RuleFiltersContractTest {
             rule("noUnusedPublicCode", g -> g.guardrails().noUnusedPublicCode()),
             rule("noSwallowedErrors", g -> g.guardrails().noSwallowedErrors()),
             rule("writesAreAuthorized", g -> g.guardrails().writesAreAuthorized()),
-            rule("noUnboundedWaits", g -> g.guardrails().noUnboundedWaits()));
+            rule("noUnboundedWaits", g -> g.guardrails().noUnboundedWaits()),
+            rule("readsAreAuthorized", g -> g.guardrails().readsAreAuthorized()),
+            rule("noMassAssignment", g -> g.data().noMassAssignment()),
+            rule("noLostUpdates", g -> g.data().noLostUpdates()),
+            rule("noFloatingPointMoney", g -> g.data().noFloatingPointMoney()),
+            rule("noUnboundedQueries", g -> g.data().noUnboundedQueries()));
 
     @TempDir
     private static Path directory;

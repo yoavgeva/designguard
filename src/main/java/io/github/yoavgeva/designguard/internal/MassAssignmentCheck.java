@@ -73,7 +73,7 @@ public final class MassAssignmentCheck {
     }
 
     private static Optional<Violation> violation(ProjectClasses classes, JavaClass type, JavaMethod handler, JavaClass bound) {
-        List<String> properties = privileged(bound);
+        List<String> properties = privilegedProperties(bound);
         if (properties.isEmpty()) {
             return Optional.empty();
         }
@@ -87,18 +87,18 @@ public final class MassAssignmentCheck {
     }
 
     /** The privileged properties a request can set on the type, sorted by name. */
-    private static List<String> privileged(JavaClass type) {
+    private static List<String> privilegedProperties(JavaClass type) {
         Stream<String> setters = type.getAllMethods().stream()
                 .filter(method -> method.getName().length() > SETTER.length() && method.getName().startsWith(SETTER)
                         && method.getRawParameterTypes().size() == 1 && method.getModifiers().contains(JavaModifier.PUBLIC)
-                        && !method.getModifiers().contains(JavaModifier.STATIC) && !ignored(method.getAnnotations()))
+                        && !method.getModifiers().contains(JavaModifier.STATIC) && !isIgnored(method.getAnnotations()))
                 .map(method -> Introspector.decapitalize(method.getName().substring(SETTER.length())));
         Stream<String> fields = type.getAllFields().stream()
                 .filter(field -> !field.getModifiers().contains(JavaModifier.STATIC)
                         && (field.getModifiers().contains(JavaModifier.PUBLIC) && !field.getModifiers().contains(JavaModifier.FINAL)
                                 || isRecord(field.getOwner())))
                 .map(JavaField::getName);
-        Set<String> hidden = type.getAllFields().stream().filter(field -> ignored(field.getAnnotations()))
+        Set<String> hidden = type.getAllFields().stream().filter(field -> isIgnored(field.getAnnotations()))
                 .map(JavaField::getName).collect(Collectors.toSet());
         return Stream.concat(setters, fields)
                 .filter(name -> PRIVILEGED.contains(name.replace("_", "").toLowerCase(Locale.ROOT)) && !hidden.contains(name))
@@ -107,7 +107,7 @@ public final class MassAssignmentCheck {
                 .toList();
     }
 
-    private static boolean ignored(Set<? extends JavaAnnotation<?>> annotations) {
+    private static boolean isIgnored(Set<? extends JavaAnnotation<?>> annotations) {
         return RequestHandlers.names(annotations).contains(IGNORED);
     }
 

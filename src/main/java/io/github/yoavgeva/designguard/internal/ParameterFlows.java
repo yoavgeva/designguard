@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.IntStream;
 import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -53,8 +54,7 @@ final class ParameterFlows {
      * @return the flows
      */
     static List<Flow> in(String owner, MethodNode method) {
-        Type[] parameters = Type.getArgumentTypes(method.desc);
-        if (parameters.length == 0 || (method.access & Opcodes.ACC_ABSTRACT) != 0
+        if (Type.getArgumentTypes(method.desc).length == 0 || (method.access & Opcodes.ACC_ABSTRACT) != 0
                 || Arrays.stream(method.instructions.toArray()).noneMatch(MethodInsnNode.class::isInstance)) {
             return List.of();
         }
@@ -71,20 +71,32 @@ final class ParameterFlows {
             if (instruction instanceof LineNumberNode number) {
                 line = number.line;
             }
-            Frame<Held> frame = frames[index];
-            if (instruction instanceof MethodInsnNode call && frame != null) {
-                int arguments = Type.getArgumentTypes(call.desc).length;
-                for (int to = 0; to < arguments; to++) {
-                    long bits = frame.getStack(frame.getStackSize() - arguments + to).bits();
-                    for (int from = 0; from < MOST; from++) {
-                        if ((bits & 1L << from) != 0) {
-                            flows.add(new Flow(from, call.owner, call.name, call.desc, to, line));
-                        }
-                    }
-                }
+            if (instruction instanceof MethodInsnNode call && frames[index] != null) {
+                flows.addAll(into(call, frames[index], line));
             }
         }
         return List.copyOf(flows);
+    }
+
+    /** The parameters that flow into a call's arguments, from the frame just before it. */
+    private static List<Flow> into(MethodInsnNode call, Frame<Held> frame, int line) {
+        int arguments = Type.getArgumentTypes(call.desc).length;
+        return IntStream.range(0, arguments).boxed()
+                .flatMap(to -> {
+                    long bits = frame.getStack(frame.getStackSize() - arguments + to).bits();
+                    return IntStream.range(0, MOST).filter(from -> (bits & 1L << from) != 0)
+                            .mapToObj(from -> new Flow(from, call.owner, call.name, call.desc, to, line));
+                })
+                .toList();
+    }
+
+    private static @Nullable Held held(@Nullable BasicValue value, long bits) {
+        return value == null ? null : new Held(value.getSize(), bits);
+    }
+
+    /** A stand-in of the value's size: the basic interpreter only reads sizes and the instruction. */
+    private static BasicValue basic(Held value) {
+        return value.size() == 2 ? BasicValue.LONG_VALUE : BasicValue.REFERENCE_VALUE;
     }
 
     /** A value's size in slots, and the parameters it's made from, one bit each. */
@@ -166,7 +178,7 @@ final class ParameterFlows {
         public @Nullable Held naryOperation(AbstractInsnNode instruction, List<? extends Held> values)
                 throws AnalyzerException {
             long bits = values.stream().mapToLong(Held::bits).reduce(0, (first, second) -> first | second);
-            return held(sizes.naryOperation(instruction, values.stream().map(HeldInterpreter::basic).toList()), bits);
+            return held(sizes.naryOperation(instruction, values.stream().map(ParameterFlows::basic).toList()), bits);
         }
 
         @Override
@@ -177,15 +189,6 @@ final class ParameterFlows {
         @Override
         public Held merge(Held value1, Held value2) {
             return Objects.equals(value1, value2) ? value1 : value1.union(value2);
-        }
-
-        private static @Nullable Held held(@Nullable BasicValue value, long bits) {
-            return value == null ? null : new Held(value.getSize(), bits);
-        }
-
-        /** A stand-in of the value's size: the basic interpreter only reads sizes and the instruction. */
-        private static BasicValue basic(Held value) {
-            return value.size() == 2 ? BasicValue.LONG_VALUE : BasicValue.REFERENCE_VALUE;
         }
     }
 }
