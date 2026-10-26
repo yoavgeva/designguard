@@ -1,6 +1,5 @@
 package io.github.yoavgeva.designguard;
 
-import io.github.yoavgeva.designguard.controller.DesignGuard;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -24,7 +23,9 @@ public final class CompiledProject {
 
     private final SourceTree tree;
     private final SourceTree testTree;
+    private final SourceTree generatedTree;
     private final Path sourceRoot;
+    private final Path generatedRoot;
     private final Path testRoot;
     private final Path classesDirectory;
     private int javaRelease = 17;
@@ -38,10 +39,12 @@ public final class CompiledProject {
      */
     public CompiledProject(Path directory) {
         this.sourceRoot = directory.resolve("src");
+        this.generatedRoot = directory.resolve("generated");
         this.testRoot = directory.resolve("test");
         this.classesDirectory = directory.resolve("classes");
         this.tree = new SourceTree(sourceRoot);
         this.testTree = new SourceTree(testRoot);
+        this.generatedTree = new SourceTree(generatedRoot);
     }
 
     /**
@@ -92,6 +95,19 @@ public final class CompiledProject {
     }
 
     /**
+     * Adds a source file the build generates, as an annotation processor does: compiled with the others, but outside
+     * the source roots the guard reads.
+     *
+     * @param typeName the top-level type's simple name
+     * @param source   the full file content
+     * @return this project, for chaining
+     */
+    public CompiledProject addGenerated(String typeName, String source) {
+        generatedTree.add(typeName, source);
+        return this;
+    }
+
+    /**
      * Adds a test source file. Test sources are parsed, not compiled.
      *
      * @param typeName the top-level type's simple name
@@ -129,10 +145,15 @@ public final class CompiledProject {
     private void compile() {
         List<String> arguments = new ArrayList<>(List.of(
                 "-d", classesDirectory.toString(), "--release", Integer.toString(javaRelease), "-proc:none", "-Xlint:none"));
-        try (Stream<Path> files = Files.walk(sourceRoot)) {
-            files.filter(path -> path.toString().endsWith(".java")).map(Path::toString).forEach(arguments::add);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        for (Path root : List.of(sourceRoot, generatedRoot)) {
+            if (!Files.isDirectory(root)) {
+                continue;
+            }
+            try (Stream<Path> files = Files.walk(root)) {
+                files.filter(path -> path.toString().endsWith(".java")).map(Path::toString).forEach(arguments::add);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
         ByteArrayOutputStream errors = new ByteArrayOutputStream();
         int status = ToolProvider.getSystemJavaCompiler().run(null, null, errors, arguments.toArray(String[]::new));

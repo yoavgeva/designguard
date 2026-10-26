@@ -13,9 +13,68 @@ src/main/java/shop/Checkout.java:7: error [inject-services] Checkout creates ser
 
 > Status: pre-alpha.
 
+## Install
+
+designguard is a test dependency. It needs Java 17 or later to run, and checks code compiled for any Java version.
+The first release, 0.1.0, is on its way to Maven Central; until then, `mise exec -- mvn install` a clone of this
+repository and depend on `0.1.0-SNAPSHOT`.
+
+```xml
+<dependency>
+    <groupId>io.github.yoavgeva</groupId>
+    <artifactId>designguard</artifactId>
+    <version>0.1.0</version>
+    <scope>test</scope>
+</dependency>
+```
+
+```kotlin
+testImplementation("io.github.yoavgeva:designguard:0.1.0")
+```
+
+designguard brings its own ASM, so an older one in your build doesn't affect it. ArchUnit, which it builds on, logs
+through SLF4J: if your tests have no SLF4J provider, SLF4J prints a three-line notice. A test dependency on
+`org.slf4j:slf4j-simple` shows the logs, or `org.slf4j:slf4j-nop` drops them.
+
 ## Use it
 
+Start with the recommended rules. They need no configuration:
+
 ```java
+import io.github.yoavgeva.designguard.DesignGuard;
+import org.junit.jupiter.api.Test;
+
+class DesignTest {
+
+    private static final DesignGuard GUARD = new DesignGuard("com.shop");
+
+    @Test
+    void recommended() {
+        GUARD.recommended().check();
+    }
+}
+```
+
+They cover three kinds of problem:
+
+- AI shortcuts: stubs, suppressions, and code widened for tests.
+- Tests that can't fail or don't repeat: no assertions, mocked values, logic in tests, the system clock, unseeded
+  randomness, the environment, sleeping.
+- Design faults: class cycles, queries in loops, work in constructors, accessors that change state, flag arguments,
+  choices between strings, misused `Optional`, `int` constants for cases, mutable records, fat interfaces and raw
+  threads.
+
+`recommended().rules()` lists their ids, and `without("no-suppressions")` leaves one out. On existing code, adopt
+them with `GUARD.recommended().frozen("recommended").check()` (see below). A new designguard version may add rules.
+
+Architecture styles and opinionated rules are a choice, so pick them as tests of their own:
+
+```java
+import io.github.yoavgeva.designguard.DesignGuard;
+import io.github.yoavgeva.designguard.model.InterfacePolicy;
+import io.github.yoavgeva.designguard.model.TypeDispatchPolicy;
+import org.junit.jupiter.api.Test;
+
 class DesignTest {
 
     private static final DesignGuard GUARD = new DesignGuard("com.shop");
@@ -41,13 +100,15 @@ class DesignTest {
     void noAiShortcuts() {
         GUARD.guardrails().noStubs().check();
         GUARD.guardrails().noSuppressions().allowing("serial").check();
-        GUARD.guardrails().testsAssertMeaningfully().check();
+        GUARD.tests().testsAssertMeaningfully().check();
     }
 }
 ```
 
-Every rule takes `that().resideInAPackage(...)`, `excluding(...)` and `ignoring(annotatedWith(...))`, with ArchUnit's
-package syntax (`..domain..`). `check()` throws an `AssertionError` listing every violation; `evaluate()` returns them.
+Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(annotatedWith(...))` (from
+`AnnotationName`) and `frozen(...)` (see below). `ignoring` skips annotated classes and the code in them, and annotated
+fields, methods and constructors. Package patterns use ArchUnit's package syntax (`..domain..`). `check()` throws an
+`AssertionError` listing every violation; `evaluate()` returns them.
 
 `new DesignGuard("com.shop")` reads sources from `src/main/java` and `src/test/java`, and classes from the classpath.
 To change anything, configure it with a builder:
@@ -64,6 +125,78 @@ private static final DesignGuard GUARD = DesignGuard.forPackages("com.shop")
   `@Configuration`, `@SpringBootApplication` or `@Module` classes, always are wiring code.
 - `treatingAsImpure("com.stripe..")`: using these packages counts as I/O, like `java.net`.
 - `forJava(17)`: the Java version the code targets, if reading it from the class files isn't right (see below).
+- `freezingIn(...)`: where frozen rules record their violations, instead of `src/test/designguard/frozen` (see below).
+
+## Adopting a rule on existing code
+
+`frozen(name)` makes a rule fail only on new violations, so you can adopt it on code that already breaks it:
+
+```java
+@Test
+void layers() {
+    GUARD.architecture().layered()
+            .layer("Web", "..web..").layer("Persistence", "..persistence..")
+            .frozen("layers")
+            .check();
+}
+```
+
+- The first run records the current violations in `src/test/designguard/frozen/layers.txt` and fails once, so the
+  file gets committed. Until the file exists, the rule keeps failing, so CI catches a record nobody committed.
+- Later runs fail only on violations the file doesn't list. A violation is matched by its file, rule and what it's
+  about, not its line or the counts in its message, so editing elsewhere keeps it frozen. Each listed violation
+  accepts one occurrence.
+- Fixed violations drop out of the file, so it only shrinks and a fixed problem can't come back. Commit the change.
+- Renaming a class changes its violations' messages, so they show up as new. To accept the current violations again,
+  delete the file and run the rule.
+- Give each frozen rule its own name: the name is the file's. A rule run against another rule's file fails instead
+  of overwriting it.
+- A rule set such as `recommended()` freezes all its rules in one file.
+
+## Warnings
+
+`asWarning()` makes a rule report without failing:
+
+```java
+GUARD.api().typedApis().asWarning().check();                          // logs, passes
+GUARD.recommended().warningOn("no-suppressions", "tests-have-no-logic").check(); // those two warn, the rest fail
+```
+
+- Warnings are logged at `WARNING` through `System.Logger`, the JDK's logging facade. They reach the project's
+  logging backend if one is bridged to it, and standard error if not.
+- `evaluate()` returns them with `Severity.WARNING`, and the report marks each line `warning`.
+- A frozen warning rule logs its new violations instead of failing.
+- `Checkable` is what rules, rule sets and frozen rules have in common: `evaluate()` and `check()`.
+
+## Reports for tools
+
+`SarifReport` and `JsonReport` render violations for machines. SARIF 2.1.0 is what GitHub code scanning shows as
+annotations on pull requests; the JSON lists each violation's rule, severity, file, line, message, fix and identity.
+To write a report and fail with one run of the rules, check what `evaluate()` found:
+
+```java
+import io.github.yoavgeva.designguard.Checkable;
+import io.github.yoavgeva.designguard.model.Violation;
+import io.github.yoavgeva.designguard.report.SarifReport;
+
+@Test
+void recommended() throws IOException {
+    List<Violation> found = GUARD.recommended().evaluate();
+    Files.createDirectories(Path.of("target"));
+    Files.writeString(Path.of("target/designguard.sarif"), new SarifReport().render(found));
+    Checkable.check(found);
+}
+```
+
+```yaml
+- uses: github/codeql-action/upload-sarif@v4
+  if: always()
+  with:
+    sarif_file: target/designguard.sarif
+```
+
+Paths relative to the repository root stay relative, as code scanning expects. Each result's fingerprint is its file,
+rule and identity, so an alert keeps its history as the code around it moves.
 
 ## Java versions
 
@@ -81,13 +214,21 @@ If designguard finds no compiled classes in the packages, rules that read classe
 nothing checked. That also happens when the classes target a newer Java than its ArchUnit version reads: ArchUnit
 1.5.1 reads up to Java 27.
 
-Dependency rules also see classes that ArchUnit doesn't import: those a `switch` only matches on, as in
-`case Circle c -> "circle"` or `case Suit.CLUBS`, which designguard reads from the class files with ASM.
+Rules also see classes that ArchUnit doesn't import, which designguard reads from the class files with ASM:
+- classes a `switch` only matches on, as in `case Circle c -> "circle"` or `case Suit.CLUBS`;
+- classes whose constants the code reads, as in `Limits.PAGE_SIZE`. The compiler copies the value into the code and
+  keeps only the class's name, so these dependencies are reported at line 0;
+- the outer class of a nested class the code uses, such as `Order` in `Order.Status`, so `minimalVisibility` and
+  `noUnusedPublicCode` count `Order` as used.
 
 ## Rules
 
+[docs/rules.md](docs/rules.md) describes each rule: what it reports and why, an example with the message it prints,
+how to fix the code, and its options. The table below sums them up.
+
 A class is **effectful** if its code touches the outside world: I/O, the clock, randomness, the environment, threads,
-or an impure package. That holds directly, through a field holding such a resource, or by calling project code that
+or an impure package. For threads and executors, starting, configuring or running work on one counts; holding one,
+or reading the current thread, doesn't. That holds directly, through a field holding such a resource, or by calling project code that
 is effectful. It is **service-like** if it is effectful, holds a service, or is an interface with a service-like
 implementation. Everything else is a **value**.
 
@@ -98,38 +239,69 @@ implementation. Everything else is a **value**.
 | | `hexagonal().adapter(...)` | the domain using anything else; adapters using each other |
 | | `onion().adapter(...)` | rings depending outwards |
 | | `featureSlices()` | a feature using another's internals, or features in a cycle |
+| | `adaptersStayThin("..web..")` | adapter methods, such as controllers, making more than two decisions instead of delegating |
+| | `classesHaveNoCycles()` | classes that depend on each other, directly or around a loop |
+| | `frameworksStayOutOf("..domain..")` | Spring, Jakarta EE, Hibernate, Jackson, Guice, Micronaut, Quarkus... types or annotations in the domain |
+| | `infrastructureExceptionsStayOutOf("..domain..")` | `SQLException`, `IOException`, JPA or Spring data exceptions in the domain |
+| | `entitiesStayOutOf("..web..")` | persistence entities used past the persistence layer |
 | `dependencies()` | `interfacePolicy(PORTS / SERVICES / ALL)` | concrete dependencies where an interface is required |
-| | `injectServices()` | effectful classes created with `new`, or singletons reached statically, outside wiring code |
+| | `injectServices()` | effectful classes created with `new`, singletons reached statically, or services looked up (`getBean`, `ServiceLoader`, JNDI, Guice, CDI), outside wiring code; a class whose effects happen only in implementations it is given doesn't count |
+| | `noQueriesInLoops()` | a collaborator's query (I/O that returns a value) called once per item, in a loop or a stream: N+1 |
+| | `constructorsDoNoWork()` | constructors and static initializers that call I/O, the clock, an injected collaborator or other effectful code |
 | | `clockIsInjected()` | `LocalDate.now()`, `System.currentTimeMillis()`... instead of an injected `Clock` |
 | | `randomnessIsInjected()` | `new Random()`, `UUID.randomUUID()`... |
 | | `configurationIsInjected()` | `System.getenv()`, `System.getProperty()`... |
 | | `noRawThreads()` | `new Thread(...)` instead of an executor |
 | | `stableDependencies()` | a slice depending on a less stable slice |
-| | `infrastructureExceptionsStayOutOf("..domain..")` | `SQLException`, `IOException`, JPA or Spring data exceptions in the domain |
-| | `entitiesStayOutOf("..web..")` | persistence entities used past the persistence layer |
 | `types()` | `typeDispatch(SEALED_ONLY / ALLOW)` | switches or `instanceof` chains on open hierarchies, `default` branches hiding new cases, a type branched on in too many unchecked places |
 | | `recordsAreImmutable()` | record components callers can still change |
 | | `dataClassesAreRecords()` | classes that only carry data |
 | | `valueTypesAreImmutable()` | values with non-final fields |
+| | `typedIdentifiers("..domain..")` | identifiers like `String customerId` or `long orderId` instead of their own types |
+| | `interfacesAreFocused()` | interfaces with 10+ methods whose 2+ clients each use at most half of them |
+| | `enumsOverConstants()` | int or String constants enumerating cases, like `STATUS_OPEN = 0`, `STATUS_PAID = 1` |
+| | `servicesAreStateless()` | service-like classes with non-final fields, or fields holding mutable collections, atomics or builders |
 | | `closedHierarchiesAreSealed()` | interfaces implemented only in the project but not sealed |
 | | `inheritance(FINAL_BY_DEFAULT / ABSTRACT_ONLY / ANY).maxDepth(n)` | non-final leaves, extending concrete classes, deep hierarchies |
 | `api()` | `noFlagArguments()` | boolean parameters that pick between behaviours |
 | | `packagesAreNullMarked()` | packages without JSpecify's `@NullMarked` |
 | | `optionalUsage()` | `Optional` fields and parameters, `return null` from an `Optional` method |
 | | `noCheckedExceptions()` | checked exception classes and declarations |
+| | `accessorsChangeNothing()` | `get`/`is`/`has` methods that assign a field, apart from lazy initialization |
+| | `noStringlyTypedChoices()` | `switch`es or `equals` chains over three or more string literals that should be an enum |
+| | `typedApis()` | public methods taking or returning `Object`, `Map<String, Object>` or JSON trees instead of records |
+| | `noEffectfulStaticMethods()` | static methods doing I/O, reading the clock or the environment, that other classes call and so can't replace in tests |
 | | `minimalVisibility()` | public types only their own package uses (applications) |
 | `guardrails()` | `noStubs()` | `TODO`/`FIXME`, `UnsupportedOperationException` placeholders, empty methods |
 | | `noSuppressions().allowing(...)` | `@SuppressWarnings`, `NOPMD`, `NOSONAR`, `noinspection`, `CHECKSTYLE:OFF` |
-| | `testsAssertMeaningfully()` | tests asserting nothing, on constants, or a value against itself |
-| | `noDisabledTests()` (`.allowingWithReason()`) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` |
+| | `noWidenedForTests()` | package-private or protected methods and constructors only tests call |
 | | `serviceLikeClassesHaveTests()` | service-like classes with no `<Name>Test` |
 | | `noUnusedPublicCode()` | public types and methods nothing uses (applications) |
+| `tests()` | `testsAssertMeaningfully()` | tests asserting nothing, on constants, or a value against itself |
+| | `noDisabledTests()` (`.allowingWithReason()`) | `@Disabled`, `@Ignore`, `@Test(enabled = false)` |
+| | `testsHaveNoLogic()` | `if` or `switch` in test methods, or loops around assertions |
+| | `testsUseAFixedClock()` | tests reading the system clock: `LocalDate.now()`, `System.currentTimeMillis()`... |
+| | `testsUseSeededRandomness()` | tests using unseeded randomness: `new Random()`, `UUID.randomUUID()`... |
+| | `testsDontReadTheEnvironment()` | tests reading environment variables or system properties |
+| | `testsDontSleep()` | tests calling `Thread.sleep` or `TimeUnit.X.sleep` |
+| | `testsCheckResults()` | `verify(mock).query()` on methods that return a value, instead of stubbing them and asserting on the result |
+| | `testsUseTheirSubject()` | `OrderServiceTest` never using `OrderService`, or only mocking it |
+| | `testsDontMockValues()` | mocks of records, enums, other values, and interfaces whose implementations are all values |
+
+## Speed and repeatability
+
+A guard reads the classes and sources once and shares them between its rules, so keep it in a `static final` field.
+All rules together take about 4 s on Guava (2,000 classes, 630 sources) and about 14 s on Hibernate ORM's core (6,900
+classes, 5,200 sources), using up to 4 GB of memory.
+
+Every rule reports the same violations, in the same order and with the same wording, each time it reads the same
+code, so frozen records and CI results don't flap between runs.
 
 ## Use it alongside
 
 designguard doesn't repeat what these do well:
 
-- [ArchUnit](https://www.archunit.org/): custom rules, cycles, naming, `FreezingArchRule`
+- [ArchUnit](https://www.archunit.org/): custom rules, cycles, naming
 - [PMD](https://pmd.github.io/): complexity thresholds, God Class, copy-paste detection
 - [Maven Enforcer](https://maven.apache.org/enforcer/): a dependency allowlist
 
@@ -150,10 +322,12 @@ mise exec -- mvn verify
 - **Compiler:** any `-Xlint:all` warning
 - **ArchUnit** (`ArchitectureTest`): model/view/controller layering with a service layer, no cycles, immutable model,
   no stdout/stderr, no generic exceptions, no field injection, no deprecated APIs
-- **designguard on itself** (`DesignGuardSelfTest`): 22 of its own rules, including the `SERVICES` interface policy,
-  `@NullMarked` packages and sealed hierarchies
+- **designguard on itself** (`DesignGuardSelfTest`): its recommended rules and 44 others, including the `SERVICES`
+  interface policy, `@NullMarked` packages and sealed hierarchies
 - **PMD** (`config/pmd/ruleset.xml`): every Java category, every priority, with exclusions documented in the file
 - **CPD:** duplicated code of 100 tokens or more
+
+Releasing is described in [docs/releasing.md](docs/releasing.md).
 
 ## License
 

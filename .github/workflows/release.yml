@@ -1,0 +1,45 @@
+name: Release
+
+# Publishes a version to Maven Central when its tag is pushed, e.g. v0.1.0. See docs/releasing.md.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to Maven Central
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Holds the secrets; add required reviewers to it to approve each release.
+    environment: maven-central
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Java and Maven versions come from mise.toml, the same as CI and a local build.
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+
+      - name: Check that the tag names the project's version
+        run: |
+          version=$(mvn -B -q -ntp org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate \
+            -Dexpression=project.version -DforceStdout)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match the version in pom.xml, $version"
+            exit 1
+          fi
+
+      - name: Import the signing key
+        run: printf '%s\n' "$MAVEN_GPG_PRIVATE_KEY" | gpg --batch --import
+        env:
+          MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+
+      # Runs the whole build, tests and checks included, then signs and uploads. The upload waits until Central has
+      # validated it; publishing it is a click in the Central Portal.
+      - name: Build, sign and upload
+        run: mvn -B -ntp -P release -s .github/release-settings.xml deploy
+        env:
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}

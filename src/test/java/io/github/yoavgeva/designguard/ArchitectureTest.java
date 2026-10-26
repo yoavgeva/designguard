@@ -5,23 +5,46 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaCodeUnit;
+import com.tngtech.archunit.core.domain.JavaType;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.lang.ArchCondition;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
+import com.tngtech.archunit.lang.syntax.ArchRuleDefinition;
 import com.tngtech.archunit.library.GeneralCodingRules;
+import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * The design rules this repository holds itself to. Model, view and controller layers, with checks living in a
- * service layer the controller drives.
+ * The design rules this repository holds itself to. The public API is the root package, which drives the checks in
+ * an internal package, with the data they share in a model package and output formats in a report package.
  */
 class ArchitectureTest {
 
     private static final String ROOT = "io.github.yoavgeva.designguard";
+    private static final String INTERNALS = ROOT + ".internal..";
     private static final String CONTROLLER = "Controller";
     private static final String SERVICE = "Service";
     private static final String VIEW = "View";
     private static final String MODEL = "Model";
+
+    private static final ArchCondition<JavaCodeUnit> NAME_NO_INTERNAL_TYPE = new ArchCondition<>(
+            "name no internal type") {
+        @Override
+        public void check(JavaCodeUnit unit, ConditionEvents events) {
+            Stream.concat(Stream.of(unit.getReturnType()), unit.getParameterTypes().stream())
+                    .map(JavaType::getAllInvolvedRawTypes)
+                    .flatMap(Set::stream)
+                    .filter(type -> type.getPackageName().startsWith(ROOT + ".internal"))
+                    .forEach(type -> events.add(SimpleConditionEvent.violated(unit,
+                            unit.getFullName() + " names " + type.getName())));
+        }
+    };
 
     private static final JavaClasses PRODUCTION_CLASSES = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -30,9 +53,9 @@ class ArchitectureTest {
     @Test
     void layersFollowModelViewController() {
         layeredArchitecture().consideringOnlyDependenciesInLayers()
-                .layer(CONTROLLER).definedBy(ROOT + ".controller..")
-                .layer(SERVICE).definedBy(ROOT + ".service..")
-                .layer(VIEW).definedBy(ROOT + ".view..")
+                .layer(CONTROLLER).definedBy(ROOT)
+                .layer(SERVICE).definedBy(INTERNALS)
+                .layer(VIEW).definedBy(ROOT + ".report..")
                 .layer(MODEL).definedBy(ROOT + ".model..")
                 .whereLayer(CONTROLLER).mayNotBeAccessedByAnyLayer()
                 .whereLayer(SERVICE).mayOnlyBeAccessedByLayers(CONTROLLER)
@@ -44,7 +67,18 @@ class ArchitectureTest {
     @Test
     void everyClassBelongsToALayer() {
         classes().should().resideInAnyPackage(
-                        ROOT + ".controller..", ROOT + ".service..", ROOT + ".view..", ROOT + ".model..")
+                        ROOT, INTERNALS, ROOT + ".report..", ROOT + ".model..")
+                .check(PRODUCTION_CLASSES);
+    }
+
+    @Test
+    void publicApiNamesNoInternalType() {
+        ArchRuleDefinition.codeUnits().that().arePublic().and().areDeclaredInClassesThat().arePublic()
+                .and().areDeclaredInClassesThat().resideOutsideOfPackage(INTERNALS)
+                .should(NAME_NO_INTERNAL_TYPE)
+                .check(PRODUCTION_CLASSES);
+        classes().that().arePublic().and().resideOutsideOfPackage(INTERNALS)
+                .should().notBeAssignableTo(JavaClass.Predicates.resideInAPackage(INTERNALS))
                 .check(PRODUCTION_CLASSES);
     }
 

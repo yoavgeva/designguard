@@ -1,0 +1,123 @@
+package io.github.yoavgeva.designguard;
+
+import io.github.yoavgeva.designguard.internal.BranchingTestsCheck;
+import io.github.yoavgeva.designguard.internal.CodeBase;
+import io.github.yoavgeva.designguard.internal.MeaningfulTestsCheck;
+import io.github.yoavgeva.designguard.internal.MockedValuesCheck;
+import io.github.yoavgeva.designguard.internal.NondeterministicTestsCheck;
+import io.github.yoavgeva.designguard.internal.QueryVerificationCheck;
+import io.github.yoavgeva.designguard.internal.SubjectUsageCheck;
+
+/** Rules about the test suite: tests assert something, use real values and their subject, and take one path. */
+public final class SuiteRules {
+
+    private final CodeBase code;
+
+    SuiteRules(CodeBase code) {
+        this.code = code;
+    }
+
+    /**
+     * Fails on tests that prove nothing: no assertion at all, assertions on constants, or a value compared with
+     * itself.
+     *
+     * @return the rule
+     */
+    public BasicRule testsAssertMeaningfully() {
+        return new BasicRule(code, RuleScope.DEFAULT,
+                (codeBase, filter) -> new MeaningfulTestsCheck().check(codeBase.testSources(), filter));
+    }
+
+    /**
+     * Fails on disabled tests.
+     *
+     * @return the rule
+     * @see NoDisabledTestsRule
+     */
+    public NoDisabledTestsRule noDisabledTests() {
+        return new NoDisabledTestsRule(code, RuleScope.DEFAULT, false);
+    }
+
+    /**
+     * Fails when a test verifies a query, {@code verify(mock).method()} for a method that returns a value: stub
+     * queries and assert on the result, and verify only commands.
+     *
+     * @return the rule
+     */
+    public BasicRule testsCheckResults() {
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new QueryVerificationCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails when a test class doesn't exercise the class it's named after: {@code OrderServiceTest} never uses
+     * {@code OrderService}, or only mocks it.
+     *
+     * @return the rule
+     */
+    public BasicRule testsUseTheirSubject() {
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new SubjectUsageCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails when a test mocks a value: a record, an enum, another class that isn't service-like, or an interface whose
+     * implementations all are values. Tests should create real values and mock only service-like types.
+     *
+     * @return the rule
+     */
+    public BasicRule testsDontMockValues() {
+        return new BasicRule(code, RuleScope.DEFAULT, (codeBase, filter) -> new MockedValuesCheck().check(codeBase, filter));
+    }
+
+    /**
+     * Fails on tests with logic: an {@code if}, a {@code switch} or a loop in a test method. Split the cases into
+     * tests, or make them parameters of a {@code @ParameterizedTest}.
+     *
+     * @return the rule
+     */
+    public BasicRule testsHaveNoLogic() {
+        return new BasicRule(code, RuleScope.DEFAULT,
+                (codeBase, filter) -> new BranchingTestsCheck().check(codeBase.testSources(), filter));
+    }
+
+    /**
+     * Fails on test code that reads the system clock: {@code now()} without a {@code Clock},
+     * {@code System.currentTimeMillis()}, {@code nanoTime()}, {@code new Date()}, {@code Calendar.getInstance()}.
+     *
+     * @return the rule
+     */
+    public BasicRule testsUseAFixedClock() {
+        return new BasicRule(code, RuleScope.DEFAULT,
+                (codeBase, filter) -> NondeterministicTestsCheck.clock().check(codeBase.testSources(), filter));
+    }
+
+    /**
+     * Fails on test code using unseeded randomness: {@code new Random()}, {@code Math.random()},
+     * {@code UUID.randomUUID()}, {@code ThreadLocalRandom.current()}.
+     *
+     * @return the rule
+     */
+    public BasicRule testsUseSeededRandomness() {
+        return new BasicRule(code, RuleScope.DEFAULT,
+                (codeBase, filter) -> NondeterministicTestsCheck.randomness().check(codeBase.testSources(), filter));
+    }
+
+    /**
+     * Fails on test code reading environment variables or system properties.
+     *
+     * @return the rule
+     */
+    public BasicRule testsDontReadTheEnvironment() {
+        return new BasicRule(code, RuleScope.DEFAULT,
+                (codeBase, filter) -> NondeterministicTestsCheck.environment().check(codeBase.testSources(), filter));
+    }
+
+    /**
+     * Fails on test code that sleeps: {@code Thread.sleep} or {@code TimeUnit.X.sleep}.
+     *
+     * @return the rule
+     */
+    public BasicRule testsDontSleep() {
+        return new BasicRule(code, RuleScope.DEFAULT,
+                (codeBase, filter) -> NondeterministicTestsCheck.sleep().check(codeBase.testSources(), filter));
+    }
+}
