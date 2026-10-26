@@ -109,6 +109,15 @@ public final class DesignGuard {
     }
 
     /**
+     * Rules about stored data: mass assignment, lost updates, money types, unbounded queries.
+     *
+     * @return the data rules
+     */
+    public DataRules data() {
+        return new DataRules(code);
+    }
+
+    /**
      * Rules that catch AI shortcuts: stubs, suppressions, unused code, code opened up for tests.
      *
      * @return the guardrail rules
