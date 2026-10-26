@@ -30,6 +30,10 @@ public final class UnboundedQueriesCheck {
     private static final String REPOSITORY = "org.springframework.data.repository.Repository";
     private static final String SORT = "org.springframework.data.domain.Sort";
     private static final String MYBATIS_SERVICE = "com.baomidou.mybatisplus.extension.service.IService";
+    /** Calls by line, and on one line by what they call, so a report names the same call on every run. */
+    private static final Comparator<JavaCodeUnitAccess<?>> IN_CODE_ORDER = Comparator
+            .<JavaCodeUnitAccess<?>>comparingInt(JavaCodeUnitAccess::getLineNumber)
+            .thenComparing(call -> ForbiddenCall.describe(call.getTarget()));
 
     /**
      * Finds violations in the classes the filter selects.
@@ -54,7 +58,7 @@ public final class UnboundedQueriesCheck {
                 .flatMap(type -> type.getMethods().stream()
                         .filter(method -> classes.selected(filter, method) && RequestHandlers.isHandler(type, method))
                         .flatMap(handler -> handler.getCallsFromSelf().stream()
-                                .sorted(Comparator.comparingInt(JavaCodeUnitAccess::getLineNumber))
+                                .sorted(IN_CODE_ORDER)
                                 .flatMap(call -> through(call, callees, listing, byName).stream())
                                 .findFirst()
                                 .map(path -> classes.violation(RULE, type, path.call().getLineNumber(),
@@ -93,7 +97,7 @@ public final class UnboundedQueriesCheck {
             }
             Optional<JavaCodeUnitAccess<?>> found = unit.getCallsFromSelf().stream()
                     .filter(UnboundedQueriesCheck::listsWholeTable)
-                    .min(Comparator.comparingInt(JavaCodeUnitAccess::getLineNumber))
+                    .min(IN_CODE_ORDER)
                     .map(call -> call);
             if (found.isPresent()) {
                 return found;

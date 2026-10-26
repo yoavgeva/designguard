@@ -155,6 +155,11 @@ class AuthorizedWritesRuleTest {
                             public java.util.List<?> search(String name, Search search) {
                                 return search.orders(name);
                             }
+
+                            @PostMapping("/orders/{id}/replace")
+                            public void replace(@PathVariable String id) {
+                                repository.deleteById(repository.save(id));
+                            }
                         }
                         """)
                 .add("AdminController", """
@@ -186,6 +191,11 @@ class AuthorizedWritesRuleTest {
                 .extracting(Violation::line, Violation::message, Violation::fix)
                 .containsExactly(tuple(24, "OrderController.cancel() writes to the database through Orders.cancel() with "
                                 + "nothing checking that the user asking may",
+                        "take the current user, as an @AuthenticationPrincipal parameter, and scope the change to it, or "
+                                + "check permissions with @PreAuthorize"),
+                        // Two writes on one line: the report names the same one on every run.
+                        tuple(65, "OrderController.replace() writes to the database through OrderRepository.deleteById() "
+                                + "with nothing checking that the user asking may",
                         "take the current user, as an @AuthenticationPrincipal parameter, and scope the change to it, or "
                                 + "check permissions with @PreAuthorize"));
     }

@@ -119,6 +119,11 @@ class UnboundedQueriesRuleTest {
                                 return tags.list();
                             }
 
+                            @GetMapping("/everything")
+                            public String everything() {
+                                return tags.list() + "" + catalog.all();
+                            }
+
                             public Iterable<String> notAHandler() {
                                 return catalog.all();
                             }
@@ -134,7 +139,10 @@ class UnboundedQueriesRuleTest {
                         tuple(23, "ProductController.byName() loads every row through "
                                 + "Catalog.byName(), which calls ProductRepository.findAll(Sort)" + GROWS),
                         tuple(38, "ProductController.tags() loads every row through "
-                                + "TagService.list()" + GROWS));
+                                + "TagService.list()" + GROWS),
+                        // Two whole tables on one line: the report names the same one on every run.
+                        tuple(43, "ProductController.everything() loads every row through Catalog.all(), which calls "
+                                + "ProductRepository.findAll()" + GROWS));
         assertThat(guard.data().noUnboundedQueries().evaluate().get(0).fix())
                 .isEqualTo("take a Pageable and query a page, or filter the query to what the response shows");
     }
