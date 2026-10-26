@@ -104,9 +104,10 @@ jobs:
           CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
           CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
 
-      - name: Push the tag, and move main to the new commits
+      - name: Push the tag, create the GitHub release, and move main to the new commits
         run: |
           git push origin "v$VERSION"
+          gh release create "v$VERSION" --verify-tag --title "designguard $VERSION" --generate-notes
           if ! git push origin "$HEAD_COMMIT:refs/heads/main"; then
             echo "::error::$VERSION is published and tagged, but main moved during the release: merge release/v$VERSION into main"
             exit 1
