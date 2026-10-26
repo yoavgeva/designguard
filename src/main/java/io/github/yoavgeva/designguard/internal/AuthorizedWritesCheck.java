@@ -55,7 +55,8 @@ public final class AuthorizedWritesCheck {
     private static Optional<Violation> unchecked(ProjectClasses classes, SureEffects sure, JavaClass type, JavaMethod handler) {
         return handler.getCallsFromSelf().stream()
                 .filter(sure::writesToTheDatabase)
-                .min(Comparator.comparingInt(JavaCodeUnitAccess::getLineNumber))
+                .min(Comparator.<JavaCodeUnitAccess<?>>comparingInt(JavaCodeUnitAccess::getLineNumber)
+                        .thenComparing(call -> ForbiddenCall.describe(call.getTarget())))
                 .map(call -> classes.violation(RULE, type, call.getLineNumber(), ProjectClasses.nameOf(type) + "."
                                 + handler.getName() + "() writes to the database through " + ForbiddenCall.describe(call.getTarget())
                                 + " with nothing checking that the user asking may",
