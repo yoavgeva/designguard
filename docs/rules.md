@@ -66,7 +66,8 @@ Every rule takes `that().resideInAPackage(...)`, `excluding(...)`, `ignoring(ann
 | [Dependencies](#dependencies) | [`interface-policy`](#interface-policy), [`inject-services`](#inject-services), [`no-queries-in-loops`](#no-queries-in-loops), [`no-io-in-transactions`](#no-io-in-transactions), [`constructors-do-no-work`](#constructors-do-no-work), [`inject-clock`](#inject-clock), [`inject-randomness`](#inject-randomness), [`inject-configuration`](#inject-configuration), [`no-raw-threads`](#no-raw-threads), [`stable-dependencies`](#stable-dependencies) |
 | [Types](#types) | [`type-dispatch`](#type-dispatch), [`immutable-records`](#immutable-records), [`data-classes-are-records`](#data-classes-are-records), [`immutable-values`](#immutable-values), [`stateless-services`](#stateless-services), [`typed-identifiers`](#typed-identifiers), [`enums-over-constants`](#enums-over-constants), [`focused-interfaces`](#focused-interfaces), [`sealed-hierarchies`](#sealed-hierarchies), [`inheritance`](#inheritance) |
 | [API](#api) | [`no-flag-arguments`](#no-flag-arguments), [`null-marked`](#null-marked), [`optional-usage`](#optional-usage), [`no-checked-exceptions`](#no-checked-exceptions), [`no-effectful-static-methods`](#no-effectful-static-methods), [`typed-apis`](#typed-apis), [`no-stringly-typed-choices`](#no-stringly-typed-choices), [`accessors-change-nothing`](#accessors-change-nothing), [`minimal-visibility`](#minimal-visibility) |
-| [Guardrails](#guardrails) | [`no-stubs`](#no-stubs), [`no-suppressions`](#no-suppressions), [`no-widened-for-tests`](#no-widened-for-tests), [`services-have-tests`](#services-have-tests), [`no-unused-public-code`](#no-unused-public-code), [`no-swallowed-errors`](#no-swallowed-errors), [`writes-are-authorized`](#writes-are-authorized), [`no-unbounded-waits`](#no-unbounded-waits) |
+| [Guardrails](#guardrails) | [`no-stubs`](#no-stubs), [`no-suppressions`](#no-suppressions), [`no-widened-for-tests`](#no-widened-for-tests), [`services-have-tests`](#services-have-tests), [`no-unused-public-code`](#no-unused-public-code), [`no-swallowed-errors`](#no-swallowed-errors), [`writes-are-authorized`](#writes-are-authorized), [`reads-are-authorized`](#reads-are-authorized), [`no-unbounded-waits`](#no-unbounded-waits) |
+| [Data](#data) | [`no-mass-assignment`](#no-mass-assignment), [`no-lost-updates`](#no-lost-updates), [`no-floating-point-money`](#no-floating-point-money), [`no-unbounded-queries`](#no-unbounded-queries) |
 | [Tests](#tests) | [`meaningful-tests`](#meaningful-tests), [`no-disabled-tests`](#no-disabled-tests), [`tests-check-results`](#tests-check-results), [`tests-use-their-subject`](#tests-use-their-subject), [`tests-dont-mock-values`](#tests-dont-mock-values), [`tests-have-no-logic`](#tests-have-no-logic), [`tests-fixed-clock`](#tests-fixed-clock), [`tests-seeded-randomness`](#tests-seeded-randomness), [`tests-no-environment`](#tests-no-environment), [`tests-no-sleep`](#tests-no-sleep) |
 
 ## Architecture
@@ -1349,6 +1350,35 @@ public String cancel(@PathVariable String id) {
 
 Fix: pass the current user to the code that writes and scope the query to it, or add `@PreAuthorize`.
 
+### `reads-are-authorized`
+
+`guardrails().readsAreAuthorized()`
+
+Request handlers that read a record by a key the request sends, with nothing checking that the user asking may see it,
+are reported. What a `@PathVariable`, `@RequestParam`, `@PathParam` or `@QueryParam` parameter holds, or a Spring
+handler's unannotated `String`, `Long`, `Integer` or `UUID` parameter, is followed, converted or not, as
+`Long.valueOf(id)` converts it, through the project code it's passed to, an interface's implementations included, into
+the key of a Spring Data repository's `findById`, `getById`, `getReferenceById` or `getOne`, an `EntityManager`'s
+`find` or `getReference`, or MyBatis-Plus's `selectById` or `getById`. A handler passes on the terms
+[`writes-are-authorized`](#writes-are-authorized) reads; so does a read made in a method that checks the user itself,
+as a helper that loads a record and then compares its owner with the current user does.
+
+Many records are public by design, such as published articles, products and profiles, so this rule isn't recommended:
+point it at the handlers that show private data, with `that()`, or leave the public ones out with `excluding`.
+
+Why: a handler that loads a record by the id in the URL shows anyone's record to whoever changes the id: broken
+object level authorization, first on OWASP's API Security Top 10.
+
+```java
+@GetMapping("/orders/{id}")
+public Order get(@PathVariable Long id) {
+    return orders.find(id);
+}
+```
+
+> OrderController.get() reads a record by the id the request sends through OrderService.find(), which calls OrderRepository.findById(): nothing checks that the user asking may see it
+> -> fix: take the current user, as an @AuthenticationPrincipal parameter, and scope the query to it, or check permissions with @PreAuthorize
+
 ### `no-unbounded-waits`
 
 `guardrails().noUnboundedWaits()` · **recommended**
@@ -1379,6 +1409,119 @@ public String build(Callable<String> report) throws Exception {
 > -> fix: pass a timeout, as get(5, TimeUnit.SECONDS) does, and handle the TimeoutException
 
 Fix: pass a timeout, and decide what happens when it passes.
+## Data
+
+### `no-mass-assignment`
+
+`data().noMassAssignment()`
+
+Request handlers that save the object they bind the request to as it is, when it has a privileged property, are
+reported: one that grants access, as `role`, `roles`, `admin`, `isAdmin`, `superuser`, `staff`, `permissions` and
+`authorities` do, names an owner, as `userId`, `ownerId`, `accountId`, `organizationId`, `teamId` and `tenantId` do,
+or a `user`, `owner` or `tenant` relation does, or
+records a check the server makes, as `verified`, `emailVerified`, `confirmedAt`, `approved` and `passwordHash` do.
+
+- A handler parameter binds the request when it's `@RequestBody`, `@ModelAttribute` or `@BeanParam`, or a project
+  type with no annotation naming another source, as Spring binds a form and JAX-RS a body.
+- A property binds when a public setter, Lombok's included, a public field or a record component sets it, and it isn't
+  `@JsonIgnore`d.
+- The object is saved when it, not values copied from it one by one, reaches a database client's write, as a
+  repository's `save`, an `EntityManager`'s `persist` or `merge`, or a mapper's `insert` or `update` is, or a copy of
+  all its properties, as `BeanUtils.copyProperties(form, entity)` makes, directly or through the project methods it is
+  passed to. Properties the code sets on it on the way, as `form.setRole("USER")` does, are the code's.
+
+A handler that method security guards, or that calls code checking permissions, passes, as
+[`writes-are-authorized`](#writes-are-authorized) reads one: an admin may set roles. Taking the current user doesn't:
+a user changing their own account is the case this rule is about.
+
+FindSecBugs' `ENTITY_MASS_ASSIGNMENT` flags a JPA entity bound from a request, whatever its fields and whatever
+happens to it. This rule looks at every request type, DTOs included, but only at properties a request shouldn't set,
+and only when the object is saved.
+
+Why: a handler that saves the user it binds lets any user who adds `role=ADMIN` to the request make themselves an
+admin.
+
+```java
+@PutMapping("/account")
+public User update(@RequestBody User user) {
+    return users.save(user);
+}
+```
+
+> UserController.update() saves the request's User through UserRepository.save(), so the request can set role
+> -> fix: leave role out of User, or mark it @JsonIgnore, and set it from the current user, or in a handler that checks permissions with @PreAuthorize
+
+### `no-lost-updates`
+
+`data().noLostUpdates()`
+
+JPA entities updated from a value read before are reported: a method that sets an `@Entity`'s property from its own old
+value, as `product.setStock(product.getStock() - quantity)` and `account.setBalance(account.getBalance().add(amount))`
+do, or that calls the entity's method that does, as `product.decreaseStock(quantity)` doing `stock -= quantity` does.
+The value must be computed from the old one, with arithmetic or `BigDecimal` or `BigInteger` arithmetic, read on the
+same object; formatting a string, as `"ROLE_" + name` does, isn't counting. It's reported when the method, or one that calls it, is `@Transactional`, so
+the change is flushed, or surely writes to the database, and passes when the entity has a `@Version` field, which makes
+the second write fail, or when the method or its caller reads the row with a lock: a repository method annotated
+`@Lock`, or an `EntityManager` call given a `LockModeType`.
+
+Why: two requests at once both read the same stock, and the second write undoes the first: one sale is lost.
+
+```java
+@Transactional
+public void sell(Long id, int quantity) {
+    Product product = products.findById(id).orElseThrow();
+    product.setStock(product.getStock() - quantity);
+}
+```
+
+> Inventory.sell() sets Product.stock from its old value: a request that changes it between the read and this write is lost
+> -> fix: add a @Version field to Product, or change it in the database with an @Modifying UPDATE query, or read it with @Lock(LockModeType.PESSIMISTIC_WRITE)
+
+### `no-floating-point-money`
+
+`data().noFloatingPointMoney()`
+
+Money stored as a floating-point number is reported: a `float`, `double`, `Float` or `Double` field or record
+component whose name names an amount of money, as `price`, `totalPrice`, `amount`, `cost`, `shippingFee`, `balance`,
+`salary`, `tax`, `revenue`, `budget`, `payment`, `refund`, `payout`, `wage`, `subtotal` and `amountCents` do. A name
+that makes it a ratio or count, as `taxRate`, `feePercent` and `priceCount` do, passes, and so do constants.
+
+Why: a float can't hold most decimal amounts exactly: `0.1 + 0.2` is `0.30000000000000004`, so sums, comparisons and
+rounding drift by fractions of a cent.
+
+```java
+public class Invoice {
+    private double totalPrice;
+}
+```
+
+> Invoice stores totalPrice as a floating-point number, which can't hold most decimal amounts exactly, so sums and comparisons drift by fractions of a cent
+> -> fix: store it as a BigDecimal, or as a long count of cents
+
+### `no-unbounded-queries`
+
+`data().noUnboundedQueries()`
+
+Request handlers that load every row of a table are reported: a Spring MVC or JAX-RS handler that calls, directly or
+through project code, a Spring Data repository's `findAll()` or `findAll(Sort)`, or a MyBatis-Plus service's `list()`.
+A `findAll(Pageable)`, a query method with criteria, and a `findAll` given an example or a specification page or
+filter, and pass.
+
+A table that stays small, such as a list of countries or of an application's settings, can stay whole: leave its
+handler out with `excluding` or `ignoring`. For that reason this rule isn't recommended.
+
+Why: each request loads more as the table grows, until the page times out or the heap runs out.
+
+```java
+@GetMapping("/products")
+public Iterable<Product> list() {
+    return products.findAll();
+}
+```
+
+> ProductController.list() loads every row through ProductRepository.findAll(), so each request loads more as the table grows
+> -> fix: take a Pageable and query a page, or filter the query to what the response shows
+
 ## Tests
 
 ### `meaningful-tests`

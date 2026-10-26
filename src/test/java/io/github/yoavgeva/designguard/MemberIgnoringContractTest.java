@@ -31,6 +31,11 @@ class MemberIgnoringContractTest {
     private static final String RUNTIME = "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n";
     private static final AnnotationName LEGACY = new AnnotationName("Legacy", "shop.Legacy");
     private static final Pattern TYPE_NAME = Pattern.compile("(?:class|interface|record|enum) (\\w+)");
+    private static final String REPOSITORY = "package org.springframework.data.repository;\n\n"
+            + "public interface Repository<T, ID> {\n}\n";
+    private static final String CRUD_REPOSITORY = "package org.springframework.data.repository;\n\n"
+            + "public interface CrudRepository<T, ID> extends Repository<T, ID> {\n    Iterable<T> findAll();\n\n"
+            + "    java.util.Optional<T> findById(ID id);\n\n    <S extends T> S save(S entity);\n}\n";
     private static final String STRIPE_CLIENT = """
             package shop;
 
@@ -88,6 +93,51 @@ class MemberIgnoringContractTest {
                                 + "    @org.springframework.web.bind.annotation.PostMapping\n"
                                 + "    public String publish(String article) {\n        return articles.save(article);\n"
                                 + "    }\n}\n"), List.of()),
+                member("readsAreAuthorized", g -> g.guardrails().readsAreAuthorized(), List.of(
+                        web("RestController"), web("GetMapping"),
+                        web("PathVariable"), REPOSITORY, CRUD_REPOSITORY,
+                        PACKAGE + "public interface Orders extends org.springframework.data.repository.CrudRepository<String, "
+                                + "Long> {\n}\n",
+                        PACKAGE + "@org.springframework.web.bind.annotation.RestController\npublic class OrderController {\n"
+                                + "    private final Orders orders = null;\n\n    @Legacy\n"
+                                + "    @org.springframework.web.bind.annotation.GetMapping\n"
+                                + "    public String one(@org.springframework.web.bind.annotation.PathVariable Long id) {\n"
+                                + "        return orders.findById(id).orElseThrow();\n    }\n}\n"), List.of()),
+                member("noUnboundedQueries", g -> g.data().noUnboundedQueries(), List.of(
+                        web("RestController"), web("GetMapping"),
+                        REPOSITORY, CRUD_REPOSITORY,
+                        PACKAGE + "public interface Orders extends org.springframework.data.repository.CrudRepository<String, "
+                                + "Long> {\n}\n",
+                        PACKAGE + "@org.springframework.web.bind.annotation.RestController\npublic class OrderController {\n"
+                                + "    private final Orders orders = null;\n\n    @Legacy\n"
+                                + "    @org.springframework.web.bind.annotation.GetMapping\n"
+                                + "    public Iterable<String> all() {\n        return orders.findAll();\n    }\n}\n"), List.of()),
+                member("noMassAssignment", g -> g.data().noMassAssignment(), List.of(
+                        web("RestController"), web("PutMapping"),
+                        web("RequestBody"),
+                        REPOSITORY, CRUD_REPOSITORY,
+                        PACKAGE + "public record AccountForm(String email, String role) {\n}\n",
+                        PACKAGE + "public interface Forms extends org.springframework.data.repository.CrudRepository<"
+                                + "AccountForm, Long> {\n}\n",
+                        PACKAGE + "@org.springframework.web.bind.annotation.RestController\npublic class AccountController {\n"
+                                + "    private final Forms forms = null;\n\n"
+                                + "    @Legacy\n    @org.springframework.web.bind.annotation.PutMapping\n"
+                                + "    public AccountForm update(@org.springframework.web.bind.annotation.RequestBody AccountForm form) {\n"
+                                + "        return forms.save(form);\n    }\n}\n"), List.of()),
+                member("noLostUpdates", g -> g.data().noLostUpdates(), List.of(
+                        "package jakarta.persistence;\n\n" + RUNTIME + "public @interface Entity {\n}\n",
+                        "package org.springframework.transaction.annotation;\n\n" + RUNTIME
+                                + "public @interface Transactional {\n}\n",
+                        PACKAGE + "@jakarta.persistence.Entity\npublic class Stock {\n    private int count;\n\n"
+                                + "    public int getCount() {\n        return count;\n    }\n\n"
+                                + "    public void setCount(int count) {\n        this.count = count;\n    }\n}\n",
+                        PACKAGE + "public class Shelf {\n    @Legacy\n"
+                                + "    @org.springframework.transaction.annotation.Transactional\n"
+                                + "    public void sell(Stock stock) {\n        stock.setCount(stock.getCount() - 1);\n    }\n}\n"),
+                        List.of()),
+                member("noFloatingPointMoney", g -> g.data().noFloatingPointMoney(), List.of(PACKAGE
+                        + "public class Invoice {\n    @Legacy\n    private double price;\n\n"
+                        + "    public double price() {\n        return price;\n    }\n}\n"), List.of()),
                 member("noUnboundedWaits", g -> g.guardrails().noUnboundedWaits(), List.of(PACKAGE
                         + "public class Reports {\n    @Legacy\n"
                         + "    public String result(java.util.concurrent.Future<String> future) throws Exception {\n"
@@ -237,5 +287,10 @@ class MemberIgnoringContractTest {
             throw new IllegalArgumentException("no type in " + source);
         }
         return matcher.group(1);
+    }
+
+    /** A Spring web annotation, such as {@code RestController}. */
+    private static String web(String name) {
+        return "package org.springframework.web.bind.annotation;\n\n" + RUNTIME + "public @interface " + name + " {\n}\n";
     }
 }

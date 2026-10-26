@@ -145,7 +145,8 @@ final class Bytecode {
                 .stream());
     }
 
-    private ClassFileFacts factsOf(JavaClass javaClass) {
+    /** What the class's class file says that ArchUnit doesn't: {@link ClassFileFacts}. */
+    ClassFileFacts factsOf(JavaClass javaClass) {
         return facts.getOrDefault(javaClass.getName(), ClassFileFacts.UNREAD);
     }
 
