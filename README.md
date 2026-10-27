@@ -65,13 +65,13 @@ any Java version.
 <dependency>
     <groupId>io.github.yoavgeva</groupId>
     <artifactId>designguard</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <scope>test</scope>
 </dependency>
 ```
 
 ```kotlin
-testImplementation("io.github.yoavgeva:designguard:0.1.0")
+testImplementation("io.github.yoavgeva:designguard:0.2.0")
 ```
 
 designguard brings its own ASM, so an older one in your build doesn't affect it. ArchUnit, which it builds on, logs
