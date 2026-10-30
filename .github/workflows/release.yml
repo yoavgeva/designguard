@@ -12,6 +12,7 @@ on:
 permissions:
   contents: write # push the release tag, and main
   actions: write # run CI on the new commits
+  statuses: write # report CI's result on the new commits, for main's branch protection
 
 concurrency:
   group: release
@@ -72,7 +73,9 @@ jobs:
           git commit -q -am "Start $NEXT"
 
       # main requires CI to pass, on Java 17, 21, 25 and 27, before it takes a commit. CI runs on the next
-      # snapshot, whose code is the release's, so nothing is published if it fails.
+      # snapshot, whose code is the release's, so nothing is published if it fails. Branch protection doesn't count
+      # the checks of a run started with workflow_dispatch, even on the commit they ran on, so each of the run's jobs
+      # is reported again as a commit status of that commit, linking to the job.
       - name: Run CI on the new commits
         run: |
           branch="release/v$VERSION"
@@ -87,6 +90,12 @@ jobs:
             sleep 5
           done
           gh run watch "$run" --exit-status --interval 30 > /dev/null
+          gh run view "$run" --json jobs --jq '.jobs[] | [.name, .conclusion, .url] | @tsv' |
+            while IFS=$'\t' read -r name conclusion url; do
+              if [ "$conclusion" = success ]; then state=success; else state=failure; fi
+              gh api "repos/$GITHUB_REPOSITORY/statuses/$head" -f state="$state" -f context="$name" \
+                -f target_url="$url" -f description="CI run $run, which the release started" > /dev/null
+            done
 
       - name: Import the signing key
         run: printf '%s\n' "$MAVEN_GPG_PRIVATE_KEY" | gpg --batch --import
@@ -109,7 +118,7 @@ jobs:
           git push origin "v$VERSION"
           gh release create "v$VERSION" --verify-tag --title "designguard $VERSION" --generate-notes
           if ! git push origin "$HEAD_COMMIT:refs/heads/main"; then
-            echo "::error::$VERSION is published and tagged, but main moved during the release: merge release/v$VERSION into main"
+            echo "::error::$VERSION is published and tagged, but main didn't take the new commits, because it moved during the release or its protection refused them: merge release/v$VERSION into main with a pull request, as a merge commit"
             exit 1
           fi
           git push origin --delete "release/v$VERSION"
