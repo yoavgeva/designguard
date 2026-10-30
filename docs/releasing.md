@@ -41,13 +41,16 @@ It releases the version in `pom.xml` without `-SNAPSHOT`, such as `0.2.0` from `
 
 1. commits the release, which sets the version in `pom.xml` and the README's install snippets, and tags it `v0.2.0`;
 2. commits the next snapshot, `0.3.0-SNAPSHOT`, and runs CI on it on Java 17, 21, 25 and 27, since `main` takes
-   only commits CI has passed;
+   only commits CI has passed. Branch protection doesn't count checks from a run started by hand, so the release
+   reports each CI job again as a commit status, linking to the job;
 3. builds the release commit again, tests and checks included, signs it, publishes it to Maven Central and waits
    until Central has it, which can take half an hour or more;
 4. pushes the tag, creates its GitHub release with notes from the merged pull requests, and moves `main` to the two
    commits.
 
-Nothing is published if the version is already released, CI fails or Central rejects the upload. If `main` moved
-during the run, the release is out and tagged, and the run says to merge its `release/v…` branch into `main`.
+Nothing is published if the version is already released, CI fails or Central rejects the upload. If `main` doesn't
+take the new commits, because it moved during the run or its protection refused them, the release is out and
+tagged, and the run says to merge its `release/v…` branch into `main` with a pull request, as a merge commit, so the
+tagged commit stays in `main`'s history.
 
 To build the release artifacts locally without signing: `mise exec -- mvn -P release -Dgpg.skip verify`.
